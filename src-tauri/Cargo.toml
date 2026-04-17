@@ -1,0 +1,37 @@
+[package]
+name = "yarrow"
+version = "0.2.0"
+description = "Yarrow — git-backed note-taking for non-linear thinking"
+authors = ["Yarrow"]
+edition = "2021"
+
+[lib]
+name = "yarrow_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
+gray_matter = "0.2"
+toml = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "1"
+slug = "0.1"
+dirs = "5"
+sha2 = "0.10"
+base64 = "0.22"
+pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+strip = true

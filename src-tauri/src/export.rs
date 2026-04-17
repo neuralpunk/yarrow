@@ -1,0 +1,304 @@
+// Static-site export.
+//
+// Writes a self-contained folder the user can share or host:
+//   dest/
+//     index.html          — all notes in one page, with collapsible sections
+//                           and a D3-force graph (via CDN)
+//     attachments/…       — copied as-is so images resolve
+//     styles.css          — Yarrow's design tokens, light palette for readability
+//
+// Design choices:
+// * One HTML file (not per-note) keeps the artefact truly portable — a single
+//   attachment you can email or drop into Dropbox. Readers scroll or use the
+//   in-page table of contents.
+// * Graph is rendered via D3 from a CDN in a collapsible details block.
+//   Labelled "needs internet" so offline readers can still browse notes.
+// * We export the light palette regardless of the user's current theme — it's
+//   the most legible for an audience that's seeing the content for the first
+//   time. Theming the export is a later-version concern.
+
+use std::path::Path;
+
+use serde::Serialize;
+
+use crate::error::Result;
+use crate::notes;
+use crate::graph;
+use crate::workspace;
+
+#[derive(Debug, Serialize)]
+pub struct ExportReport {
+    pub dest: String,
+    pub notes_exported: usize,
+    pub attachments_exported: usize,
+}
+
+pub fn run(root: &Path, dest: &Path) -> Result<ExportReport> {
+    std::fs::create_dir_all(dest)?;
+
+    // Gather content
+    let summaries = notes::list(root)?;
+    let mut rendered: Vec<RenderedNote> = Vec::with_capacity(summaries.len());
+    for s in &summaries {
+        let n = notes::read(root, &s.slug)?;
+        rendered.push(render_note(&n));
+    }
+
+    let graph_json = graph_payload(root)?;
+    let cfg = workspace::read_config(root).ok();
+    let title = cfg
+        .as_ref()
+        .map(|c| c.workspace.name.clone())
+        .unwrap_or_else(|| "Yarrow workspace".into());
+
+    // Write files
+    std::fs::write(dest.join("styles.css"), STYLES)?;
+    std::fs::write(dest.join("index.html"), build_index(&title, &rendered, &graph_json))?;
+
+    // Copy attachments if any
+    let attach_count = copy_attachments(root, dest)?;
+
+    Ok(ExportReport {
+        dest: dest.to_string_lossy().to_string(),
+        notes_exported: rendered.len(),
+        attachments_exported: attach_count,
+    })
+}
+
+struct RenderedNote {
+    slug: String,
+    title: String,
+    body_html: String,
+}
+
+fn render_note(n: &notes::Note) -> RenderedNote {
+    use pulldown_cmark::{html, Options, Parser};
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    // Rewrite [[wikilinks]] to intra-page anchors so clicking a wikilink
+    // jumps to the target section in the single-page export.
+    let pre = rewrite_wikilinks(&n.body);
+    let parser = Parser::new_ext(&pre, options);
+    let mut html_out = String::new();
+    html::push_html(&mut html_out, parser);
+    RenderedNote {
+        slug: n.slug.clone(),
+        title: if n.frontmatter.title.is_empty() { n.slug.clone() } else { n.frontmatter.title.clone() },
+        body_html: html_out,
+    }
+}
+
+/// `[[Some Note]]` → `[Some Note](#note-some-note)`. The `#note-<slug>` anchor
+/// is emitted by the index template as a section id.
+fn rewrite_wikilinks(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut last = 0;
+    let bytes = body.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'[' && bytes[i + 1] == b'[' {
+            let start = i;
+            let mut j = i + 2;
+            let mut found = None;
+            while j + 1 < bytes.len() {
+                if bytes[j] == b'\n' { break; }
+                if bytes[j] == b']' && bytes[j + 1] == b']' {
+                    found = Some(j + 2);
+                    break;
+                }
+                j += 1;
+            }
+            if let Some(end) = found {
+                out.push_str(&body[last..start]);
+                let inner = &body[start + 2..end - 2];
+                let anchor = note_anchor(inner);
+                out.push_str(&format!("[{}](#{})", inner, anchor));
+                last = end;
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out.push_str(&body[last..]);
+    out
+}
+
+fn note_anchor(name: &str) -> String {
+    let slug = slug::slugify(name);
+    if slug.is_empty() { "note".into() } else { format!("note-{}", slug) }
+}
+
+fn slug_anchor(slug: &str) -> String {
+    // Notes created through the app already have kebab-slugs; reuse so the
+    // anchor matches what `rewrite_wikilinks` produces via name-slugging.
+    format!("note-{}", slug)
+}
+
+fn graph_payload(root: &Path) -> Result<String> {
+    let g = graph::build(root).unwrap_or_else(|_| graph::Graph {
+        notes: vec![],
+        links: vec![],
+        last_built: String::new(),
+    });
+    Ok(serde_json::to_string(&g).unwrap_or_else(|_| "{\"notes\":[],\"links\":[]}".into()))
+}
+
+fn copy_attachments(root: &Path, dest: &Path) -> Result<usize> {
+    let src = root.join(crate::attachments::ATTACHMENTS_DIR);
+    if !src.exists() {
+        return Ok(0);
+    }
+    let out_dir = dest.join(crate::attachments::ATTACHMENTS_DIR);
+    std::fs::create_dir_all(&out_dir)?;
+    let mut n = 0;
+    for entry in std::fs::read_dir(&src)? {
+        let entry = entry?;
+        let p = entry.path();
+        if p.is_file() {
+            if let Some(name) = p.file_name() {
+                std::fs::copy(&p, out_dir.join(name))?;
+                n += 1;
+            }
+        }
+    }
+    Ok(n)
+}
+
+// ── templates ───────────────────────────────────────────────────────────
+
+fn build_index(title: &str, notes: &[RenderedNote], graph_json: &str) -> String {
+    let mut toc = String::new();
+    let mut body = String::new();
+    for n in notes {
+        let anchor = slug_anchor(&n.slug);
+        toc.push_str(&format!(
+            "<li><a href=\"#{anchor}\">{title}</a></li>",
+            anchor = anchor,
+            title = escape_html(&n.title),
+        ));
+        body.push_str(&format!(
+            "<article id=\"{anchor}\"><h2>{title}</h2>{body}</article>",
+            anchor = anchor,
+            title = escape_html(&n.title),
+            body = n.body_html,
+        ));
+    }
+    format!(
+        r##"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="y-hdr">
+  <h1>{title}</h1>
+  <div class="y-sub">exported from Yarrow · {count} notes</div>
+</header>
+<nav class="y-toc">
+  <h3>Contents</h3>
+  <ol>{toc}</ol>
+</nav>
+<details class="y-graph">
+  <summary>Connection graph <span class="y-note">(needs internet)</span></summary>
+  <div id="graph"></div>
+  <script src="https://d3js.org/d3.v7.min.js" defer></script>
+  <script defer>
+    window.__yarrow_graph = {graph};
+    document.addEventListener('DOMContentLoaded', () => {{
+      const g = window.__yarrow_graph;
+      if (!g || !g.notes || !g.notes.length || !window.d3) return;
+      const W = 760, H = 420;
+      const svg = d3.select('#graph').append('svg').attr('viewBox', `0 0 ${{W}} ${{H}}`);
+      const sim = d3.forceSimulation(g.notes.map(n => Object.assign({{}}, n)))
+        .force('link', d3.forceLink(g.links.map(l => ({{source:l.from,target:l.to}}))).id(d => d.slug).distance(70))
+        .force('charge', d3.forceManyBody().strength(-140))
+        .force('center', d3.forceCenter(W/2, H/2))
+        .force('collide', d3.forceCollide(22));
+      const link = svg.append('g').selectAll('line').data(g.links).join('line')
+        .attr('stroke', '#b8900e').attr('stroke-opacity', 0.45);
+      const node = svg.append('g').selectAll('g').data(sim.nodes()).join('g').style('cursor','pointer')
+        .on('click', (_, d) => {{ location.hash = '#note-' + d.slug; }});
+      node.append('circle').attr('r', 5).attr('fill', '#f5c930').attr('stroke', '#b8900e');
+      node.append('text').attr('dy', 14).attr('text-anchor', 'middle').attr('font-size', 10).attr('fill', '#342e0f').text(d => d.title.length > 18 ? d.title.slice(0,17)+'…' : d.title);
+      sim.on('tick', () => {{
+        link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+        node.attr('transform', d => `translate(${{d.x}},${{d.y}})`);
+      }});
+    }});
+  </script>
+</details>
+<main>
+{body}
+</main>
+<footer class="y-ftr">
+  <p>Generated by <a href="https://github.com/">Yarrow</a>. Notes and connections are yours.</p>
+</footer>
+</body>
+</html>
+"##,
+        title = escape_html(title),
+        count = notes.len(),
+        toc = toc,
+        graph = graph_json,
+        body = body,
+    )
+}
+
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+// Yarrow's warm-light palette inlined so the export is theme-consistent and
+// self-contained. Kept deliberately separate from `index.css` since the web
+// build uses Tailwind and we don't want to ship the entire stylesheet.
+const STYLES: &str = r#"
+:root {
+  --bg: #fdfcf3; --s1: #faf6e4; --s2: #f3eccc; --s3: #e9e0aa;
+  --yel: #e8b820; --yelp: #fef6cc; --yeld: #7a5d05;
+  --char: #181602; --ch2: #342e0f; --t2: #4f4a24; --t3: #807a42;
+  --bd: #ddd5a0; --link: #6a5000;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--char); }
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Figtree', sans-serif;
+  font-size: 16px; line-height: 1.65; letter-spacing: -0.003em;
+}
+.y-hdr { padding: 48px 24px 24px; text-align: center; border-bottom: 1px solid var(--bd); }
+.y-hdr h1 { font-family: ui-serif, Georgia, 'Oranienbaum', serif; font-size: 42px; margin: 0; letter-spacing: -0.01em; }
+.y-sub { color: var(--t3); font-size: 13px; font-family: ui-monospace, 'JetBrains Mono', monospace; margin-top: 6px; }
+.y-toc { max-width: 720px; margin: 24px auto; padding: 18px 24px; background: var(--s1); border: 1px solid var(--bd); border-radius: 10px; }
+.y-toc h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--t3); }
+.y-toc ol { margin: 0; padding-left: 18px; }
+.y-toc a { color: var(--link); text-decoration: none; }
+.y-toc a:hover { text-decoration: underline; }
+.y-graph { max-width: 720px; margin: 24px auto; padding: 12px 18px; background: var(--s1); border: 1px solid var(--bd); border-radius: 10px; }
+.y-graph summary { cursor: pointer; font-weight: 500; }
+.y-graph .y-note { color: var(--t3); font-size: 12px; font-weight: 400; }
+.y-graph #graph { margin-top: 10px; }
+.y-graph #graph svg { width: 100%; height: auto; background: var(--bg); border-radius: 8px; }
+main { max-width: 720px; margin: 0 auto; padding: 32px 24px 80px; }
+article { padding: 28px 0; border-bottom: 1px dashed var(--bd); }
+article:last-child { border-bottom: 0; }
+article h2 { font-family: ui-serif, Georgia, 'Oranienbaum', serif; font-size: 30px; letter-spacing: -0.005em; margin: 0 0 12px; }
+article h3 { font-family: ui-serif, Georgia, 'Oranienbaum', serif; font-size: 20px; margin: 22px 0 6px; }
+article p { margin: 0 0 12px; }
+article a { color: var(--link); }
+article code { background: var(--s2); padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, 'JetBrains Mono', monospace; font-size: 0.92em; }
+article pre { background: var(--s2); padding: 12px 14px; border-radius: 6px; overflow-x: auto; }
+article pre code { background: none; padding: 0; }
+article img { max-width: 100%; height: auto; border-radius: 6px; margin: 10px 0; }
+article blockquote { border-left: 3px solid var(--yel); margin: 12px 0; padding: 2px 14px; color: var(--t2); }
+article ul, article ol { padding-left: 22px; }
+.y-ftr { text-align: center; padding: 24px; color: var(--t3); font-size: 12px; border-top: 1px solid var(--bd); }
+.y-ftr a { color: var(--link); }
+"#;

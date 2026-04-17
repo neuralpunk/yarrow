@@ -1,0 +1,88 @@
+# ───────── Dependencies & build output ─────────
+node_modules
+dist
+dist-ssr
+*.local
+*.tsbuildinfo
+
+# Vite cache
+.vite/
+node_modules/.vite/
+
+# ───────── Logs ─────────
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ───────── Environment & secrets ─────────
+# Never commit credentials, API keys, or local env overrides.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.json
+
+# ───────── Yarrow workspace data ─────────
+# The app writes .yarrow/credentials.toml (sync tokens) and
+# .yarrow/scratchpad.md inside user workspaces. If a dev ever tests
+# with a workspace nested in this repo, this keeps secrets out.
+.yarrow/
+
+# ───────── Editors / IDEs ─────────
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*~
+
+# ───────── OS ─────────
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ───────── Test / coverage ─────────
+coverage/
+.nyc_output/
+*.test
+*.out
+coverage.txt
+.engram
+
+# ───────── Local databases ─────────
+*.db
+*.db-wal
+*.db-shm
+
+# ───────── Claude Code local settings ─────────
+# Machine-specific permissions — settings.json (shared) stays tracked.
+.claude/settings.local.json
+
+# ───────── Rust / Tauri ─────────
+# src-tauri/target and src-tauri/gen/schemas are handled by
+# src-tauri/.gitignore. Everything below is extra safety.
+**/*.rs.bk
+*.orig
+perf.data
+perf.data.old
+flamegraph.svg
+
+# ───────── Personal/local scripts ─────────
+# Project scripts (make-sample-workspace, first-time-setup, release) are
+# committed. Use the .local.sh suffix for anything machine-specific you
+# want to keep out of the repo.
+scripts/*.local.sh
+scripts/local/

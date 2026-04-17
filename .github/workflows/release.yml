@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  # Allow running manually from the Actions tab without pushing a tag.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (without leading v)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS universal (builds both x86_64 and aarch64 in one job)
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+            label: macos
+          - platform: ubuntu-22.04
+            args: ''
+            label: linux
+          - platform: windows-latest
+            args: ''
+            label: windows
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Set up Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Universal macOS needs both targets installed explicitly.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Cargo registry and target
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libsoup-3.0-dev \
+            librsvg2-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            patchelf \
+            build-essential \
+            curl \
+            file \
+            wget
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Determine tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "tag=v${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # tauri-action builds the bundles for the runner's OS and — when
+      # tagName + releaseName are supplied — uploads them to a GitHub Release
+      # (creating it as a draft if it doesn't exist yet, then publishing on
+      # the final job). Using includeUpdaterJson: false because we don't ship
+      # the updater yet.
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ steps.tag.outputs.tag }}
+          releaseName: 'Yarrow ${{ steps.tag.outputs.version }}'
+          releaseBody: |
+            Yarrow ${{ steps.tag.outputs.version }}
+
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what changed.
+
+            ### Downloads
+
+            - **macOS:** `.dmg` or `.app.tar.gz` (universal)
+            - **Linux:** `.AppImage`, `.deb`, or `.rpm` (x86_64)
+            - **Windows:** `.msi` installer or `.exe`
+
+            First-time macOS launch: right-click → *Open* → *Open* (until
+            notarization is set up, Gatekeeper flags unsigned apps).
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: false
+          args: ${{ matrix.args }}
+
+  publish:
+    # Flip the draft release to published once all three OS builds have
+    # uploaded their bundles.
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Publish the release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const { data: release } = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag,
+            });
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.id,
+              draft: false,
+            });
+            core.notice(`Published ${tag}: ${release.html_url}`);
