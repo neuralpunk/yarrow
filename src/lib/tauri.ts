@@ -40,6 +40,10 @@ export const api = {
     invoke<{ note: Note; switched_from: string | null }>("cmd_open_daily", { dateIso }),
   listDaily: (limit?: number) =>
     invoke<NoteSummary[]>("cmd_list_daily", { limit }),
+  listDailyDates: () => invoke<string[]>("cmd_list_daily_dates"),
+  readDailyTemplate: () => invoke<string>("cmd_read_daily_template"),
+  writeDailyTemplate: (content: string) =>
+    invoke<void>("cmd_write_daily_template", { content }),
 
   // attachments
   attachBytes: (name: string, dataBase64: string) =>
@@ -52,6 +56,10 @@ export const api = {
   // export
   exportStatic: (dest: string) =>
     invoke<ExportReport>("cmd_export_static", { dest }),
+  exportPathMarkdown: (pathName: string, dest: string) =>
+    invoke<ExportReport>("cmd_export_path_markdown", { pathName, dest }),
+  notesOnPath: (pathName: string) =>
+    invoke<{ slug: string; body: string }[]>("cmd_notes_on_path", { pathName }),
 
   saveNote: (slug: string, body: string, thinkingNote?: string) =>
     invoke<Note>("cmd_save_note", { slug, body, thinkingNote }),
@@ -59,6 +67,8 @@ export const api = {
   renameNote: (oldSlug: string, newTitle: string) =>
     invoke<Note>("cmd_rename_note", { oldSlug, newTitle }),
   deleteNote: (slug: string) => invoke<void>("cmd_delete_note", { slug }),
+  setPinned: (slug: string, pinned: boolean) =>
+    invoke<Note>("cmd_set_pinned", { slug, pinned }),
 
   // links
   addLink: (from: string, to: string, linkType: LinkType) =>
@@ -97,6 +107,8 @@ export const api = {
     invoke<void>("cmd_save_scratchpad", { content }),
   promoteScratchpad: (title: string) =>
     invoke<Note>("cmd_promote_scratchpad", { title }),
+  appendScratchpad: (entry: string) =>
+    invoke<void>("cmd_append_scratchpad", { entry }),
 
   // search
   search: (query: string, limit?: number) =>

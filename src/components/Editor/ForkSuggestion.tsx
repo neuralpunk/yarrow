@@ -25,7 +25,7 @@ export default function ForkSuggestion({ visible, onAccept, onDismiss }: Props) 
           <div className="flex gap-2">
             <button
               onClick={onAccept}
-              className="px-2.5 py-1 text-xs bg-yel text-char rounded hover:bg-yel2"
+              className="px-2.5 py-1 text-xs bg-yel text-on-yel rounded hover:bg-yel2"
             >
               Yes, explore it
             </button>

@@ -18,19 +18,42 @@ use crate::workspace;
 #[derive(Default)]
 pub struct AppState {
     pub root: Mutex<Option<PathBuf>>,
+    /// Serializes every git-index-touching operation (save → write → checkpoint
+    /// → graph::build). Two in-flight saves otherwise interleave their index
+    /// writes and corrupt the repo; callers hold this lock for the entire
+    /// write+checkpoint+rebuild cycle.
+    pub repo_lock: Mutex<()>,
+}
+
+/// Recovers the inner value from a poisoned mutex. We prefer "best-effort keep
+/// going" over "panic on every subsequent IPC call" — a poisoned `root` mutex
+/// just means an earlier command panicked; the path itself is still valid.
+fn unpoison<'a, T>(
+    res: std::result::Result<std::sync::MutexGuard<'a, T>, std::sync::PoisonError<std::sync::MutexGuard<'a, T>>>,
+) -> std::sync::MutexGuard<'a, T> {
+    match res {
+        Ok(g) => g,
+        Err(poison) => poison.into_inner(),
+    }
 }
 
 impl AppState {
     fn require_root(&self) -> Result<PathBuf> {
-        self.root
-            .lock()
-            .unwrap()
+        unpoison(self.root.lock())
             .clone()
             .ok_or(YarrowError::NoWorkspace)
     }
 
     fn set_root(&self, p: PathBuf) {
-        *self.root.lock().unwrap() = Some(p);
+        *unpoison(self.root.lock()) = Some(p);
+    }
+
+    fn with_repo_locked<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        let _guard = unpoison(self.repo_lock.lock());
+        f()
     }
 }
 
@@ -167,21 +190,25 @@ pub fn cmd_save_note(
     state: State<AppState>,
 ) -> Result<notes::Note> {
     let root = state.require_root()?;
-    let note = notes::write(&root, &slug, &body, None)?;
-    let repo = open_repo(&root)?;
-    let title = if note.frontmatter.title.is_empty() {
-        note.slug.clone()
-    } else {
-        note.frontmatter.title.clone()
-    };
-    let mut message = format!("checkpoint: {}", title);
-    if let Some(t) = thinking_note.as_ref().filter(|s| !s.trim().is_empty()) {
-        message.push_str("\n\n");
-        message.push_str(t.trim());
-    }
-    git::checkpoint(&repo, &message)?;
-    let _ = graph::build(&root);
-    Ok(note)
+    // Serialize with other git-index-touching commands: two concurrent saves
+    // (e.g. a fast debounce + a manual save) otherwise race on the same index.
+    state.with_repo_locked(|| -> Result<notes::Note> {
+        let note = notes::write(&root, &slug, &body, None)?;
+        let repo = open_repo(&root)?;
+        let title = if note.frontmatter.title.is_empty() {
+            note.slug.clone()
+        } else {
+            note.frontmatter.title.clone()
+        };
+        let mut message = format!("checkpoint: {}", title);
+        if let Some(t) = thinking_note.as_ref().filter(|s| !s.trim().is_empty()) {
+            message.push_str("\n\n");
+            message.push_str(t.trim());
+        }
+        git::checkpoint(&repo, &message)?;
+        let _ = graph::build(&root);
+        Ok(note)
+    })
 }
 
 #[tauri::command]
@@ -206,6 +233,25 @@ pub fn cmd_rename_note(
     git::checkpoint(&repo, &format!("checkpoint: rename to \"{}\"", new_title))?;
     let _ = graph::build(&root);
     Ok(note)
+}
+
+#[tauri::command]
+pub fn cmd_set_pinned(
+    slug: String,
+    pinned: bool,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    let root = state.require_root()?;
+    let mut note = notes::read(&root, &slug)?;
+    if note.frontmatter.pinned == pinned {
+        return Ok(note);
+    }
+    note.frontmatter.pinned = pinned;
+    let saved = notes::write(&root, &slug, &note.body, Some(note.frontmatter))?;
+    let repo = open_repo(&root)?;
+    let verb = if pinned { "pin" } else { "unpin" };
+    git::checkpoint(&repo, &format!("checkpoint: {} \"{}\"", verb, slug))?;
+    Ok(saved)
 }
 
 #[tauri::command]
@@ -335,6 +381,24 @@ pub fn cmd_list_daily(
 ) -> Result<Vec<notes::NoteSummary>> {
     let root = state.require_root()?;
     notes::list_daily(&root, limit)
+}
+
+#[tauri::command]
+pub fn cmd_list_daily_dates(state: State<AppState>) -> Result<Vec<String>> {
+    let root = state.require_root()?;
+    notes::list_daily_dates(&root)
+}
+
+#[tauri::command]
+pub fn cmd_read_daily_template(state: State<AppState>) -> Result<String> {
+    let root = state.require_root()?;
+    notes::read_daily_template(&root)
+}
+
+#[tauri::command]
+pub fn cmd_write_daily_template(content: String, state: State<AppState>) -> Result<()> {
+    let root = state.require_root()?;
+    notes::write_daily_template(&root, &content)
 }
 
 // ───────── links ─────────
@@ -486,6 +550,42 @@ pub fn cmd_sync(state: State<AppState>) -> Result<git::SyncOutcome> {
     git::sync(&repo, "origin", cfg.sync.token.as_deref())
 }
 
+// ───────── path diffing ─────────
+
+#[derive(serde::Serialize)]
+pub struct PathNoteSnapshot {
+    pub slug: String,
+    pub body: String,
+}
+
+#[tauri::command]
+pub fn cmd_notes_on_path(
+    path_name: String,
+    state: State<AppState>,
+) -> Result<Vec<PathNoteSnapshot>> {
+    let root = state.require_root()?;
+    let repo = open_repo(&root)?;
+    let items = git::notes_on_path(&repo, &path_name)?;
+    Ok(items
+        .into_iter()
+        .map(|(slug, body)| PathNoteSnapshot { slug, body })
+        .collect())
+}
+
+// ───────── path export ─────────
+
+#[tauri::command]
+pub fn cmd_export_path_markdown(
+    path_name: String,
+    dest: String,
+    state: State<AppState>,
+) -> Result<export::ExportReport> {
+    let root = state.require_root()?;
+    let repo = open_repo(&root)?;
+    let dest_path = PathBuf::from(dest);
+    export::export_path_markdown(&repo, &root, &path_name, &dest_path)
+}
+
 // ───────── scratchpad ─────────
 
 #[tauri::command]
@@ -498,6 +598,12 @@ pub fn cmd_read_scratchpad(state: State<AppState>) -> Result<String> {
 pub fn cmd_save_scratchpad(content: String, state: State<AppState>) -> Result<()> {
     let root = state.require_root()?;
     notes::write_scratchpad(&root, &content)
+}
+
+#[tauri::command]
+pub fn cmd_append_scratchpad(entry: String, state: State<AppState>) -> Result<()> {
+    let root = state.require_root()?;
+    notes::append_scratchpad(&root, &entry)
 }
 
 #[tauri::command]

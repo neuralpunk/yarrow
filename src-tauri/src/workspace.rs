@@ -117,6 +117,14 @@ pub fn scratchpad_path(root: &Path) -> PathBuf {
     yarrow_dir(root).join(SCRATCHPAD_FILE)
 }
 
+pub fn templates_dir(root: &Path) -> PathBuf {
+    yarrow_dir(root).join("templates")
+}
+
+pub fn daily_template_path(root: &Path) -> PathBuf {
+    templates_dir(root).join("daily.md")
+}
+
 pub fn index_path(root: &Path) -> PathBuf {
     yarrow_dir(root).join(INDEX_FILE)
 }

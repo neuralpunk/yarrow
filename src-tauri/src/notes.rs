@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use chrono::Utc;
+use chrono::{Datelike, Utc};
 use gray_matter::{engine::YAML, Matter};
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +33,8 @@ pub struct Frontmatter {
     pub links: Vec<Link>,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -41,6 +43,8 @@ pub struct NoteSummary {
     pub title: String,
     pub modified: String,
     pub excerpt: String,
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -88,7 +92,13 @@ pub fn list(root: &Path) -> Result<Vec<NoteSummary>> {
         let title = if fm.title.is_empty() { slug.clone() } else { fm.title.clone() };
         let modified = if fm.modified.is_empty() { fm.created.clone() } else { fm.modified.clone() };
         let excerpt = excerpt_from(&body);
-        out.push(NoteSummary { slug, title, modified, excerpt });
+        out.push(NoteSummary {
+            slug,
+            title,
+            modified,
+            excerpt,
+            pinned: fm.pinned,
+        });
     }
     out.sort_by(|a, b| b.modified.cmp(&a.modified));
     Ok(out)
@@ -127,6 +137,7 @@ pub fn write(root: &Path, slug: &str, body: &str, frontmatter: Option<Frontmatte
             modified: now.clone(),
             links: vec![],
             tags: vec![],
+        pinned: false,
         }
     });
     if fm.created.is_empty() {
@@ -138,12 +149,42 @@ pub fn write(root: &Path, slug: &str, body: &str, frontmatter: Option<Frontmatte
     }
 
     let serialized = serialize(&fm, body);
-    std::fs::write(&path, &serialized)?;
+    atomic_write(&path, serialized.as_bytes())?;
     Ok(Note {
         slug: slug.to_string(),
         frontmatter: fm,
         body: body.to_string(),
     })
+}
+
+/// Write to a sibling temp file and rename over the target. A crash mid-write
+/// leaves the original intact rather than truncating it. `rename` on the same
+/// filesystem is atomic on POSIX and best-effort on Windows.
+fn atomic_write(path: &Path, contents: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let parent = path
+        .parent()
+        .ok_or_else(|| YarrowError::Other(format!("no parent for {}", path.display())))?;
+    std::fs::create_dir_all(parent)?;
+    // Unique temp name so concurrent writes to different slugs don't collide.
+    let pid = std::process::id();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let stem = path.file_name().and_then(|s| s.to_str()).unwrap_or("note");
+    let tmp = parent.join(format!(".{}.{}.{}.tmp", stem, pid, nanos));
+    {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(contents)?;
+        f.sync_all().ok();
+    }
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        // Clean up the temp file on failure so we don't leak stale `.tmp`s.
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    Ok(())
 }
 
 pub fn create(root: &Path, title: &str) -> Result<Note> {
@@ -160,6 +201,7 @@ pub fn create(root: &Path, title: &str) -> Result<Note> {
         modified: now,
         links: vec![],
         tags: vec![],
+        pinned: false,
     };
     write(root, &slug, "", Some(fm))
 }
@@ -359,6 +401,9 @@ fn serialize(fm: &Frontmatter, body: &str) -> String {
             out.push_str(&format!("  - {}\n", yaml_escape(t)));
         }
     }
+    if fm.pinned {
+        out.push_str("pinned: true\n");
+    }
     out.push_str("---\n");
     out.push_str(body);
     if !body.ends_with('\n') {
@@ -385,6 +430,7 @@ pub fn seed_note_markdown() -> String {
         modified: now,
         links: vec![],
         tags: vec![],
+        pinned: false,
     };
     let body = "\
 Welcome.
@@ -465,8 +511,78 @@ pub fn ensure_daily(root: &Path, date_iso: &str) -> Result<Note> {
         modified: now,
         links: vec![],
         tags: vec!["daily".into()],
+        pinned: false,
     };
-    write(root, &slug, "", Some(fm))
+    let body = render_daily_template(root, date_iso);
+    write(root, &slug, &body, Some(fm))
+}
+
+fn render_daily_template(root: &Path, date_iso: &str) -> String {
+    let tpl_path = workspace::daily_template_path(root);
+    let tpl = match std::fs::read_to_string(&tpl_path) {
+        Ok(s) => s,
+        Err(_) => return String::new(),
+    };
+    let date = chrono::NaiveDate::parse_from_str(date_iso, "%Y-%m-%d").ok();
+    let (weekday, human, week) = match date {
+        Some(d) => (
+            d.format("%A").to_string(),
+            d.format("%B %-d, %Y").to_string(),
+            d.iso_week().week().to_string(),
+        ),
+        None => (String::new(), date_iso.to_string(), String::new()),
+    };
+    let yesterday = date
+        .and_then(|d| d.pred_opt())
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default();
+    tpl.replace("{{date}}", date_iso)
+        .replace("{{weekday}}", &weekday)
+        .replace("{{date_human}}", &human)
+        .replace("{{yesterday}}", &yesterday)
+        .replace("{{week_number}}", &week)
+}
+
+/// Return ISO dates (YYYY-MM-DD) of every daily entry in the workspace.
+pub fn list_daily_dates(root: &Path) -> Result<Vec<String>> {
+    let dir = workspace::notes_dir(root).join("daily");
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&dir)? {
+        let entry = entry?;
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if let Some(stem) = file_name.strip_suffix(".md") {
+            if chrono::NaiveDate::parse_from_str(stem, "%Y-%m-%d").is_ok() {
+                out.push(stem.to_string());
+            }
+        }
+    }
+    out.sort();
+    out.reverse();
+    Ok(out)
+}
+
+pub fn read_daily_template(root: &Path) -> Result<String> {
+    let path = workspace::daily_template_path(root);
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    Ok(std::fs::read_to_string(path)?)
+}
+
+pub fn write_daily_template(root: &Path, content: &str) -> Result<()> {
+    let path = workspace::daily_template_path(root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if content.trim().is_empty() && path.exists() {
+        std::fs::remove_file(&path)?;
+        return Ok(());
+    }
+    std::fs::write(path, content)?;
+    Ok(())
 }
 
 /// List all daily notes (most-recent first), newest `limit` only if provided.
@@ -496,7 +612,7 @@ pub fn list_daily(root: &Path, limit: Option<usize>) -> Result<Vec<NoteSummary>>
         let title = if fm.title.is_empty() { daily_title(&stem) } else { fm.title.clone() };
         let modified = if fm.modified.is_empty() { stem.clone() } else { fm.modified.clone() };
         let excerpt = excerpt_from(&body);
-        out.push(NoteSummary { slug, title, modified, excerpt });
+        out.push(NoteSummary { slug, title, modified, excerpt, pinned: false });
     }
     // Sort by the date in the slug (descending) — more stable than modified,
     // which drifts if the user re-edits an older day's entry.
@@ -530,4 +646,19 @@ pub fn clear_scratchpad(root: &Path) -> Result<()> {
         std::fs::remove_file(path)?;
     }
     Ok(())
+}
+
+pub fn append_scratchpad(root: &Path, entry: &str) -> Result<()> {
+    let existing = read_scratchpad(root).unwrap_or_default();
+    let stamp = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+    let sep = if existing.is_empty() || existing.ends_with("\n\n") {
+        ""
+    } else if existing.ends_with('\n') {
+        "\n"
+    } else {
+        "\n\n"
+    };
+    let block = format!("{}— {} —\n{}\n", sep, stamp, entry.trim());
+    let next = format!("{}{}", existing, block);
+    write_scratchpad(root, &next)
 }

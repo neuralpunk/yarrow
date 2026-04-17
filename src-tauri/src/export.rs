@@ -19,9 +19,10 @@
 
 use std::path::Path;
 
+use git2::{BranchType, Repository};
 use serde::Serialize;
 
-use crate::error::Result;
+use crate::error::{Result, YarrowError};
 use crate::notes;
 use crate::graph;
 use crate::workspace;
@@ -248,6 +249,103 @@ fn build_index(title: &str, notes: &[RenderedNote], graph_json: &str) -> String 
         graph = graph_json,
         body = body,
     )
+}
+
+/// Export every note living on a specific path (git branch) as a Markdown
+/// bundle. Produces a folder with plain `.md` files (frontmatter stripped)
+/// plus a `README.md` summarising the path.
+pub fn export_path_markdown(
+    repo: &Repository,
+    workspace_root: &Path,
+    path_name: &str,
+    dest: &Path,
+) -> Result<ExportReport> {
+    let branch = repo
+        .find_branch(path_name, BranchType::Local)
+        .map_err(|_| YarrowError::PathNotFound(path_name.to_string()))?;
+    let commit = branch.get().peel_to_commit()?;
+    let tree = commit.tree()?;
+
+    std::fs::create_dir_all(dest)?;
+    let mut count = 0usize;
+    let mut titles: Vec<(String, String)> = Vec::new();
+
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        let name = entry.name().unwrap_or("");
+        if !name.ends_with(".md") {
+            return git2::TreeWalkResult::Ok;
+        }
+        let full = format!("{}{}", dir, name);
+        if !full.starts_with("notes/") {
+            return git2::TreeWalkResult::Ok;
+        }
+        let blob = match entry.to_object(repo).and_then(|o| o.peel_to_blob()) {
+            Ok(b) => b,
+            Err(_) => return git2::TreeWalkResult::Ok,
+        };
+        let raw = String::from_utf8_lossy(blob.content()).to_string();
+        let (title, body) = split_frontmatter(&raw);
+        let rel = full.trim_start_matches("notes/");
+        let out_path = dest.join(rel);
+        if let Some(parent) = out_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if std::fs::write(&out_path, body).is_ok() {
+            count += 1;
+            titles.push((rel.to_string(), title));
+        }
+        git2::TreeWalkResult::Ok
+    })?;
+
+    // Copy attachments snapshot from the working tree (attachments are
+    // stable across paths for v1)
+    let attach_count = copy_attachments(workspace_root, dest)?;
+
+    // README
+    let cfg_name = workspace::read_config(workspace_root)
+        .ok()
+        .map(|c| c.workspace.name)
+        .unwrap_or_else(|| "Yarrow workspace".into());
+    let mut readme = String::new();
+    readme.push_str(&format!("# {} — path: {}\n\n", cfg_name, path_name));
+    readme.push_str(&format!(
+        "Exported from Yarrow on {}. {} notes on this path.\n\n",
+        chrono::Local::now().format("%Y-%m-%d %H:%M"),
+        count
+    ));
+    readme.push_str("## Notes on this path\n\n");
+    titles.sort();
+    for (rel, title) in &titles {
+        let display = if title.is_empty() { rel.clone() } else { title.clone() };
+        readme.push_str(&format!("- [{}]({})\n", display, rel));
+    }
+    std::fs::write(dest.join("README.md"), readme)?;
+
+    Ok(ExportReport {
+        dest: dest.to_string_lossy().to_string(),
+        notes_exported: count,
+        attachments_exported: attach_count,
+    })
+}
+
+fn split_frontmatter(raw: &str) -> (String, String) {
+    // Strip a leading `---\n...\n---\n` YAML block and return (title, body).
+    // Title is best-effort: pulls `title: …` from the frontmatter if present.
+    let mut title = String::new();
+    if let Some(rest) = raw.strip_prefix("---\n") {
+        if let Some(end) = rest.find("\n---\n") {
+            let fm = &rest[..end];
+            for line in fm.lines() {
+                if let Some(v) = line.strip_prefix("title:") {
+                    title = v.trim().trim_matches('"').trim_matches('\'').to_string();
+                    break;
+                }
+            }
+            let body = &rest[end + 5..];
+            return (title, body.to_string());
+        }
+    }
+    (title, raw.to_string())
 }
 
 fn escape_html(s: &str) -> String {

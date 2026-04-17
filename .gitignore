@@ -8,6 +8,7 @@ dist-ssr
 # Vite cache
 .vite/
 node_modules/.vite/
+icons/
 
 # ───────── Logs ─────────
 logs
@@ -81,8 +82,4 @@ perf.data.old
 flamegraph.svg
 
 # ───────── Personal/local scripts ─────────
-# Project scripts (make-sample-workspace, first-time-setup, release) are
-# committed. Use the .local.sh suffix for anything machine-specific you
-# want to keep out of the repo.
-scripts/*.local.sh
-scripts/local/
+scripts/

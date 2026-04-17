@@ -129,16 +129,32 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const tag = context.ref.replace('refs/tags/', '');
-            const { data: release } = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag,
-            });
-            await github.rest.repos.updateRelease({
+            const tag = (context.ref || '').replace('refs/tags/', '')
+              || (context.payload.inputs && ('v' + context.payload.inputs.version));
+            if (!tag) {
+              core.setFailed('Could not determine tag to publish.');
+              return;
+            }
+            // getReleaseByTag only returns PUBLISHED releases — drafts 404.
+            // Paginate through releases (which includes drafts) to find the
+            // one tauri-action just created for this tag.
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 },
+            );
+            const release = releases.find((r) => r.tag_name === tag);
+            if (!release) {
+              core.setFailed(`No release found for tag ${tag}.`);
+              return;
+            }
+            if (!release.draft) {
+              core.notice(`${tag} is already published: ${release.html_url}`);
+              return;
+            }
+            const { data: updated } = await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: release.id,
               draft: false,
             });
-            core.notice(`Published ${tag}: ${release.html_url}`);
+            core.notice(`Published ${tag}: ${updated.html_url}`);

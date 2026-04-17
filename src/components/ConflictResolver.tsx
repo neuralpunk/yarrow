@@ -136,7 +136,7 @@ export default function ConflictResolver({
           <button
             disabled={busy}
             onClick={accept}
-            className="px-4 py-1.5 text-sm bg-yel text-char rounded hover:bg-yel2 disabled:opacity-50"
+            className="px-4 py-1.5 text-sm bg-yel text-on-yel rounded hover:bg-yel2 disabled:opacity-50"
           >
             {idx === relpaths.length - 1 ? "Save — bring together" : "Save this one & continue"}
           </button>

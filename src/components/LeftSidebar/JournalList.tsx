@@ -1,7 +1,9 @@
+import { useState } from "react";
 import type { NoteSummary } from "../../lib/types";
 import { dailyLabel, todayIso } from "../../lib/format";
 import { JournalIcon } from "../../lib/icons";
 import { SK } from "../../lib/platform";
+import JournalCalendar from "./JournalCalendar";
 
 interface Props {
   entries: NoteSummary[];
@@ -18,18 +20,36 @@ export default function JournalList({ entries, activeSlug, onOpenDaily }: Props)
   const today = todayIso();
   const todaySlug = `daily/${today}`;
   const todayActive = activeSlug === todaySlug;
+  const [calOpen, setCalOpen] = useState(false);
+  const activeDate =
+    activeSlug && activeSlug.startsWith("daily/")
+      ? activeSlug.slice("daily/".length)
+      : undefined;
 
   // Show last 5 entries, excluding today (it's always rendered as the pill).
   const recent = entries.filter((e) => e.slug !== todaySlug).slice(0, 5);
 
   return (
-    <div className="pt-4">
+    <div className="mt-5 pt-5 border-t border-bd/20">
       <div className="flex items-center justify-between px-4 mb-2">
         <div className="inline-flex items-center gap-1.5 text-2xs uppercase tracking-wider text-t3 font-semibold">
           <JournalIcon size={12} />
           <span>Journal</span>
         </div>
+        <button
+          onClick={() => setCalOpen(true)}
+          className="text-2xs text-t3 hover:text-char transition"
+          title="Browse the calendar"
+        >
+          calendar
+        </button>
       </div>
+      <JournalCalendar
+        open={calOpen}
+        onClose={() => setCalOpen(false)}
+        onPick={onOpenDaily}
+        activeDate={activeDate}
+      />
 
       <div className="px-2">
         <button

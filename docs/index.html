@@ -16,14 +16,14 @@
 <meta property="og:title" content="Yarrow — notes that branch, evolve, and connect" />
 <meta
   property="og:description"
-  content="A local-first desktop note-taking tool built around the way thinking actually works: non-linear, branching, and always preserved. Free and open source. Version 0.2.0 available now."
+  content="A local-first desktop note-taking tool built around the way thinking actually works: non-linear, branching, and always preserved. Free and open source. Version 0.3.0 available now."
 />
 <meta property="og:image" content="https://yarrow.software/light.png" />
 <meta property="og:url" content="https://yarrow.software/" />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Yarrow — notes that branch, evolve, and connect" />
-<meta name="twitter:description" content="Local-first, git-backed notes for non-linear thinking. v0.2.0 out now." />
+<meta name="twitter:description" content="Local-first, git-backed notes for non-linear thinking. v0.3.0 out now." />
 <meta name="twitter:image" content="https://yarrow.software/light.png" />
 
 <!-- Theme color for browser chrome. The theme-toggle script rewrites this
@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link
-  href="https://fonts.googleapis.com/css2?family=Oranienbaum&family=Figtree:wght@400..600&family=JetBrains+Mono:wght@400;500&display=swap"
+  href="https://fonts.googleapis.com/css2?family=Oranienbaum&family=Figtree:wght@400..600&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@500;600&display=swap"
   rel="stylesheet"
 />
 
@@ -101,11 +101,12 @@
       </svg>
     </span>
     <span class="brand-word">Yarrow</span>
-    <span class="brand-version" aria-label="Current version">v0.2.0</span>
+    <span class="brand-version" aria-label="Current version">v0.3.0</span>
   </a>
   <nav class="nav-links">
     <a href="#features">Features</a>
     <a href="#whats-new">What's new</a>
+    <a href="#anatomy">Anatomy</a>
     <a href="#philosophy">Philosophy</a>
     <a href="#download">Download</a>
     <a href="https://github.com/neuralpunk/yarrow" class="nav-gh" rel="noopener" aria-label="GitHub repository">
@@ -157,7 +158,7 @@
   <div class="hero-copy">
     <div class="hero-badge">
       <span class="badge-dot"></span>
-      <span>0.2.0 out now · free &amp; open source</span>
+      <span>0.3.0 out now · free &amp; open source</span>
     </div>
     <h1>Notes that <em>branch</em>, evolve, and connect.</h1>
     <p class="lede">
@@ -171,7 +172,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden>
           <path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/>
         </svg>
-        Download 0.2.0
+        Download 0.3.0
       </a>
       <a class="btn ghost" href="https://github.com/neuralpunk/yarrow" rel="noopener">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -234,63 +235,166 @@
   </div>
 </section>
 
-<!-- ───── what's new in 0.2.0 ───── -->
+<!-- ───── what's new in 0.3.0 ───── -->
 <section id="whats-new" class="band band-feature">
   <div class="whatsnew-head">
-    <div class="whatsnew-tag">New in 0.2.0</div>
-    <h2>Deeper, not broader.</h2>
+    <div class="whatsnew-tag">New in 0.3.0</div>
+    <h2>A living map of your thinking.</h2>
     <p class="whatsnew-lede">
-      Four features that lean further into non-linear thinking — plus the polish
-      to make Yarrow feel finished.
+      Five new ways to see how your ideas fit together — plus a major UX pass
+      that turns history, paths, and the connections graph into surfaces
+      you'll actually want to open.
     </p>
   </div>
   <div class="whatsnew-grid">
     <article class="whatsnew-card">
       <div class="wn-num">01</div>
-      <h3>Daily notes, on their own stream</h3>
+      <h3>Pinned notes</h3>
       <p>
-        A <code>Today</code> pill in the sidebar, a journal folder at
-        <code>notes/daily/</code>, and the shortcut
-        <kbd>⌘T</kbd>/<kbd>Ctrl+T</kbd>. Daily entries always live on
-        <em>main</em> so your journal doesn't split when you're off exploring
-        a path.
+        Anchor a handful of always-visible notes at the top of the sidebar —
+        your manifesto, the current project, whatever you want to keep within
+        reach. Right-click any note → <em>Pin to top</em>.
       </p>
     </article>
     <article class="whatsnew-card">
       <div class="wn-num">02</div>
-      <h3>Hover a <code>[[wikilink]]</code>, see the note</h3>
+      <h3>Quick capture</h3>
       <p>
-        Transclusion preview in the editor — a themed popover with title and
-        excerpt appears after a short pause. Clicking still navigates;
-        hovering never gets in your way.
+        <kbd>⌘⇧Space</kbd>/<kbd>Ctrl+Shift+Space</kbd> pops a small window over
+        anything you're doing. Type a thought, hit <kbd>Ctrl+Enter</kbd>, it's
+        appended to the scratchpad with a timestamp. Pressure-free.
       </p>
     </article>
     <article class="whatsnew-card">
       <div class="wn-num">03</div>
-      <h3>Drop-in attachments</h3>
+      <h3>Journal calendar &amp; templates</h3>
       <p>
-        Drag images or paste screenshots into the editor. Files land in
-        <code>attachments/</code>, content-addressed by hash, previewed inline
-        as real images — not just markdown source.
+        A month-grid calendar with dots on days you wrote, plus an optional
+        <code>templates/daily.md</code> rendered into every new entry with
+        <code>{{date}}</code>/<code>{{weekday}}</code> substitution.
+        <kbd>⌘←</kbd>/<kbd>⌘→</kbd> hops between days.
       </p>
     </article>
     <article class="whatsnew-card">
       <div class="wn-num">04</div>
-      <h3>Static-site export</h3>
+      <h3>Transclusion &amp; embedded notes</h3>
       <p>
-        Turn your workspace into a self-contained HTML folder with a
-        table of contents and a D3 force-directed graph. Share a link, email
-        a zip, or host it anywhere.
+        <code>![[note]]</code>, <code>![[note#heading]]</code>, or
+        <code>![[note^block]]</code> embeds another note's content inline. The
+        right sidebar resolves every embed and shows the target with a
+        click-to-jump excerpt.
+      </p>
+    </article>
+    <article class="whatsnew-card">
+      <div class="wn-num">05</div>
+      <h3>Path diffing &amp; export</h3>
+      <p>
+        Compare any two paths prose-level — see exactly what diverged and
+        where. Export any path as a portable Markdown bundle (notes +
+        attachments + README) you can hand to anyone.
+      </p>
+    </article>
+    <article class="whatsnew-card whatsnew-card-wide">
+      <div class="wn-num">06</div>
+      <h3>Rebuilt connections graph &amp; history modal</h3>
+      <p>
+        The connections graph now uses a structured radial layout with
+        directional arrows, a legend, a nearby-vs-all filter, and an
+        expand-to-fullscreen view. History is a centred modal with Now/Then
+        panes, a difference-only toggle, and a human timeline grouped by
+        <em>Today / Yesterday / Earlier this week</em>.
       </p>
     </article>
   </div>
   <div class="whatsnew-extras">
-    <span class="extra">+ Blueberry &amp; Yellow palette</span>
-    <span class="extra">+ Cross-platform <kbd>Ctrl</kbd>/<kbd>⌘</kbd> shortcut display</span>
-    <span class="extra">+ Toolbar &amp; sidebar layout revisions</span>
-    <span class="extra">+ Native dialogs replaced with themed modals</span>
+    <span class="extra">+ Native-feeling custom titlebar</span>
+    <span class="extra">+ Atomic saves &amp; flush-on-unmount (no data loss)</span>
+    <span class="extra">+ Concurrent-save serialization</span>
+    <span class="extra">+ Improved blueberry theme contrast</span>
     <span class="extra"><a href="https://github.com/neuralpunk/yarrow/blob/main/CHANGELOG.md" rel="noopener">Full changelog →</a></span>
   </div>
+</section>
+
+<!-- ───── anatomy — hand-drawn callouts ───── -->
+<section id="anatomy" class="band band-anatomy">
+  <div class="anatomy-head">
+    <div class="anatomy-tag">New to Yarrow?</div>
+    <h2>What makes it different, at a glance.</h2>
+    <p class="anatomy-lede">
+      Here's Yarrow in action. The same markdown you'd write in any editor —
+      but every region of the window is doing something most note apps don't.
+    </p>
+  </div>
+
+  <div class="anatomy-frame">
+    <div class="anatomy-crop">
+      <div class="anatomy-stack">
+        <img src="light.png"     alt="Yarrow in the warm cream theme." class="anatomy-shot anatomy-shot-light"/>
+        <img src="dark.png"      alt="Yarrow in the warm dusk theme."  class="anatomy-shot anatomy-shot-dark"/>
+        <img src="blueberry.png" alt="Yarrow in the Blueberry theme."  class="anatomy-shot anatomy-shot-blueberry"/>
+      </div>
+    </div>
+
+    <!-- Connector lines: thin, straight, accent-colored. Absolutely positioned
+         via percentages so they track the image on resize. -->
+    <svg class="anatomy-lines" viewBox="0 0 1000 500" preserveAspectRatio="none" aria-hidden="true">
+      <g stroke="var(--yel)" stroke-width="1.1" fill="none" opacity="0.9" stroke-linecap="round">
+        <!-- 1 · card-1 right edge → pt-1 -->
+        <line x1="223" y1="101" x2="248" y2="158" />
+        <!-- 2 · card-2 bottom edge → pt-2 -->
+        <line x1="500" y1="82"  x2="500" y2="178" />
+        <!-- 3 · card-3 left edge → pt-3 -->
+        <line x1="777" y1="101" x2="772" y2="168" />
+        <!-- 4 · card-4 top edge → pt-4 -->
+        <line x1="520" y1="418" x2="520" y2="332" />
+      </g>
+    </svg>
+
+    <!-- Modern numbered callouts — clean pill cards, no wobble. -->
+    <div class="anatomy-callouts">
+      <div class="anatomy-pt anatomy-pt-1" style="top: 32%; left: 25%;"></div>
+      <div class="anatomy-pt anatomy-pt-2" style="top: 36%; left: 50%;"></div>
+      <div class="anatomy-pt anatomy-pt-3" style="top: 34%; left: 77%;"></div>
+      <div class="anatomy-pt anatomy-pt-4" style="top: 66%; left: 52%;"></div>
+
+      <figure class="anatomy-card anatomy-card-1" style="top: 14%; left: 3%;">
+        <div class="anatomy-num">01</div>
+        <div class="anatomy-body">
+          <div class="anatomy-title">Pinned &amp; Your Notes</div>
+          <div class="anatomy-text">Anchor the handful that matter; browse the rest below.</div>
+        </div>
+      </figure>
+
+      <figure class="anatomy-card anatomy-card-2" style="top: 4%; left: 42%;">
+        <div class="anatomy-num">02</div>
+        <div class="anatomy-body">
+          <div class="anatomy-title">Paths, not folders</div>
+          <div class="anatomy-text">Branch a note to try a different take. Every path is a safe rewind.</div>
+        </div>
+      </figure>
+
+      <figure class="anatomy-card anatomy-card-3" style="top: 14%; right: 3%;">
+        <div class="anatomy-num">03</div>
+        <div class="anatomy-body">
+          <div class="anatomy-title">A living graph</div>
+          <div class="anatomy-text">Structured radial layout · directional arrows · click a node to jump.</div>
+        </div>
+      </figure>
+
+      <figure class="anatomy-card anatomy-card-4" style="bottom: 4%; left: 42%;">
+        <div class="anatomy-num">04</div>
+        <div class="anatomy-body">
+          <div class="anatomy-title">Typed links &amp; embeds</div>
+          <div class="anatomy-text"><code>[[wikilinks]]</code> · <code>![[transclusion]]</code> · typed connections reciprocated automatically.</div>
+        </div>
+      </figure>
+    </div>
+  </div>
+
+  <p class="anatomy-footer">
+    Every region of the window does something most note apps don't —
+    and nothing is there just because "that's what a note app has."
+  </p>
 </section>
 
 <!-- ───── features ───── -->
@@ -407,6 +511,71 @@
 
     <article class="card">
       <div class="card-icon" aria-hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v8"/>
+          <path d="M8 3h8"/>
+          <path d="M10 11h4l-1 3h-2l-1-3z"/>
+          <path d="M12 14v7"/>
+        </svg>
+      </div>
+      <h3>Pinned notes</h3>
+      <p>
+        Anchor a handful of always-visible notes at the top of the sidebar.
+        Right-click → <em>Pin to top</em>. Survives across themes and syncs.
+      </p>
+    </article>
+
+    <article class="card">
+      <div class="card-icon" aria-hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M5 12h14"/>
+          <path d="M12 5v14"/>
+          <rect x="3" y="3" width="18" height="18" rx="3"/>
+        </svg>
+      </div>
+      <h3>Quick capture</h3>
+      <p>
+        <kbd>⌘⇧Space</kbd>/<kbd>Ctrl+Shift+Space</kbd> pops a small window,
+        timestamps the entry, appends it to the scratchpad. Back to work in
+        a second.
+      </p>
+    </article>
+
+    <article class="card">
+      <div class="card-icon" aria-hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <rect x="4" y="6" width="16" height="14" rx="2"/>
+          <rect x="8" y="10" width="8" height="2" rx="0.5" fill="currentColor"/>
+          <rect x="8" y="14" width="6" height="2" rx="0.5" fill="currentColor"/>
+        </svg>
+      </div>
+      <h3>Transclusion</h3>
+      <p>
+        <code>![[note]]</code>, <code>![[note#heading]]</code>, or
+        <code>![[note^block]]</code> — embed another note's content inline.
+        Live-resolved in a right-sidebar panel.
+      </p>
+    </article>
+
+    <article class="card">
+      <div class="card-icon" aria-hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M6 3v18"/>
+          <path d="M18 3v18"/>
+          <path d="M6 8l12 0"/>
+          <path d="M6 16l12 0"/>
+        </svg>
+      </div>
+      <h3>Path diffing</h3>
+      <p>
+        Compare any two paths prose-level — added notes, removed notes, and
+        per-note added/removed line counts. A story of how your thinking
+        diverged.
+      </p>
+    </article>
+
+    <article class="card">
+      <div class="card-icon" aria-hidden>
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
           <path d="M7 10l5 5 5-5"/>
@@ -517,7 +686,7 @@
 
 <!-- ───── download / status ───── -->
 <section id="download" class="band">
-  <h2 class="section-head">Download Yarrow 0.2.0</h2>
+  <h2 class="section-head">Download Yarrow 0.3.0</h2>
   <p class="dl-lede">
     Free, open source, and built to stay out of your way. Pick your platform —
     or grab the source and build it yourself.

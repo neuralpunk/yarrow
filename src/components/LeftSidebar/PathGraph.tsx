@@ -24,6 +24,8 @@ interface Props {
   onDelete: (name: string) => void;
   onMerge: (name: string) => void;
   onNewPath: () => void;
+  onExport?: (name: string) => void;
+  onCompare?: (name: string) => void;
 }
 
 const COL_W = 16;
@@ -36,6 +38,8 @@ export default function PathGraph({
   onDelete,
   onMerge,
   onNewPath,
+  onExport,
+  onCompare,
 }: Props) {
   const [menu, setMenu] = useState<string | null>(null);
   const [abandonedOpen, setAbandonedOpen] = useState(false);
@@ -125,7 +129,7 @@ export default function PathGraph({
   const maxDepth = liveRows.reduce((m, n) => Math.max(m, n.depth), 0);
 
   return (
-    <div className="pt-4 pb-2">
+    <div className="mt-5 pt-5 pb-2 border-t border-bd/20">
       <div className="flex items-center justify-between px-4 mb-1">
         <div className="text-2xs uppercase tracking-wider text-t3 font-semibold">
           Your Paths
@@ -262,6 +266,24 @@ export default function PathGraph({
                   >
                     Bring together with current path
                   </button>
+                  {onCompare && (
+                    <button
+                      className="w-full px-3 py-1.5 text-left hover:bg-s2"
+                      onClick={() => { setMenu(null); onCompare(n.topo.name); }}
+                      title="See how this path diverges from the current one"
+                    >
+                      Compare with current path
+                    </button>
+                  )}
+                  {onExport && (
+                    <button
+                      className="w-full px-3 py-1.5 text-left hover:bg-s2"
+                      onClick={() => { setMenu(null); onExport(n.topo.name); }}
+                      title="Save this path as a Markdown bundle you can share"
+                    >
+                      Export as Markdown…
+                    </button>
+                  )}
                   <button
                     className="w-full px-3 py-1.5 text-left hover:bg-s2 text-danger"
                     onClick={() => { setMenu(null); onDelete(n.topo.name); }}

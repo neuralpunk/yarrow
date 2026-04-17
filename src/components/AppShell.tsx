@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/tauri";
 import { useTheme } from "../lib/theme";
 import { openQuestions } from "../lib/forkDetection";
@@ -25,12 +26,15 @@ import HistorySlider from "./Editor/HistorySlider";
 import ConnectionGraph from "./RightSidebar/ConnectionGraph";
 import LinkedNotesList from "./RightSidebar/LinkedNotesList";
 import OpenQuestions from "./RightSidebar/OpenQuestions";
+import Transclusions from "./RightSidebar/Transclusions";
 import Scratchpad from "./Scratchpad";
+import QuickCapture from "./QuickCapture";
 import Settings from "./Settings";
 import Modal from "./Modal";
 import CommandPalette from "./CommandPalette";
 import ForkMoment from "./ForkMoment";
 import ConflictResolver from "./ConflictResolver";
+import PathDiff from "./PathDiff";
 
 type SyncStatus = "synced" | "pending" | "syncing" | "error" | "no-remote";
 
@@ -54,9 +58,11 @@ export default function AppShell({ workspacePath, onClose }: Props) {
   const [currentBody, setCurrentBody] = useState<string>("");
   const [focusMode, setFocusMode] = useState(false);
   const [scratchpadOpen, setScratchpadOpen] = useState(false);
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyPreview, setHistoryPreview] = useState<string | null>(null);
+  const [restoreNonce, setRestoreNonce] = useState(0);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("pending");
   const [syncMessage, setSyncMessage] = useState<string>("");
   const [dirty, setDirty] = useState(false);
@@ -151,10 +157,18 @@ export default function AppShell({ workspacePath, onClose }: Props) {
 
   useEffect(() => {
     if (!activeSlug) { setActiveNote(null); return; }
+    // Guard against fast slug-switches landing a stale note into state: if the
+    // user clicked away before this read resolved, drop the result on the floor.
+    let alive = true;
     api.readNote(activeSlug).then((n) => {
+      if (!alive) return;
       setActiveNote(n);
       setCurrentBody(n.body);
-    }).catch(() => setActiveNote(null));
+    }).catch(() => {
+      if (!alive) return;
+      setActiveNote(null);
+    });
+    return () => { alive = false; };
   }, [activeSlug, currentPath]);
 
   const handleCreateNote = useCallback(() => {
@@ -248,10 +262,26 @@ export default function AppShell({ workspacePath, onClose }: Props) {
         setSettingsOpen({ open: true });
         return;
       }
+      if (mod && e.shiftKey && e.code === "Space") {
+        e.preventDefault();
+        setQuickCaptureOpen(true);
+        return;
+      }
+      if (mod && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        if (activeSlug && activeSlug.startsWith("daily/")) {
+          e.preventDefault();
+          const iso = activeSlug.slice("daily/".length);
+          const d = new Date(iso);
+          d.setDate(d.getDate() + (e.key === "ArrowRight" ? 1 : -1));
+          const next = d.toISOString().slice(0, 10);
+          handleOpenDaily(next);
+          return;
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleCreateNote, handleOpenDaily]);
+  }, [handleCreateNote, handleOpenDaily, activeSlug]);
 
   useEffect(() => {
     if (!toast) return;
@@ -295,6 +325,12 @@ export default function AppShell({ workspacePath, onClose }: Props) {
     },
     [activeSlug],
   );
+
+  const handleTogglePin = useCallback(async (slug: string, pinned: boolean) => {
+    await api.setPinned(slug, pinned);
+    const list = await api.listNotes();
+    setNotes(list);
+  }, []);
 
   const handleDeleteNote = useCallback(
     (slug: string) => {
@@ -385,6 +421,21 @@ export default function AppShell({ workspacePath, onClose }: Props) {
       },
     });
   }, []);
+
+  const handleExportPath = useCallback(async (name: string) => {
+    try {
+      const dest = await openDialog({ directory: true, multiple: false });
+      if (!dest || Array.isArray(dest)) return;
+      const report = await api.exportPathMarkdown(name, dest);
+      setToast(
+        `Exported "${name}" — ${report.notes_exported} notes to ${report.dest}`,
+      );
+    } catch (e) {
+      setToast(`Export failed: ${e}`);
+    }
+  }, []);
+
+  const [compareSession, setCompareSession] = useState<string | null>(null);
 
   const handleMergePath = useCallback(async (fromName: string) => {
     const result = await api.mergePath(fromName);
@@ -488,8 +539,10 @@ export default function AppShell({ workspacePath, onClose }: Props) {
       const n = await api.readNote(activeSlug);
       setActiveNote(n);
       setCurrentBody(n.body);
+      setRestoreNonce((x) => x + 1);
       setHistoryOpen(false);
       setNotes(await api.listNotes());
+      setToast("Restored — the previous version stays safely in history");
     },
     [activeSlug],
   );
@@ -578,6 +631,7 @@ export default function AppShell({ workspacePath, onClose }: Props) {
                 onCreate={handleCreateNote}
                 onRename={handleRenameNote}
                 onDelete={handleDeleteNote}
+                onTogglePin={handleTogglePin}
               />
               <JournalList
                 entries={dailyEntries}
@@ -591,8 +645,10 @@ export default function AppShell({ workspacePath, onClose }: Props) {
                 onDelete={handleDeletePath}
                 onMerge={handleMergePath}
                 onNewPath={() => setNewPathOpen(true)}
+                onExport={handleExportPath}
+                onCompare={(name) => setCompareSession(name)}
               />
-              <div className="mt-3 border-t border-bd mx-3" />
+              <div className="mt-3 border-t border-bd/20 mx-3" />
               <button
                 onClick={() => setScratchpadOpen(true)}
                 className="mt-2 mx-3 mb-3 w-[calc(100%-1.5rem)] text-left px-3 py-2 text-xs text-t2 hover:bg-s2 hover:text-char rounded transition flex items-center gap-2"
@@ -625,7 +681,7 @@ export default function AppShell({ workspacePath, onClose }: Props) {
           <div className="flex-1 overflow-hidden flex flex-col">
             {activeNote ? (
               <NoteEditor
-                key={activeNote.slug + "@" + currentPath}
+                key={activeNote.slug + "@" + currentPath + "#" + restoreNonce}
                 note={activeNote}
                 notes={notes}
                 currentPath={currentPath}
@@ -649,6 +705,8 @@ export default function AppShell({ workspacePath, onClose }: Props) {
               <HistorySlider
                 history={history}
                 preview={historyPreview}
+                currentBody={currentBody}
+                noteTitle={activeNote.frontmatter.title}
                 onHover={previewAtCheckpoint}
                 onRestore={restoreAtCheckpoint}
                 onClose={() => setHistoryOpen(false)}
@@ -683,6 +741,12 @@ export default function AppShell({ workspacePath, onClose }: Props) {
                 onJump={(line) =>
                   setJumpSignal({ line, nonce: Date.now() })
                 }
+              />
+              <Transclusions
+                body={currentBody}
+                notes={notes}
+                onNavigate={selectSlug}
+                refreshToken={restoreNonce}
               />
               <LinkedNotesList
                 links={noteLinks}
@@ -763,6 +827,14 @@ export default function AppShell({ workspacePath, onClose }: Props) {
         pathName={forkMoment}
         onDone={() => setForkMoment(null)}
       />
+
+      {compareSession && (
+        <PathDiff
+          currentPath={currentPath}
+          otherPath={compareSession}
+          onClose={() => setCompareSession(null)}
+        />
+      )}
 
       {conflictSession && (
         <ConflictResolver
@@ -952,6 +1024,11 @@ export default function AppShell({ workspacePath, onClose }: Props) {
           </button>
         </div>
       </Modal>
+
+      <QuickCapture
+        open={quickCaptureOpen}
+        onClose={() => setQuickCaptureOpen(false)}
+      />
 
       {scratchpadOpen && (
         <Scratchpad

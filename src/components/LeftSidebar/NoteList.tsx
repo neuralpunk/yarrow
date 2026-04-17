@@ -21,6 +21,7 @@ interface Props {
   onCreate: () => void;
   onRename: (slug: string, newTitle: string) => void;
   onDelete: (slug: string) => void;
+  onTogglePin: (slug: string, pinned: boolean) => void;
 }
 
 export default function NoteList({
@@ -33,6 +34,7 @@ export default function NoteList({
   onCreate,
   onRename,
   onDelete,
+  onTogglePin,
 }: Props) {
   const [menuSlug, setMenuSlug] = useState<string | null>(null);
   const [showOrphans, setShowOrphans] = useState(false);
@@ -55,6 +57,107 @@ export default function NoteList({
 
   const relatedToHovered = hoveredSlug ? neighbors[hoveredSlug] : null;
 
+  const pinned = enriched.filter((n) => n.pinned);
+  const rest = enriched.filter((n) => !n.pinned);
+
+  const renderRow = (n: typeof enriched[number]) => {
+    const active = n.slug === activeSlug;
+    const related =
+      !active &&
+      !!relatedToHovered &&
+      hoveredSlug !== n.slug &&
+      relatedToHovered.has(n.slug);
+    return (
+      <li
+        key={n.slug}
+        className="relative"
+        onMouseEnter={() => setHoveredSlug(n.slug)}
+        onMouseLeave={() => setHoveredSlug(null)}
+      >
+        <button
+          onClick={() => onSelect(n.slug)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setMenuSlug(menuSlug === n.slug ? null : n.slug);
+          }}
+          data-related={related ? "true" : "false"}
+          title={
+            n.stale
+              ? `Hasn't been visited in ${n.daysOld} days`
+              : n.isOrphan
+                ? "This note isn't linked to anything yet"
+                : undefined
+          }
+          className={`note-row w-full text-left px-3 py-2 rounded-md text-sm group transition-colors ${
+            active
+              ? "bg-yelp text-char border-l-[3px] border-yel pl-[9px] shadow-sm"
+              : related
+                ? "bg-accent2-dim/40 text-ch2"
+                : n.stale
+                  ? "text-t2 hover:bg-s2"
+                  : "text-ch2 hover:bg-s2"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {n.pinned && (
+              <span className="text-yel shrink-0" title="Pinned">
+                <PinIcon />
+              </span>
+            )}
+            <span className={`truncate flex-1 ${active ? "font-medium" : ""}`}>
+              {n.title || n.slug}
+            </span>
+            {n.isOrphan && !active && (
+              <span
+                className="text-t3 opacity-0 group-hover:opacity-100 transition"
+                title="not linked"
+              >
+                <UnlinkIcon />
+              </span>
+            )}
+          </div>
+          <div className="text-2xs text-t3 font-mono mt-0.5">
+            {relativeTime(n.modified)}
+          </div>
+        </button>
+        {menuSlug === n.slug && (
+          <div
+            className="absolute left-full top-0 ml-1 z-10 w-44 bg-bg border border-bd2 rounded-md shadow-lg text-xs py-1"
+            onMouseLeave={() => setMenuSlug(null)}
+          >
+            <button
+              className="w-full px-3 py-1.5 text-left hover:bg-s2 flex items-center gap-2"
+              onClick={() => {
+                setMenuSlug(null);
+                onTogglePin(n.slug, !n.pinned);
+              }}
+            >
+              <PinIcon /> {n.pinned ? "Unpin" : "Pin to top"}
+            </button>
+            <button
+              className="w-full px-3 py-1.5 text-left hover:bg-s2 flex items-center gap-2"
+              onClick={() => {
+                setMenuSlug(null);
+                setRenameState({ slug: n.slug, title: n.title });
+              }}
+            >
+              <RenameIcon /> Rename
+            </button>
+            <button
+              className="w-full px-3 py-1.5 text-left hover:bg-s2 text-danger flex items-center gap-2"
+              onClick={() => {
+                setMenuSlug(null);
+                onDelete(n.slug);
+              }}
+            >
+              <DeleteIcon /> Delete
+            </button>
+          </div>
+        )}
+      </li>
+    );
+  };
+
   return (
     <div className="pt-3">
       <div className="flex items-center justify-between px-4 mb-2">
@@ -70,94 +173,19 @@ export default function NoteList({
           <PlusIcon />
         </button>
       </div>
+      {pinned.length > 0 && (
+        <>
+          <div className="px-4 mb-1 flex items-center gap-1.5 text-2xs uppercase tracking-wider text-t3 font-semibold">
+            <PinIcon /> <span>Pinned</span>
+          </div>
+          <ul className="px-2 space-y-0.5 mb-2">
+            {pinned.map((n) => renderRow(n))}
+          </ul>
+          <div className="mx-3 mb-2 border-t border-bd" />
+        </>
+      )}
       <ul className="px-2 space-y-0.5">
-        {enriched.map((n) => {
-          const active = n.slug === activeSlug;
-          const related =
-            !active &&
-            !!relatedToHovered &&
-            hoveredSlug !== n.slug &&
-            relatedToHovered.has(n.slug);
-          return (
-            <li
-              key={n.slug}
-              className="relative"
-              onMouseEnter={() => setHoveredSlug(n.slug)}
-              onMouseLeave={() => setHoveredSlug(null)}
-            >
-              <button
-                onClick={() => onSelect(n.slug)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setMenuSlug(menuSlug === n.slug ? null : n.slug);
-                }}
-                data-related={related ? "true" : "false"}
-                title={
-                  n.stale
-                    ? `Hasn't been visited in ${n.daysOld} days`
-                    : n.isOrphan
-                      ? "This note isn't linked to anything yet"
-                      : undefined
-                }
-                className={`note-row w-full text-left px-3 py-2 rounded-md text-sm group transition-colors ${
-                  active
-                    ? "bg-yelp text-char border-l-[3px] border-yel pl-[9px] shadow-sm"
-                    : related
-                      ? "bg-accent2-dim/40 text-ch2"
-                      : n.stale
-                        ? "text-t2 hover:bg-s2"
-                        : "text-ch2 hover:bg-s2"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`truncate flex-1 ${
-                      active ? "font-medium" : ""
-                    }`}
-                  >
-                    {n.title || n.slug}
-                  </span>
-                  {n.isOrphan && !active && (
-                    <span
-                      className="text-t3 opacity-0 group-hover:opacity-100 transition"
-                      title="not linked"
-                    >
-                      <UnlinkIcon />
-                    </span>
-                  )}
-                </div>
-                <div className="text-2xs text-t3 font-mono mt-0.5">
-                  {relativeTime(n.modified)}
-                </div>
-              </button>
-              {menuSlug === n.slug && (
-                <div
-                  className="absolute left-full top-0 ml-1 z-10 w-40 bg-bg border border-bd2 rounded-md shadow-lg text-xs py-1"
-                  onMouseLeave={() => setMenuSlug(null)}
-                >
-                  <button
-                    className="w-full px-3 py-1.5 text-left hover:bg-s2 flex items-center gap-2"
-                    onClick={() => {
-                      setMenuSlug(null);
-                      setRenameState({ slug: n.slug, title: n.title });
-                    }}
-                  >
-                    <RenameIcon /> Rename
-                  </button>
-                  <button
-                    className="w-full px-3 py-1.5 text-left hover:bg-s2 text-danger flex items-center gap-2"
-                    onClick={() => {
-                      setMenuSlug(null);
-                      onDelete(n.slug);
-                    }}
-                  >
-                    <DeleteIcon /> Delete
-                  </button>
-                </div>
-              )}
-            </li>
-          );
-        })}
+        {rest.map((n) => renderRow(n))}
         {enriched.length === 0 && (
           <li className="text-xs text-t3 px-3 py-2 italic">
             No notes yet. Click + to start.
@@ -245,5 +273,16 @@ export default function NoteList({
         </div>
       </Modal>
     </div>
+  );
+}
+
+function PinIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 1.5v5.5" />
+      <path d="M3 2h6" />
+      <path d="M4 7h4l-.5 2h-3L4 7z" />
+      <path d="M6 9v2" />
+    </svg>
   );
 }

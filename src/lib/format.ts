@@ -34,6 +34,14 @@ export function dailyLabel(slug: string): string {
   return d.toLocaleDateString(undefined, { month: "long", day: "numeric" });
 }
 
+/** Lower-kebab slug derived from a title — mirrors the backend's `slug::slugify`. */
+export function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export function friendlyDate(iso: string | number | null | undefined): string {
   if (!iso) return "";
   const d = typeof iso === "number" ? new Date(iso * 1000) : new Date(iso);

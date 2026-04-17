@@ -39,8 +39,13 @@ const highlightStyle = HighlightStyle.define([
 
 function wikilinkPlugin() {
   const matcher = new MatchDecorator({
-    regexp: /\[\[([^\]\n]+)\]\]/g,
-    decoration: () => Decoration.mark({ class: "cm-yarrow-wikilink" }),
+    regexp: /!?\[\[([^\]\n]+)\]\]/g,
+    decoration: (m: RegExpExecArray) =>
+      Decoration.mark({
+        class: m[0].startsWith("!")
+          ? "cm-yarrow-wikilink cm-yarrow-embed"
+          : "cm-yarrow-wikilink",
+      }),
   });
   return ViewPlugin.fromClass(
     class {
@@ -259,6 +264,11 @@ export default function NoteEditor({
   const viewRef = useRef<EditorView | null>(null);
   const saveTimer = useRef<number | null>(null);
   const lastSavedBody = useRef<string>(note.body);
+  // Keep the latest `onSave` reachable from the editor's unmount cleanup.
+  // Without this, a path-switch remount would clear the debounced timer
+  // without flushing — losing whatever the user typed in the last <debounce.
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
   const [title, setTitle] = useState(note.frontmatter.title || note.slug);
   const [showForkSuggestion, setShowForkSuggestion] = useState(false);
   const dismissedForkRef = useRef<Set<string>>(new Set());
@@ -370,19 +380,21 @@ export default function NoteEditor({
           click: (e, _view) => {
             const target = e.target as HTMLElement;
             if (!target.classList.contains("cm-yarrow-wikilink")) return false;
-            const m = /^\[\[(.+)\]\]$/.exec(target.textContent || "");
+            const m = /^!?\[\[(.+)\]\]$/.exec((target.textContent || "").trim());
             if (!m) return false;
             const match = resolveWikilink(m[1]);
             if (match) {
               e.preventDefault();
+              e.stopPropagation();
               onNavigate(match.slug);
+              return true;
             }
             return false;
           },
           mouseover: (e, _view) => {
             const target = e.target as HTMLElement;
             if (!target.classList.contains("cm-yarrow-wikilink")) return false;
-            const m = /^\[\[(.+)\]\]$/.exec(target.textContent || "");
+            const m = /^!?\[\[(.+)\]\]$/.exec((target.textContent || "").trim());
             if (!m) return false;
             const query = m[1];
 
@@ -513,6 +525,20 @@ export default function NoteEditor({
       if (blameTimer.current) window.clearTimeout(blameTimer.current);
       if (justSavedTimer.current) window.clearTimeout(justSavedTimer.current);
       if (previewTimer.current) window.clearTimeout(previewTimer.current);
+      // Flush any pending edits before the editor goes away. This covers
+      // path switches, restores, and workspace close — all of which remount
+      // the editor and would otherwise drop whatever was typed in the last
+      // debounce window.
+      try {
+        const body = view.state.doc.toString();
+        if (body !== lastSavedBody.current) {
+          lastSavedBody.current = body;
+          onSaveRef.current(body);
+        }
+      } catch {
+        // Swallow: we're already tearing down; losing this flush is still
+        // better than an unhandled exception during unmount.
+      }
       view.destroy();
       viewRef.current = null;
     };
@@ -654,8 +680,8 @@ function WikilinkPreview({
           No note yet
         </div>
         <div className="font-serif text-base text-char truncate">{data.title}</div>
-        <div className="text-2xs text-t3 mt-1.5 leading-relaxed">
-          Click to create, or type more of the name.
+        <div className="text-2xs text-t2 mt-1.5 leading-relaxed">
+          Type the note's exact title, or create it first.
         </div>
       </div>
     );
@@ -667,12 +693,13 @@ function WikilinkPreview({
       style={style}
       className="fixed z-40 pointer-events-none w-[360px] max-h-[260px] overflow-hidden bg-bg border border-bd2 rounded-lg shadow-2xl animate-fadeIn"
     >
-      <div className="px-3.5 pt-3 pb-2 border-b border-bd">
-        <div className="font-serif text-base text-char leading-tight truncate">
+      <div className="px-3.5 pt-3 pb-2 border-b border-bd flex items-center gap-2">
+        <div className="font-serif text-base text-char leading-tight truncate flex-1">
           {data.title}
         </div>
+        <span className="text-2xs text-t3 font-mono shrink-0">click to open</span>
       </div>
-      <div className="px-3.5 py-2.5 text-xs text-t2 whitespace-pre-wrap leading-relaxed">
+      <div className="px-3.5 py-2.5 text-xs text-char whitespace-pre-wrap leading-relaxed">
         {excerpt || (
           <span className="italic text-t3">This note is empty.</span>
         )}

@@ -206,6 +206,10 @@ button, input, select, textarea {
   background: var(--yel);
   color: var(--on-yel);
 }
+.cm-yarrow-embed {
+  border: 1px dashed var(--yel);
+  background: color-mix(in srgb, var(--yelp) 60%, transparent);
+}
 
 /* inline attachment image preview */
 .cm-yarrow-img {

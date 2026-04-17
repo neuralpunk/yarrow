@@ -67,7 +67,7 @@ export default function Onboarding({ onReady }: Props) {
         <div className="flex items-center gap-3 mb-1">
           <Logo size={38} />
           <h1 className="font-serif text-5xl text-char leading-none">Yarrow</h1>
-          <span className="ml-auto text-2xs text-t3 font-mono self-end pb-2">v0.1</span>
+          <span className="ml-auto text-2xs text-t3 font-mono self-end pb-2">v0.3.0</span>
         </div>
         <p className="text-t2 text-base mb-8 leading-relaxed">
           Notes that branch, evolve, and connect. Nothing is ever lost — every

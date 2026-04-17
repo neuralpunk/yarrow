@@ -60,7 +60,7 @@ export default function Scratchpad({ onClose, onPromoted }: Props) {
             <button
               onClick={keepThis}
               disabled={!content.trim()}
-              className="px-3 py-1 text-sm bg-yel text-char rounded hover:bg-yel2 disabled:opacity-40"
+              className="px-3 py-1 text-sm bg-yel text-on-yel rounded hover:bg-yel2 disabled:opacity-40"
             >
               Keep this
             </button>

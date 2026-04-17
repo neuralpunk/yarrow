@@ -261,6 +261,37 @@ fn split_message(msg: &str) -> (String, Option<String>) {
     (head, body)
 }
 
+/// Snapshot of every note on a given path (git branch). Used by the
+/// path-diffing UI to compare two paths without round-tripping through
+/// `switch_path`, which mutates the working tree.
+pub fn notes_on_path(repo: &Repository, path_name: &str) -> Result<Vec<(String, String)>> {
+    let branch = repo
+        .find_branch(path_name, git2::BranchType::Local)
+        .map_err(|_| YarrowError::PathNotFound(path_name.to_string()))?;
+    let commit = branch.get().peel_to_commit()?;
+    let tree = commit.tree()?;
+    let mut out: Vec<(String, String)> = Vec::new();
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        let name = entry.name().unwrap_or("");
+        if !name.ends_with(".md") {
+            return git2::TreeWalkResult::Ok;
+        }
+        let full = format!("{}{}", dir, name);
+        if !full.starts_with("notes/") {
+            return git2::TreeWalkResult::Ok;
+        }
+        let blob = match entry.to_object(repo).and_then(|o| o.peel_to_blob()) {
+            Ok(b) => b,
+            Err(_) => return git2::TreeWalkResult::Ok,
+        };
+        let content = String::from_utf8_lossy(blob.content()).to_string();
+        let rel = full.trim_start_matches("notes/").trim_end_matches(".md");
+        out.push((rel.to_string(), content));
+        git2::TreeWalkResult::Ok
+    })?;
+    Ok(out)
+}
+
 pub fn note_at_checkpoint(repo: &Repository, note_relpath: &str, oid: Oid) -> Result<String> {
     let commit = repo.find_commit(oid)?;
     let tree = commit.tree()?;

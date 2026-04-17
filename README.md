@@ -38,17 +38,25 @@ linear outline. Features:
 
 - **Branching paths** — try a different angle on any note without losing the original
 - **Silent auto-checkpointing** — every pause is a checkpoint you can scrub back through
+- **Checkpoint & restore modal** — Now / Then side-by-side with diff highlighting
+- **Path diffing** — compare any two paths prose-level, see what diverged
+- **Path export** — save a path as a Markdown bundle anyone can read
 - **Typed connections** — `supports`, `challenges`, `came from`, `open question`
-- **A living graph** — force-directed view of how your notes relate
+- **Radial connections graph** — structured layout with arrows, legend, and an expand-to-fullscreen view
 - **`[[wikilinks]]`** with inline autocomplete and hover-to-preview
+- **`![[transclusion]]`** — embed another note, a heading, or a block into any note
 - **`??` open questions** that surface in a dedicated panel
-- **Daily notes / journal** with a `Today` shortcut and recency sidebar
+- **Pinned notes** — anchor a handful of always-visible notes at the top of the sidebar
+- **Daily notes / journal** with a `Today` shortcut, recency sidebar, and month-grid calendar
+- **Journal templates** — drop a `daily.md` template with `{{date}}` / `{{weekday}}` substitution
+- **Quick capture** (`⌘⇧Space` / `Ctrl+Shift+Space`) — pop a small window, append a timestamped entry to the scratchpad
 - **Attachments** — drop images or files into the editor; inline image preview
 - **Static-site export** — turn your workspace into a shareable HTML folder
 - **Command palette** (`⌘K` / `Ctrl+K`) and **quick note switcher** (`⌘O` / `Ctrl+O`)
 - **Full history** — scrub any note back to any past version
 - **Git-anywhere sync** — point it at GitHub, Gitea, or any bare server
 - **Themes** — warm cream (light), warm dusk (dark), auto, and Blueberry + Yellow
+- **Native-feeling window chrome** — custom titlebar shows app name, version, and workspace
 - **Plain markdown forever** — no proprietary format, no lock-in
 
 Roughly ~15 MB binary. No bundled Chromium. No account required. No telemetry.
@@ -64,6 +72,8 @@ your-workspace/
 │   ├── config.toml          # workspace preferences (shared)
 │   ├── credentials.toml     # sync tokens (per-machine, gitignored)
 │   ├── scratchpad.md        # throwaway jotting (gitignored)
+│   ├── templates/
+│   │   └── daily.md         # optional — rendered into new journal entries
 │   └── index.json           # derived link cache (gitignored)
 ├── notes/
 │   ├── my-first-note.md
@@ -262,6 +272,9 @@ Yarrow will happily re-index on the next launch.
 | `⌘N` / `Ctrl+N` | New note |
 | `⌘⇧N` / `Ctrl+Shift+N` | Explore a new direction (new path) |
 | `⌘T` / `Ctrl+T` | Jump to today's journal (auto-switches to main) |
+| `⌘←` / `Ctrl+←` | Previous journal entry (while a daily note is open) |
+| `⌘→` / `Ctrl+→` | Next journal entry (while a daily note is open) |
+| `⌘⇧Space` / `Ctrl+Shift+Space` | Quick capture → scratchpad |
 | `⌘\` / `Ctrl+\` | Toggle focus mode |
 | `⌘,` / `Ctrl+,` | Open Settings |
 

@@ -6,6 +6,197 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [0.3.0] — 2026-04-17
+
+A release that deepens Yarrow's "living map of your thinking" identity. Five
+new features lean into habit formation, shareability, and composable
+structure; a major UX pass on history, paths, and the connections graph turns
+the previously utilitarian surfaces professional; and a set of correctness
+fixes close data-loss risks flagged during the 0.3 pre-ship audit.
+
+### Added
+
+#### Pinned notes
+- Right-click any note in the sidebar and choose **Pin to top** (or **Unpin**)
+  to anchor it in a dedicated *Pinned* section above the regular list.
+- Backed by a `pinned: true` flag in YAML frontmatter — portable across
+  editors, serialized only when true so unpinned notes keep clean frontmatter.
+- Pinned section shows a small pin glyph on each entry; separated from the
+  main list by a soft rule for visual rhythm.
+- Pin/unpin writes a named checkpoint (*"checkpoint: pin X"*) so the action is
+  visible in history like any other.
+
+#### Quick capture
+- New system shortcut `⌘⇧Space` / `Ctrl+Shift+Space` pops a small capture
+  window over the current workspace. Type, hit `Ctrl+Enter` or the *Capture*
+  button, and the entry is appended to the scratchpad with a timestamp header.
+- Scratchpad stays gitignored — quick capture is pressure-free by design.
+- `Esc` cancels; the window auto-focuses the textarea so it's a single keystroke
+  from thought to saved draft.
+
+#### Journal templates + calendar navigation
+- Optional `.yarrow/templates/daily.md` file is rendered into every new daily
+  entry, with `{{date}}` / `{{weekday}}` / `{{date_human}}` / `{{yesterday}}` /
+  `{{week_number}}` substitution.
+- New **Calendar** popover in the Journal section — full month grid with dots
+  on days that have entries, today highlighted, active entry circled.
+- Keyboard nav: `⌘←` / `⌘→` hops to the previous/next day while a daily note
+  is open; the editor remounts so content switches cleanly.
+- Entry-count footer in the calendar ("142 entries") for at-a-glance streak
+  awareness without gamification.
+
+#### Path export (Markdown bundle)
+- Right-click any path → **Export as Markdown…** → pick a destination folder.
+- Walks the branch tree at its tip and writes plain `.md` files (frontmatter
+  stripped) plus a `README.md` summarising the path: name, date, note count,
+  and a linked table of contents.
+- Attachments from the working tree are copied verbatim so images resolve
+  offline.
+- Independent of the existing *static-site export* — this one is a portable
+  Markdown folder you can hand to anyone, version-control elsewhere, or feed
+  to another tool.
+
+#### Transclusion (embedded notes)
+- New `![[note]]` / `![[note#heading]]` / `![[note^block]]` syntax references
+  another note's content inline. The editor marks embed tokens with a dashed
+  yellow border to distinguish them from plain `[[wikilinks]]`.
+- **Embedded** panel in the right sidebar resolves every embed in the current
+  note and shows the target's title + a 320-char excerpt, clickable to jump.
+- Heading embeds extract from `# Heading` down to the next equal-or-higher
+  heading; block embeds match paragraphs ending in `^block-id`.
+- Missing-target state is surfaced in red so stale embeds are obvious.
+
+#### Path diffing
+- Right-click any non-current path → **Compare with current path**.
+- Fullscreen Now / Other view with a three-pane layout: list of changed notes
+  on the left, current-path body in the middle, other-path body on the right.
+- Per-note added/removed line counts (`+N / −M`) and a change badge
+  (*added* / *removed* / *changed* / *same*) so you can see divergence at a
+  glance.
+- Reads branch tips directly via `git::notes_on_path` — no working-tree swaps,
+  safe to run while editing.
+
+### Changed
+
+#### Checkpoint & restore rework
+- The old bottom-strip slider is replaced by a centred modal (Settings-style),
+  sized ~820×560 with clear *Now / Then* structure.
+- Grouped **timeline** on the left buckets checkpoints into
+  *Today / Yesterday / Earlier this week / This month / older*, each with a
+  human relative time, full date, and inline thinking-note snippet.
+- **Diff badge** on the preview header shows "+N since / −M gone" vs. the
+  current version, or *"identical to now"* when nothing changed.
+- New **Show differences only** toggle hides unchanged lines and marks
+  additions (yellow gutter) and deletions (red gutter) for at-a-glance change
+  review.
+- `↑` / `↓` or `j` / `k` scrub checkpoints; `Enter` restores; `Esc` closes.
+- Restore triggers a **confirmation overlay** inside the modal (no fullscreen
+  takeover) and, on confirm, remounts the editor to force a clean load of the
+  restored content.
+- The latest checkpoint disables the *Restore* button with a label of
+  *"This is the current version"* — fixes the previous confusing "restore
+  does nothing" case.
+
+#### Connections graph, redesigned
+- Replaced the random-blob force layout with a **structured radial layout**:
+  the active note is pinned at centre inside a soft outer glow, direct
+  neighbours sit on an inner dashed guide ring, 2-hop notes on an outer ring.
+  The layout now teaches relationship distance at a glance.
+- **Directional arrows** with curved link paths (one arrowhead marker per link
+  type) — readers can see *who* links to *whom*, not just that they're
+  connected.
+- **Plain-language hover tooltip** — over a link: *"Note A supports Note B"*;
+  over a node: title + connection count + *"click to open"*.
+- **Legend pill** at the bottom documents the four link-type colours with
+  matching swatches (dashed for open-question).
+- **Stats pill** shows "N direct · M total" when a note is active, workspace
+  totals otherwise.
+- **Nearby / All toggle** defaults to nearby (1–2 hops) to hide noise; power
+  users can switch to the full map.
+- **Expand button** opens a centred full-canvas modal (up to 1200×820) with
+  its own ResizeObserver-driven viewport; clicking any node closes the modal
+  and navigates to that note.
+- Toolbar strip sits above the canvas instead of floating, so controls can
+  never overlap nodes or stats on narrow sidebars.
+- Restrained styling: hollow outer nodes, hairline strokes, solid filled
+  active node only. No pastel overload.
+
+#### Native-feeling window chrome
+- Swapped the default OS decorations (the "grey panel" on Fedora) for a
+  custom **Titlebar** component that shows the Yarrow name, version number,
+  and active workspace, plus min / maximize / close controls.
+- Full drag region on the titlebar; capability file updated with explicit
+  `core:window:allow-start-dragging` / minimize / maximize / close permissions.
+- Titlebar is theme-aware and uses the same design tokens as the rest of the
+  surface — no jarring OS accent bar.
+
+#### Left-sidebar hierarchy
+- Your Notes, Journal, and Your Paths now read as three distinct sections.
+  Soft `border-bd/20` hairlines + `mt-5 pt-5` spacing give visual rhythm
+  without a bold separator.
+- Pinned notes render in their own subsection at the top of Your Notes with a
+  pin glyph and separator.
+
+#### Wikilink hover preview
+- Preview body now uses `text-char` for full readability in dark and blueberry
+  themes (was `text-t2` which washed out on navy).
+- Header shows a small *"click to open"* hint so the interaction is
+  discoverable.
+- Click handler accepts `![[embed]]` syntax and returns `true` to stop
+  CodeMirror from swallowing the event with cursor placement.
+
+#### Quick quality-of-life
+- Version number surfaced on Onboarding and in the About pane.
+- Custom Yarrow icon used for every build target (macOS / Linux / Windows /
+  iOS / Android), regenerated from a 1024 source.
+
+### Fixed
+
+- **Mutex poisoning** (`commands.rs`): an `unpoison()` helper recovers from a
+  poisoned lock instead of panicking, so one command panic no longer kills
+  every subsequent IPC call for the rest of the session.
+- **Concurrent save corruption**: `AppState` now owns a `repo_lock`; every
+  write → checkpoint → graph::build cycle holds it, so two in-flight saves
+  (e.g. fast typing + manual save) can no longer interleave git-index writes.
+- **Atomic note writes**: `notes::write` now writes to a sibling temp file
+  (`.<name>.<pid>.<nanos>.tmp`) and renames over the target. A crash mid-write
+  leaves the original file intact rather than truncated.
+- **Stale note on fast slug switch** (`AppShell`): the active-note read effect
+  now has an `alive` cleanup flag; rapid switches drop stale results instead
+  of landing an old note into state.
+- **Unsaved edits lost on remount**: the editor's unmount cleanup now flushes
+  pending debounced edits via an `onSaveRef` before destroying the view, so
+  path switches, restores, and workspace close no longer lose the last sub-
+  debounce window of typing.
+- **Blueberry theme button contrast**: the *Keep this*, *Restore this version*,
+  conflict *Save & continue*, and fork-suggestion *Yes, explore* buttons
+  previously showed near-white text on yellow — now use `text-on-yel` (always
+  dark) for WCAG-safe contrast on every theme.
+- **Window dragging on Linux**: `data-tauri-drag-region` silently failed
+  because `core:default` doesn't include window-manipulation permissions.
+  Capability file now enumerates `core:window:default` +
+  `allow-start-dragging` / minimize / toggle-maximize / close.
+- **Connections graph control overlap**: controls moved into a compact
+  icon-only toolbar above the canvas; narrow sidebars no longer produce
+  stacked pills that crashed into nodes.
+- **Wikilink click**: now matches the optional `!` prefix for embeds and
+  returns `true` from the CodeMirror DOM handler, so clicking a link reliably
+  navigates to the target note.
+- **History restore ambiguity**: the latest-checkpoint case now explicitly
+  says *"This is the current version"* and disables the restore button.
+
+### Upgrade notes
+
+- No schema changes to `config.toml`. Frontmatter gains an optional `pinned`
+  field (absent = false) — existing notes load unchanged.
+- `.yarrow/templates/` is lazy-created when you first save `daily.md`.
+- The new icon set is checked in; rebuild (`npm run tauri build`) picks it up.
+- New `repo_lock` serialises git-mutating IPC; this is transparent to users
+  but may be noticeable as a ~millisecond delay if you trigger dozens of
+  saves in a single render cycle.
+
+---
+
 ## [0.2.0] — 2026-04-17
 
 A release focused on making Yarrow's "non-linear thinking" identity deeper

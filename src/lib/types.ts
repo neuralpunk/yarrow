@@ -11,6 +11,7 @@ export interface Frontmatter {
   modified: string;
   links: Link[];
   tags: string[];
+  pinned?: boolean;
 }
 
 export interface NoteSummary {
@@ -18,6 +19,7 @@ export interface NoteSummary {
   title: string;
   modified: string;
   excerpt: string;
+  pinned?: boolean;
 }
 
 export interface Note {
