@@ -4,6 +4,7 @@ use chrono::{Datelike, Utc};
 use gray_matter::{engine::YAML, Matter};
 use serde::{Deserialize, Serialize};
 
+use crate::crypto::{self, BodyEnvelope, MasterKey};
 use crate::error::{Result, YarrowError};
 use crate::workspace;
 
@@ -35,6 +36,18 @@ pub struct Frontmatter {
     pub tags: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pinned: bool,
+    // ── encryption metadata (spec §Storage shape) ──
+    // `encrypted = true` means the body below is a single base64 ciphertext
+    // blob. `kdf` and `salt` echo the workspace-level KDF parameters so each
+    // note file is self-describing; the cipher nonce is per-note.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub encrypted: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kdf: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub salt: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub nonce: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,13 +58,27 @@ pub struct NoteSummary {
     pub excerpt: String,
     #[serde(default)]
     pub pinned: bool,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub encrypted: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Note {
     pub slug: String,
     pub frontmatter: Frontmatter,
+    /// Decrypted plaintext body when the workspace is unlocked. Empty when
+    /// the note is encrypted but the caller didn't have a master key.
     pub body: String,
+    /// Mirrors `frontmatter.encrypted`; lifted to a top-level field so the
+    /// frontend doesn't have to dig for it.
+    #[serde(default)]
+    pub encrypted: bool,
+    /// `true` when `body` couldn't be decrypted because the workspace is
+    /// locked. Frontend uses this to show the unlock prompt.
+    #[serde(default)]
+    pub locked: bool,
 }
 
 pub fn slug_from_title(title: &str) -> String {
@@ -91,13 +118,21 @@ pub fn list(root: &Path) -> Result<Vec<NoteSummary>> {
         let (fm, body) = parse(&raw);
         let title = if fm.title.is_empty() { slug.clone() } else { fm.title.clone() };
         let modified = if fm.modified.is_empty() { fm.created.clone() } else { fm.modified.clone() };
-        let excerpt = excerpt_from(&body);
+        // Body excerpt is meaningless on ciphertext; substitute a fixed hint
+        // so the sidebar renders cleanly without leaking ciphertext chars.
+        let excerpt = if fm.encrypted {
+            "🔒 encrypted — unlock to preview".to_string()
+        } else {
+            excerpt_from(&body)
+        };
         out.push(NoteSummary {
             slug,
             title,
             modified,
             excerpt,
             pinned: fm.pinned,
+            encrypted: fm.encrypted,
+            tags: fm.tags,
         });
     }
     out.sort_by(|a, b| b.modified.cmp(&a.modified));
@@ -105,56 +140,267 @@ pub fn list(root: &Path) -> Result<Vec<NoteSummary>> {
 }
 
 pub fn read(root: &Path, slug: &str) -> Result<Note> {
+    read_with_key(root, slug, None)
+}
+
+/// Read a note, decrypting the body if it's encrypted and a key is provided.
+/// When encrypted and no key is present, returns body="" and `locked=true`
+/// so the caller can surface an unlock prompt.
+pub fn read_with_key(root: &Path, slug: &str, key: Option<&MasterKey>) -> Result<Note> {
     let path = note_path(root, slug);
     if !path.exists() {
         return Err(YarrowError::NoteNotFound(slug.to_string()));
     }
     let raw = std::fs::read_to_string(&path)?;
-    let (fm, body) = parse(&raw);
-    Ok(Note {
-        slug: slug.to_string(),
-        frontmatter: fm,
-        body,
-    })
+    let (fm, body_text) = parse(&raw);
+    if fm.encrypted {
+        if let Some(k) = key {
+            let nonce = crypto::decode_note_nonce(&fm.nonce)?;
+            let ct = crypto::decode_bytes(body_text.trim())?;
+            let env = BodyEnvelope { nonce, ciphertext: ct };
+            let plaintext = env.open(k)?;
+            Ok(Note {
+                slug: slug.to_string(),
+                frontmatter: fm,
+                body: plaintext,
+                encrypted: true,
+                locked: false,
+            })
+        } else {
+            Ok(Note {
+                slug: slug.to_string(),
+                frontmatter: fm,
+                body: String::new(),
+                encrypted: true,
+                locked: true,
+            })
+        }
+    } else {
+        Ok(Note {
+            slug: slug.to_string(),
+            frontmatter: fm,
+            body: body_text,
+            encrypted: false,
+            locked: false,
+        })
+    }
 }
 
 pub fn write(root: &Path, slug: &str, body: &str, frontmatter: Option<Frontmatter>) -> Result<Note> {
+    write_with_key(root, slug, body, frontmatter, None)
+}
+
+/// Write a note. If the (existing or provided) frontmatter says `encrypted`,
+/// the body is sealed with `key`. When locked (no key) the body argument is
+/// ignored and we re-serialise the existing on-disk ciphertext unchanged —
+/// frontmatter-only mutations (add_link, rename, pin…) stay possible while
+/// encrypted notes are locked.
+pub fn write_with_key(
+    root: &Path,
+    slug: &str,
+    body: &str,
+    frontmatter: Option<Frontmatter>,
+    key: Option<&MasterKey>,
+) -> Result<Note> {
+    write_with_key_status(root, slug, body, frontmatter, key).map(|(n, _)| n)
+}
+
+/// Same as `write_with_key`, but also returns a boolean: `true` if the
+/// file on disk was actually updated, `false` if this turned out to be a
+/// no-op write (body unchanged and caller didn't force a frontmatter
+/// override). Callers that rebuild the graph / write a git checkpoint
+/// after a save use this to skip that work when nothing actually changed.
+pub fn write_with_key_status(
+    root: &Path,
+    slug: &str,
+    body: &str,
+    frontmatter: Option<Frontmatter>,
+    key: Option<&MasterKey>,
+) -> Result<(Note, bool)> {
     let path = note_path(root, slug);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let now = Utc::now().to_rfc3339();
-    let mut fm = frontmatter.unwrap_or_else(|| {
-        if path.exists() {
-            if let Ok(raw) = std::fs::read_to_string(&path) {
-                let (fm, _) = parse(&raw);
-                return fm;
+
+    // Load existing frontmatter + on-disk body text up front so we can
+    // preserve ciphertext through locked-frontmatter mutations.
+    let existing: Option<(Frontmatter, String)> = if path.exists() {
+        std::fs::read_to_string(&path).ok().map(|raw| {
+            let (fm, b) = parse(&raw);
+            (fm, b)
+        })
+    } else { None };
+
+    // No-op write detection. A big source of checkpoint bloat is "save
+    // same body twice" (CodeMirror firing on redundant doc events, or a
+    // user landing at an idle state after a paired edit/undo). If the
+    // caller hasn't explicitly overridden frontmatter and the new body
+    // matches what's already on disk, skip the write entirely — no file
+    // mutation, no `modified` bump, nothing for git::checkpoint to see.
+    if frontmatter.is_none() {
+        if let Some((ref existing_fm, ref existing_body_on_disk)) = existing {
+            let existing_plaintext: Option<String> = if existing_fm.encrypted {
+                key.and_then(|k| {
+                    let nonce = crypto::decode_note_nonce(&existing_fm.nonce).ok()?;
+                    let ct = crypto::decode_bytes(existing_body_on_disk.trim()).ok()?;
+                    let env = crypto::BodyEnvelope { nonce, ciphertext: ct };
+                    env.open(k).ok()
+                })
+            } else {
+                Some(existing_body_on_disk.clone())
+            };
+            if let Some(prev) = existing_plaintext {
+                // Ignore trailing-newline drift between in-memory bodies
+                // and on-disk serialization — they represent identical
+                // content to everything downstream (editor, graph, search).
+                if prev.trim_end_matches('\n') == body.trim_end_matches('\n') {
+                    return Ok((
+                        Note {
+                            slug: slug.to_string(),
+                            frontmatter: existing_fm.clone(),
+                            body: body.to_string(),
+                            encrypted: existing_fm.encrypted,
+                            locked: false,
+                        },
+                        false,
+                    ));
+                }
             }
         }
-        Frontmatter {
-            title: slug.replace('-', " "),
-            created: now.clone(),
-            modified: now.clone(),
-            links: vec![],
-            tags: vec![],
-        pinned: false,
-        }
-    });
-    if fm.created.is_empty() {
-        fm.created = now.clone();
-    }
-    fm.modified = now;
-    if fm.title.is_empty() {
-        fm.title = slug.replace('-', " ");
     }
 
-    let serialized = serialize(&fm, body);
+    let mut fm = frontmatter.unwrap_or_else(|| {
+        existing
+            .as_ref()
+            .map(|(fm, _)| fm.clone())
+            .unwrap_or_else(|| Frontmatter {
+                title: slug.replace('-', " "),
+                created: now.clone(),
+                modified: now.clone(),
+                links: vec![],
+                tags: vec![],
+                pinned: false,
+                encrypted: false,
+                kdf: String::new(),
+                salt: String::new(),
+                nonce: String::new(),
+            })
+    });
+    if fm.created.is_empty() { fm.created = now.clone(); }
+    fm.modified = now;
+    if fm.title.is_empty() { fm.title = slug.replace('-', " "); }
+
+    let body_on_disk: String = if fm.encrypted {
+        if let Some(k) = key {
+            let env = BodyEnvelope::seal(k, body)?;
+            fm.kdf = if fm.kdf.is_empty() { "argon2id".into() } else { fm.kdf.clone() };
+            fm.nonce = env.nonce_b64();
+            if fm.salt.is_empty() {
+                // Self-describing per spec §Storage shape. Fill in the
+                // workspace salt so a file is legible on its own.
+                if let Ok(Some(env_ws)) = workspace::read_security(root) {
+                    fm.salt = env_ws.workspace_salt_b64().to_string();
+                }
+            }
+            env.ciphertext_b64()
+        } else {
+            // Locked: keep the existing ciphertext + nonce untouched. If
+            // there's no prior on-disk body (new encrypted note created
+            // while locked), we can't write meaningful ciphertext — error out.
+            match existing.as_ref() {
+                Some((prev_fm, prev_body)) if prev_fm.encrypted => {
+                    // Preserve nonce and ciphertext; don't drift.
+                    fm.nonce = prev_fm.nonce.clone();
+                    if fm.salt.is_empty() { fm.salt = prev_fm.salt.clone(); }
+                    if fm.kdf.is_empty() { fm.kdf = prev_fm.kdf.clone(); }
+                    prev_body.trim().to_string()
+                }
+                _ => {
+                    return Err(YarrowError::LockedOut);
+                }
+            }
+        }
+    } else {
+        body.to_string()
+    };
+
+    let serialized = serialize(&fm, &body_on_disk);
     atomic_write(&path, serialized.as_bytes())?;
-    Ok(Note {
-        slug: slug.to_string(),
-        frontmatter: fm,
-        body: body.to_string(),
-    })
+    Ok((
+        Note {
+            slug: slug.to_string(),
+            frontmatter: fm.clone(),
+            body: if fm.encrypted && key.is_none() { String::new() } else { body.to_string() },
+            encrypted: fm.encrypted,
+            locked: fm.encrypted && key.is_none(),
+        },
+        true,
+    ))
+}
+
+/// Transform the raw bytes of a note file into a sealed-at-rest equivalent.
+///
+/// Used when we rewrite past git history after encrypting a note: every
+/// historical commit that still held plaintext gets its blob replaced with
+/// this function's output, keyed with the current master key and given a
+/// fresh random nonce per call (so identical plaintext doesn't produce
+/// identical ciphertext across commits).
+///
+/// Returns `Ok(None)` when the file is already encrypted — nothing to do.
+pub fn seal_file_bytes(
+    root: &Path,
+    bytes: &[u8],
+    key: &MasterKey,
+) -> Result<Option<Vec<u8>>> {
+    let raw = match std::str::from_utf8(bytes) {
+        Ok(s) => s,
+        // Non-UTF8 notes shouldn't exist in Yarrow, but if one does we leave
+        // it alone rather than corrupting it.
+        Err(_) => return Ok(None),
+    };
+    let (mut fm, body) = parse(raw);
+    if fm.encrypted {
+        return Ok(None);
+    }
+    fm.encrypted = true;
+    fm.kdf = "argon2id".into();
+    let env = BodyEnvelope::seal(key, &body)?;
+    fm.nonce = env.nonce_b64();
+    if fm.salt.is_empty() {
+        if let Ok(Some(env_ws)) = workspace::read_security(root) {
+            fm.salt = env_ws.workspace_salt_b64().to_string();
+        }
+    }
+    let sealed_body = env.ciphertext_b64();
+    let out = serialize(&fm, &sealed_body);
+    Ok(Some(out.into_bytes()))
+}
+
+/// Promote a plaintext note to encrypted. Requires the workspace key.
+pub fn encrypt_note(root: &Path, slug: &str, key: &MasterKey) -> Result<Note> {
+    let existing = read_with_key(root, slug, None)?;
+    if existing.frontmatter.encrypted { return Ok(existing); }
+    // We need the actual plaintext body — `read_with_key` with None gave us
+    // the on-disk bytes (which are plaintext for an unencrypted note).
+    let mut fm = existing.frontmatter;
+    fm.encrypted = true;
+    fm.kdf = "argon2id".into();
+    fm.nonce.clear(); // fresh nonce on seal
+    fm.salt.clear(); // re-filled from workspace envelope
+    write_with_key(root, slug, &existing.body, Some(fm), Some(key))
+}
+
+/// Demote an encrypted note back to plaintext. Requires the workspace key.
+pub fn decrypt_note(root: &Path, slug: &str, key: &MasterKey) -> Result<Note> {
+    let existing = read_with_key(root, slug, Some(key))?;
+    if !existing.frontmatter.encrypted { return Ok(existing); }
+    let mut fm = existing.frontmatter;
+    fm.encrypted = false;
+    fm.kdf.clear();
+    fm.salt.clear();
+    fm.nonce.clear();
+    write_with_key(root, slug, &existing.body, Some(fm), None)
 }
 
 /// Write to a sibling temp file and rename over the target. A crash mid-write
@@ -202,6 +448,10 @@ pub fn create(root: &Path, title: &str) -> Result<Note> {
         links: vec![],
         tags: vec![],
         pinned: false,
+        encrypted: false,
+        kdf: String::new(),
+        salt: String::new(),
+        nonce: String::new(),
     };
     write(root, &slug, "", Some(fm))
 }
@@ -210,23 +460,28 @@ pub fn rename(root: &Path, old_slug: &str, new_title: &str) -> Result<Note> {
     let mut new_slug = slug_from_title(new_title);
     if new_slug == old_slug {
         // title-only change
-        let mut note = read(root, old_slug)?;
-        note.frontmatter.title = new_title.to_string();
-        return write(root, old_slug, &note.body, Some(note.frontmatter));
+        let note = read(root, old_slug)?;
+        let mut fm = note.frontmatter;
+        fm.title = new_title.to_string();
+        // Plain `write` here; if encrypted + locked, ciphertext is preserved
+        // via write_with_key's locked-frontmatter path.
+        return write(root, old_slug, &note.body, Some(fm));
     }
     let mut n = 1;
     while note_path(root, &new_slug).exists() {
         n += 1;
         new_slug = format!("{}-{}", slug_from_title(new_title), n);
     }
-    let note = read(root, old_slug)?;
-    let mut fm = note.frontmatter;
+    // Physically move first so frontmatter-only rewrite finds the ciphertext
+    // at the new path — matters for encrypted notes where we can't re-seal
+    // without the key.
+    std::fs::rename(note_path(root, old_slug), note_path(root, &new_slug))?;
+    let moved = read(root, &new_slug)?;
+    let mut fm = moved.frontmatter;
     fm.title = new_title.to_string();
-    let new = write(root, &new_slug, &note.body, Some(fm))?;
-    std::fs::remove_file(note_path(root, old_slug))?;
-    // Update backlinks in other notes that pointed to old_slug.
+    let updated = write(root, &new_slug, &moved.body, Some(fm))?;
     update_backlinks_on_rename(root, old_slug, &new_slug)?;
-    Ok(new)
+    Ok(updated)
 }
 
 pub fn delete(root: &Path, slug: &str) -> Result<()> {
@@ -404,6 +659,18 @@ fn serialize(fm: &Frontmatter, body: &str) -> String {
     if fm.pinned {
         out.push_str("pinned: true\n");
     }
+    if fm.encrypted {
+        out.push_str("encrypted: true\n");
+        if !fm.kdf.is_empty() {
+            out.push_str(&format!("kdf: {}\n", yaml_escape(&fm.kdf)));
+        }
+        if !fm.salt.is_empty() {
+            out.push_str(&format!("salt: {}\n", yaml_escape(&fm.salt)));
+        }
+        if !fm.nonce.is_empty() {
+            out.push_str(&format!("nonce: {}\n", yaml_escape(&fm.nonce)));
+        }
+    }
     out.push_str("---\n");
     out.push_str(body);
     if !body.ends_with('\n') {
@@ -431,6 +698,10 @@ pub fn seed_note_markdown() -> String {
         links: vec![],
         tags: vec![],
         pinned: false,
+        encrypted: false,
+        kdf: String::new(),
+        salt: String::new(),
+        nonce: String::new(),
     };
     let body = "\
 Welcome.
@@ -512,6 +783,10 @@ pub fn ensure_daily(root: &Path, date_iso: &str) -> Result<Note> {
         links: vec![],
         tags: vec!["daily".into()],
         pinned: false,
+        encrypted: false,
+        kdf: String::new(),
+        salt: String::new(),
+        nonce: String::new(),
     };
     let body = render_daily_template(root, date_iso);
     write(root, &slug, &body, Some(fm))
@@ -536,11 +811,25 @@ fn render_daily_template(root: &Path, date_iso: &str) -> String {
         .and_then(|d| d.pred_opt())
         .map(|d| d.format("%Y-%m-%d").to_string())
         .unwrap_or_default();
-    tpl.replace("{{date}}", date_iso)
+    // Drop the optional `<!-- label: ... -->` first line; it exists only to
+    // give the template a friendly name in the picker.
+    let body: String = {
+        let mut lines = tpl.lines();
+        let first = lines.clone().next().map(str::trim);
+        if first.map(|s| s.starts_with("<!-- label:")).unwrap_or(false) {
+            lines.next();
+            lines.collect::<Vec<_>>().join("\n")
+        } else {
+            tpl
+        }
+    };
+    body.replace("{{date}}", date_iso)
         .replace("{{weekday}}", &weekday)
         .replace("{{date_human}}", &human)
         .replace("{{yesterday}}", &yesterday)
         .replace("{{week_number}}", &week)
+        .replace("{{cursor}}", "")
+        .replace("{{title}}", &daily_title(date_iso))
 }
 
 /// Return ISO dates (YYYY-MM-DD) of every daily entry in the workspace.
@@ -612,7 +901,7 @@ pub fn list_daily(root: &Path, limit: Option<usize>) -> Result<Vec<NoteSummary>>
         let title = if fm.title.is_empty() { daily_title(&stem) } else { fm.title.clone() };
         let modified = if fm.modified.is_empty() { stem.clone() } else { fm.modified.clone() };
         let excerpt = excerpt_from(&body);
-        out.push(NoteSummary { slug, title, modified, excerpt, pinned: false });
+        out.push(NoteSummary { slug, title, modified, excerpt, pinned: false, tags: fm.tags, encrypted: fm.encrypted });
     }
     // Sort by the date in the slug (descending) — more stable than modified,
     // which drifts if the user re-edits an older day's entry.

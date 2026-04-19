@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EditorState, RangeSetBuilder } from "@codemirror/state";
+import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
 import { EditorView, keymap, placeholder, ViewPlugin, ViewUpdate, Decoration, DecorationSet, MatchDecorator, WidgetType } from "@codemirror/view";
 import { defaultKeymap, history as cmHistory, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
@@ -8,7 +8,7 @@ import { autocompletion, CompletionContext, closeBrackets, closeBracketsKeymap, 
 import { tags } from "@lezer/highlight";
 import type { Note, NoteSummary, Provenance } from "../../lib/types";
 import { api } from "../../lib/tauri";
-import { friendlyDate, relativeTime } from "../../lib/format";
+import { editorialDate, relativeTime, timeOfDayPhrase } from "../../lib/format";
 import { isDivergent } from "../../lib/forkDetection";
 import ForkSuggestion from "./ForkSuggestion";
 
@@ -18,6 +18,7 @@ interface Props {
   currentPath: string;
   debounceMs: number;
   askThinkingOnClose: boolean;
+  showRawMarkdown?: boolean;
   jumpToLine?: { line: number; nonce: number };
   onSave: (body: string, thinking?: string) => void;
   onTitleChange: (title: string) => void;
@@ -25,6 +26,13 @@ interface Props {
   onNavigate: (slug: string) => void;
   onBodyChange?: (body: string) => void;
   onOpenFork: () => void;
+  /** All paths and which slugs each contains — for the wikilink hover chip. */
+  pathNotes?: Record<string, string[]>;
+  /** "Start a path here" CTA fired from the wikilink hover popover. The
+   *  slug is what the user hovered on. */
+  onBranchFromWikilink?: (slug: string) => void;
+  /** When false (basic workspace mode), [[wikilink]] autocomplete is off. */
+  mappingEnabled?: boolean;
 }
 
 const highlightStyle = HighlightStyle.define([
@@ -230,6 +238,68 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   return btoa(s);
 }
 
+/**
+ * Hide inline markdown tokens (`**`, `[[`, `]]`) on lines the cursor isn't
+ * currently on — so the body reads like prose, not raw markdown. The active
+ * line stays untouched so the token you're editing is visible. Disabled when
+ * `showRawMarkdown` is on (toggled from Settings → Writing).
+ */
+function hideSyntaxPlugin() {
+  // Heading prefix (`## `), emphasis markers (`**`, `__`, `*`, `_`), wikilink
+  // brackets (`[[`, `]]`), and inline code ticks are hidden on non-active
+  // lines so the body reads as rendered prose. The active line stays raw so
+  // you can edit the tokens without chasing invisible characters.
+  const INLINE_RE = /\*\*|__|\[\[|\]\]|`/g;
+  const HEADING_RE = /^(#{1,6})\s/;
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) { this.decorations = this.build(view); }
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged || update.selectionSet) {
+          this.decorations = this.build(update.view);
+        }
+      }
+      build(view: EditorView): DecorationSet {
+        const builder = new RangeSetBuilder<Decoration>();
+        const sel = view.state.selection.main;
+        const activeLine = view.state.doc.lineAt(sel.head).number;
+        const ranges: Array<[number, number]> = [];
+        for (const { from, to } of view.visibleRanges) {
+          let pos = from;
+          while (pos <= to) {
+            const line = view.state.doc.lineAt(pos);
+            if (line.number !== activeLine) {
+              const hm = HEADING_RE.exec(line.text);
+              if (hm) {
+                // Hide the `#`s and the single trailing space — the heading
+                // text itself keeps its styled size/weight via the markdown
+                // highlight style.
+                ranges.push([line.from, line.from + hm[0].length]);
+              }
+              INLINE_RE.lastIndex = 0;
+              let m: RegExpExecArray | null;
+              while ((m = INLINE_RE.exec(line.text)) !== null) {
+                const start = line.from + m.index;
+                ranges.push([start, start + m[0].length]);
+              }
+            }
+            pos = line.to + 1;
+          }
+        }
+        // RangeSetBuilder requires strictly ascending `from` order; we
+        // collected heading-first-then-inline per line so sort to be safe.
+        ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        for (const [a, b] of ranges) {
+          builder.add(a, b, Decoration.replace({}));
+        }
+        return builder.finish();
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
+}
+
 function questionPlugin() {
   const matcher = new MatchDecorator({
     regexp: /\?\?[^\n]*/g,
@@ -252,6 +322,7 @@ export default function NoteEditor({
   notes,
   currentPath,
   debounceMs,
+  showRawMarkdown,
   jumpToLine,
   onSave,
   onTitleChange,
@@ -259,9 +330,16 @@ export default function NoteEditor({
   onNavigate,
   onBodyChange,
   onOpenFork,
+  pathNotes,
+  onBranchFromWikilink,
+  mappingEnabled = true,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // Compartment so flipping reading ↔ writing mode reconfigures a single
+  // extension without tearing down the whole editor (which would lose
+  // scroll position, undo history, and introduce a visible flicker).
+  const hideSyntaxCompartment = useRef(new Compartment());
   const saveTimer = useRef<number | null>(null);
   const lastSavedBody = useRef<string>(note.body);
   // Keep the latest `onSave` reachable from the editor's unmount cleanup.
@@ -269,6 +347,12 @@ export default function NoteEditor({
   // without flushing — losing whatever the user typed in the last <debounce.
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
+  // Debounce body-broadcast to the shell. Every keystroke used to fan out to
+  // OpenQuestions / Transclusions / anything reading `currentBody`; these
+  // consumers don't need keystroke-granular updates.
+  const bodyBroadcastTimer = useRef<number | null>(null);
+  const onBodyChangeRef = useRef(onBodyChange);
+  onBodyChangeRef.current = onBodyChange;
   const [title, setTitle] = useState(note.frontmatter.title || note.slug);
   const [showForkSuggestion, setShowForkSuggestion] = useState(false);
   const dismissedForkRef = useRef<Set<string>>(new Set());
@@ -282,6 +366,9 @@ export default function NoteEditor({
   >(null);
   const previewTimer = useRef<number | null>(null);
   const previewTargetRef = useRef<HTMLElement | null>(null);
+  /** Delay before hiding the wikilink popover, so the user can move the
+   *  cursor from the link into the popover to click "Start a path…". */
+  const previewHideTimer = useRef<number | null>(null);
 
   const resolveWikilink = useCallback(
     (query: string): NoteSummary | undefined => {
@@ -297,6 +384,7 @@ export default function NoteEditor({
 
   const completionSource = useMemo(() => {
     return (ctx: CompletionContext) => {
+      if (!mappingEnabled) return null;
       const before = ctx.matchBefore(/\[\[[^\]\n]*/);
       if (!before || (before.from === before.to && !ctx.explicit)) return null;
       const query = before.text.slice(2).toLowerCase();
@@ -315,7 +403,7 @@ export default function NoteEditor({
         }));
       return { from: before.from, options };
     };
-  }, [notes, note.slug]);
+  }, [notes, note.slug, mappingEnabled]);
 
   const scanDivergent = useCallback((body: string) => {
     const paragraphs = body.split(/\n{2,}/);
@@ -356,13 +444,17 @@ export default function NoteEditor({
         wikilinkPlugin(),
         questionPlugin(),
         imagePreviewPlugin(),
+        hideSyntaxCompartment.current.of(showRawMarkdown ? [] : hideSyntaxPlugin()),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const body = update.state.doc.toString();
             const dirty = body !== lastSavedBody.current;
             onDirtyChange(dirty);
-            onBodyChange?.(body);
-            setShowForkSuggestion(scanDivergent(body));
+            if (bodyBroadcastTimer.current) window.clearTimeout(bodyBroadcastTimer.current);
+            bodyBroadcastTimer.current = window.setTimeout(() => {
+              onBodyChangeRef.current?.(body);
+            }, 140);
+            setShowForkSuggestion(mappingEnabled && scanDivergent(body));
             if (saveTimer.current) window.clearTimeout(saveTimer.current);
             if (dirty) {
               saveTimer.current = window.setTimeout(() => {
@@ -375,10 +467,27 @@ export default function NoteEditor({
               }, debounceMs);
             }
           }
+          // Broadcast selection size for the status bar. Only when the
+          // selection actually changed, to avoid a dispatch on every
+          // keystroke (docChanged already implies the caret moved but the
+          // selection is zero-width).
+          if (update.selectionSet || update.docChanged) {
+            const sel = update.state.selection.main;
+            const selected = sel.empty
+              ? ""
+              : update.state.sliceDoc(sel.from, sel.to);
+            const count = selected
+              ? (selected.trim().match(/\S+/g)?.length ?? 0)
+              : 0;
+            window.dispatchEvent(new CustomEvent("yarrow:selection-changed", {
+              detail: { words: count, chars: selected.length },
+            }));
+          }
         }),
         EditorView.domEventHandlers({
           click: (e, _view) => {
-            const target = e.target as HTMLElement;
+            const raw = e.target as HTMLElement;
+            const target = (raw.closest(".cm-yarrow-wikilink") as HTMLElement | null) ?? raw;
             if (!target.classList.contains("cm-yarrow-wikilink")) return false;
             const m = /^!?\[\[(.+)\]\]$/.exec((target.textContent || "").trim());
             if (!m) return false;
@@ -391,8 +500,27 @@ export default function NoteEditor({
             }
             return false;
           },
+          // Right-click with a non-empty selection surfaces a small context
+          // menu with "Send to scratchpad" as the primary action. The
+          // menu is rendered by AppShell so it can live-update and call
+          // through to `api.appendScratchpad` without NoteEditor knowing.
+          // Without a selection we let the native menu through (Copy/Paste
+          // still work on the editor's own contents).
+          contextmenu: (e, view) => {
+            const sel = view.state.selection.main;
+            if (sel.empty) return false;
+            const text = view.state.sliceDoc(sel.from, sel.to);
+            if (!text.trim()) return false;
+            e.preventDefault();
+            e.stopPropagation();
+            window.dispatchEvent(new CustomEvent("yarrow:editor-contextmenu", {
+              detail: { text, x: e.clientX, y: e.clientY },
+            }));
+            return true;
+          },
           mouseover: (e, _view) => {
-            const target = e.target as HTMLElement;
+            const raw = e.target as HTMLElement;
+            const target = (raw.closest(".cm-yarrow-wikilink") as HTMLElement | null) ?? raw;
             if (!target.classList.contains("cm-yarrow-wikilink")) return false;
             const m = /^!?\[\[(.+)\]\]$/.exec((target.textContent || "").trim());
             if (!m) return false;
@@ -444,21 +572,28 @@ export default function NoteEditor({
                   if (previewTargetRef.current !== target) return;
                   setPreview({ x, y, placeAbove, title: query, body: "", missing: true });
                 });
-            }, 320);
+            }, 140);
             return false;
           },
           mouseout: (e, _view) => {
-            const target = e.target as HTMLElement;
+            const raw = e.target as HTMLElement;
+            const target = (raw.closest(".cm-yarrow-wikilink") as HTMLElement | null) ?? raw;
             if (!target.classList.contains("cm-yarrow-wikilink")) return false;
             if (previewTimer.current) window.clearTimeout(previewTimer.current);
-            previewTargetRef.current = null;
-            setPreview(null);
+            // Don't hide instantly — give the user a moment to travel into
+            // the popover (which is interactive now). The popover's own
+            // mouseenter will cancel this timer.
+            if (previewHideTimer.current) window.clearTimeout(previewHideTimer.current);
+            previewHideTimer.current = window.setTimeout(() => {
+              previewTargetRef.current = null;
+              setPreview(null);
+            }, 220);
             return false;
           },
           mousemove: (e, view) => {
             // Blame tooltip: yields to wikilink preview over [[links]].
-            const target = e.target as HTMLElement;
-            if (target.classList.contains("cm-yarrow-wikilink")) {
+            const raw = e.target as HTMLElement;
+            if (raw.closest(".cm-yarrow-wikilink")) {
               if (blameTimer.current) window.clearTimeout(blameTimer.current);
               return false;
             }
@@ -525,6 +660,11 @@ export default function NoteEditor({
       if (blameTimer.current) window.clearTimeout(blameTimer.current);
       if (justSavedTimer.current) window.clearTimeout(justSavedTimer.current);
       if (previewTimer.current) window.clearTimeout(previewTimer.current);
+      if (bodyBroadcastTimer.current) {
+        window.clearTimeout(bodyBroadcastTimer.current);
+        // Flush latest body so the consuming shell is in sync on unmount.
+        try { onBodyChangeRef.current?.(view.state.doc.toString()); } catch {}
+      }
       // Flush any pending edits before the editor goes away. This covers
       // path switches, restores, and workspace close — all of which remount
       // the editor and would otherwise drop whatever was typed in the last
@@ -545,6 +685,18 @@ export default function NoteEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.slug, currentPath]);
 
+  // Live-reconfigure the hide-syntax plugin when the mode toggles. Far cheaper
+  // than a full editor teardown/remount.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: hideSyntaxCompartment.current.reconfigure(
+        showRawMarkdown ? [] : hideSyntaxPlugin()
+      ),
+    });
+  }, [showRawMarkdown]);
+
   useEffect(() => {
     lastSavedBody.current = note.body;
     setTitle(note.frontmatter.title || note.slug);
@@ -562,6 +714,37 @@ export default function NoteEditor({
     });
     view.focus();
   }, [jumpToLine]);
+
+  // External text insertion — used by the scratchpad's "send to note" action.
+  // Inserts at the current cursor (or doc end if no selection has been placed
+  // yet), ensuring a blank line separates it from surrounding prose so the
+  // inserted block reads as its own paragraph.
+  useEffect(() => {
+    const onInsert = (ev: Event) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const text = (ev as CustomEvent<{ text: string }>).detail?.text ?? "";
+      if (!text) return;
+      const cursor = view.state.selection.main.head;
+      const before = view.state.sliceDoc(Math.max(0, cursor - 2), cursor);
+      const prefix =
+        cursor === 0 || before.endsWith("\n\n")
+          ? ""
+          : before.endsWith("\n")
+            ? "\n"
+            : "\n\n";
+      const insert = prefix + text + "\n";
+      view.dispatch({
+        changes: { from: cursor, to: cursor, insert },
+        selection: { anchor: cursor + insert.length },
+        scrollIntoView: true,
+      });
+      view.focus();
+      try { onBodyChangeRef.current?.(view.state.doc.toString()); } catch {}
+    };
+    window.addEventListener("yarrow:editor-insert", onInsert as EventListener);
+    return () => window.removeEventListener("yarrow:editor-insert", onInsert as EventListener);
+  }, []);
 
   const saveNow = () => {
     if (!viewRef.current) return;
@@ -583,8 +766,6 @@ export default function NoteEditor({
     }
   };
 
-  const connectionCount = note.frontmatter.links.length;
-
   const acceptFork = () => {
     // Record the current last paragraph so we don't repeat the suggestion.
     const body = viewRef.current?.state.doc.toString() ?? note.body;
@@ -603,9 +784,29 @@ export default function NoteEditor({
     setShowForkSuggestion(false);
   };
 
+  const linkTitleMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const n of notes) m[n.slug] = n.title;
+    return m;
+  }, [notes]);
+
   return (
-    <div className="note-enter relative flex-1 overflow-y-auto px-12 py-12">
-      <div className="max-w-[680px] mx-auto">
+    <div className="note-enter relative flex-1 overflow-y-auto px-12 py-12 2xl:px-24">
+      <div className="w-full max-w-[680px] xl:max-w-[820px] 2xl:max-w-[960px] mx-auto">
+        <div
+          className={`font-serif italic text-xs text-t3 mb-5 inline-block px-1 py-0.5 rounded transition-colors ${
+            justSaved ? "edited-pulse" : ""
+          }`}
+        >
+          {editorialDate(note.frontmatter.modified)} · written in the{" "}
+          {timeOfDayPhrase(note.frontmatter.modified)}
+          <span className="text-t3/70"> · </span>
+          <span className="font-mono not-italic text-2xs">{currentPath || "main"}</span>
+          <span className="text-t3/70"> · </span>
+          <span className="not-italic">
+            {justSaved ? "saved" : "edited"} {relativeTime(note.frontmatter.modified)}
+          </span>
+        </div>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -614,23 +815,25 @@ export default function NoteEditor({
             if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
           }}
           placeholder="Untitled"
-          className="w-full font-serif text-[44px] leading-[1.15] text-char bg-transparent outline-none placeholder:text-t3 tracking-tight"
+          className="w-full font-serif text-[44px] leading-[1.1] text-char bg-transparent outline-none placeholder:text-t3 tracking-[-1px] mb-2"
         />
-        <div
-          className={`mt-3 mb-7 text-2xs text-t3 font-mono inline-block px-2 py-0.5 rounded transition-colors ${
-            justSaved ? "edited-pulse text-yeld" : ""
-          }`}
-        >
-          {justSaved ? "saved ·" : "edited"} {relativeTime(note.frontmatter.modified)}
-          <span className="text-t3/70"> · </span>
-          {currentPath || "main"}
-          <span className="text-t3/70"> · </span>
-          {connectionCount} link{connectionCount === 1 ? "" : "s"}
-          <span className="text-t3/70"> · </span>
-          {friendlyDate(note.frontmatter.modified)}
-        </div>
-        <div className="h-px bg-bd mb-6" />
-        <div ref={hostRef} onBlur={saveNow} className="min-h-[60vh]" />
+        <div ref={hostRef} onBlur={saveNow} className="min-h-[50vh] mt-6" />
+
+        {note.frontmatter.links.length > 0 && (
+          <div className="mt-14 pt-7 border-t border-bd flex items-baseline gap-3 flex-wrap">
+            <span className="font-serif italic text-xs text-t3">This note connects to</span>
+            {note.frontmatter.links.map((l) => (
+              <button
+                key={l.target}
+                onClick={() => onNavigate(l.target)}
+                className="px-2.5 py-0.5 rounded-full bg-s2 text-t2 font-serif italic text-xs hover:bg-s3 hover:text-char transition"
+                title={`${l.type.replace("-", " ")} — ${linkTitleMap[l.target] ?? l.target}`}
+              >
+                {linkTitleMap[l.target] ?? l.target}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <ForkSuggestion
@@ -648,13 +851,38 @@ export default function NoteEditor({
         </div>
       )}
 
-      {preview && <WikilinkPreview data={preview} />}
+      {preview && (
+        <WikilinkPreview
+          data={preview}
+          currentPath={currentPath}
+          pathNotes={pathNotes}
+          onBranchHere={(slug) => {
+            // Fire the action then clear the preview so the modal isn't
+            // visually stacked on top of it.
+            if (previewHideTimer.current) window.clearTimeout(previewHideTimer.current);
+            setPreview(null);
+            onBranchFromWikilink?.(slug);
+          }}
+          onEnter={() => {
+            if (previewHideTimer.current) window.clearTimeout(previewHideTimer.current);
+          }}
+          onLeave={() => {
+            previewTargetRef.current = null;
+            setPreview(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function WikilinkPreview({
   data,
+  currentPath,
+  pathNotes,
+  onBranchHere,
+  onEnter,
+  onLeave,
 }: {
   data: {
     x: number;
@@ -665,6 +893,11 @@ function WikilinkPreview({
     slug?: string;
     missing?: boolean;
   };
+  currentPath: string;
+  pathNotes?: Record<string, string[]>;
+  onBranchHere?: (slug: string) => void;
+  onEnter?: () => void;
+  onLeave?: () => void;
 }) {
   const style: React.CSSProperties = data.placeAbove
     ? { left: data.x, top: data.y, transform: "translateY(-100%)" }
@@ -688,10 +921,29 @@ function WikilinkPreview({
   }
 
   const excerpt = excerptForPreview(data.body);
+
+  // Compute path membership for the bottom strip.
+  const membership = (() => {
+    if (!data.slug || !pathNotes) return null;
+    const slug = data.slug;
+    const allBranches = Object.keys(pathNotes);
+    const here: string[] = [];
+    const absent: string[] = [];
+    for (const b of allBranches) {
+      if ((pathNotes[b] || []).includes(slug)) here.push(b);
+      else absent.push(b);
+    }
+    if (allBranches.length === 0) return null;
+    return { here, absent, total: allBranches.length };
+  })();
+
   return (
     <div
       style={style}
-      className="fixed z-40 pointer-events-none w-[360px] max-h-[260px] overflow-hidden bg-bg border border-bd2 rounded-lg shadow-2xl animate-fadeIn"
+      className="fixed z-40 w-[380px] max-h-[340px] overflow-hidden bg-bg border border-bd2 rounded-lg shadow-2xl animate-fadeIn flex flex-col"
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
     >
       <div className="px-3.5 pt-3 pb-2 border-b border-bd flex items-center gap-2">
         <div className="font-serif text-base text-char leading-tight truncate flex-1">
@@ -699,11 +951,64 @@ function WikilinkPreview({
         </div>
         <span className="text-2xs text-t3 font-mono shrink-0">click to open</span>
       </div>
-      <div className="px-3.5 py-2.5 text-xs text-char whitespace-pre-wrap leading-relaxed">
+      <div className="px-3.5 py-2.5 text-xs text-char whitespace-pre-wrap leading-relaxed overflow-y-auto flex-1 pointer-events-none">
         {excerpt || (
           <span className="italic text-t3">This note is empty.</span>
         )}
       </div>
+
+      {membership && (
+        <div className="border-t border-bd px-3.5 py-2 bg-s1/60 text-2xs">
+          <div className="flex items-baseline gap-2">
+            <span className="text-t3 font-mono tracking-wider">APPLIES ON</span>
+            <span className="text-char">
+              {membership.here.length} of {membership.total} path{membership.total === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {membership.here.map((b) => (
+              <span
+                key={b}
+                className={`text-2xs px-1.5 py-0.5 rounded-full font-serif italic truncate max-w-[140px] ${
+                  b === currentPath
+                    ? "bg-yel text-on-yel"
+                    : "bg-yelp text-yeld"
+                }`}
+                title={b === currentPath ? "Current path" : b}
+              >
+                {b}
+              </span>
+            ))}
+            {membership.absent.map((b) => (
+              <span
+                key={b}
+                className="text-2xs px-1.5 py-0.5 rounded-full font-serif italic truncate max-w-[140px] text-t3 border border-dashed border-bd2 line-through decoration-bd2"
+                title={`Not on ${b}`}
+              >
+                {b}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.slug && onBranchHere && (
+        <div className="border-t border-bd px-2 py-1.5 bg-bg flex items-center">
+          <button
+            onClick={() => onBranchHere(data.slug!)}
+            className="w-full text-left px-2.5 py-1 text-xs text-t2 hover:text-char hover:bg-s2 rounded flex items-center gap-2"
+            title="Start a new path using this note as the anchor"
+          >
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="3" cy="3" r="1.5"/>
+              <circle cx="3" cy="11" r="1.5"/>
+              <circle cx="11" cy="7" r="1.5"/>
+              <path d="M3 4.5v5M4.3 3.7l5.4 2.6"/>
+            </svg>
+            <span>Start a path from this note</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

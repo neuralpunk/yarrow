@@ -42,6 +42,26 @@ export function slugify(s: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+export function timeOfDayPhrase(iso: string | number | null | undefined): string {
+  if (!iso) return "day";
+  const d = typeof iso === "number" ? new Date(iso * 1000) : new Date(iso);
+  if (Number.isNaN(d.getTime())) return "day";
+  const h = d.getHours();
+  if (h < 5)  return "small hours";
+  if (h < 12) return "morning";
+  if (h < 17) return "afternoon";
+  if (h < 21) return "evening";
+  return "night";
+}
+
+/** Editorial date: "April 17" — no time, used in note metadata line. */
+export function editorialDate(iso: string | number | null | undefined): string {
+  if (!iso) return "";
+  const d = typeof iso === "number" ? new Date(iso * 1000) : new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+}
+
 export function friendlyDate(iso: string | number | null | undefined): string {
   if (!iso) return "";
   const d = typeof iso === "number" ? new Date(iso * 1000) : new Date(iso);

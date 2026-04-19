@@ -12,6 +12,10 @@ export interface Frontmatter {
   links: Link[];
   tags: string[];
   pinned?: boolean;
+  encrypted?: boolean;
+  kdf?: string;
+  salt?: string;
+  nonce?: string;
 }
 
 export interface NoteSummary {
@@ -20,12 +24,26 @@ export interface NoteSummary {
   modified: string;
   excerpt: string;
   pinned?: boolean;
+  tags?: string[];
+  encrypted?: boolean;
 }
 
 export interface Note {
   slug: string;
   frontmatter: Frontmatter;
   body: string;
+  encrypted?: boolean;
+  locked?: boolean;
+}
+
+export interface EncryptionStatus {
+  enabled: boolean;
+  unlocked: boolean;
+  idle_timeout_secs: number;
+}
+
+export interface EnableEncryptionOutcome {
+  recovery_phrase: string;
 }
 
 export interface PathInfo {
@@ -63,6 +81,12 @@ export interface SyncOutcome {
 export interface GraphNode {
   slug: string;
   title: string;
+  tags?: string[];
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
 }
 
 export interface GraphEdge {
@@ -75,6 +99,7 @@ export interface Graph {
   notes: GraphNode[];
   links: GraphEdge[];
   last_built: string;
+  tags?: TagCount[];
 }
 
 export interface RecentWorkspace {
@@ -99,6 +124,7 @@ export interface ExportReport {
   dest: string;
   notes_exported: number;
   attachments_exported: number;
+  encrypted_skipped?: number;
 }
 
 export interface SearchHit {
@@ -122,6 +148,39 @@ export interface BranchTopo {
   forked_from: BranchFork | null;
 }
 
+export interface PathMeta {
+  condition: string;
+  set_at?: number | null;
+}
+
+/** v2 paths: collections of notes rather than git branches.
+ *
+ *  `parent` is the **permanent trunk** — the name of the path this was
+ *  branched off at creation and never mutated again. Live/ghost status is
+ *  derived from parent vs. the current root; see `isGhostPath`. */
+export interface PathCollection {
+  name: string;
+  condition: string;
+  /** The permanent trunk. Empty string for paths that were seeded as an
+   *  original root. */
+  parent: string;
+  main_note?: string | null;
+  members: string[];
+  created_at: number;
+}
+
+/** A path is a ghost whenever it is neither the current root nor a direct
+ *  sibling of the current root. Derivation is pure — no storage involved —
+ *  so promoting is a single pointer flip and relationships snap back. */
+export function isGhostPath(c: PathCollection, rootName: string): boolean {
+  return c.name !== rootName && c.parent !== rootName;
+}
+
+export interface PathCollectionsView {
+  root: string;
+  collections: PathCollection[];
+}
+
 export interface ConflictContent {
   relpath: string;
   base: string | null;
@@ -129,6 +188,8 @@ export interface ConflictContent {
   theirs: string | null;
   working: string | null;
 }
+
+export type WorkspaceMode = "mapped" | "basic";
 
 export interface WorkspaceConfig {
   workspace: {
@@ -146,7 +207,18 @@ export interface WorkspaceConfig {
     focus_mode_default: boolean;
     ask_thinking_on_close: boolean;
     editor_font_size: number;
+    encryption_idle_timeout_secs: number;
   };
+  mapping: {
+    mode: WorkspaceMode;
+    main_note?: string | null;
+  };
+}
+
+export interface TemplateInfo {
+  name: string;
+  label: string;
+  is_daily: boolean;
 }
 
 export const LINK_TYPE_LABELS: Record<LinkType, string> = {
@@ -157,8 +229,8 @@ export const LINK_TYPE_LABELS: Record<LinkType, string> = {
 };
 
 export const LINK_TYPE_COLORS: Record<LinkType, string> = {
-  "supports": "#e8b820",
-  "challenges": "#d97706",
-  "came-from": "#a09c6c",
-  "open-question": "#b8900e",
+  "supports": "#5B7A5E",
+  "challenges": "#A64A3C",
+  "came-from": "#928C82",
+  "open-question": "#7A4E6E",
 };

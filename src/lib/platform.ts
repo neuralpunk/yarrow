@@ -41,8 +41,11 @@ export const SK = {
   palette:      kbd({ mod: true, key: "K" }),
   newNote:      kbd({ mod: true, key: "N" }),
   newDirection: kbd({ mod: true, shift: true, key: "N" }),
+  branchFromHere: kbd({ mod: true, shift: true, key: "B" }),
   focusToggle:  kbd({ mod: true, key: "\\" }),
   settings:     kbd({ mod: true, key: "," }),
   quickSwitch:  kbd({ mod: true, key: "O" }),
   jumpToday:    kbd({ mod: true, key: "T" }),
+  scratchpad:   kbd({ mod: true, shift: true, key: "S" }),
+  switchWorkspace: kbd({ mod: true, shift: true, key: "O" }),
 };

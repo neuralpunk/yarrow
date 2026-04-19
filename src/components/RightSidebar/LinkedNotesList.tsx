@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { Link } from "../../lib/types";
 import { LINK_TYPE_COLORS, LINK_TYPE_LABELS } from "../../lib/types";
 import { PlusIcon, XIcon } from "../../lib/icons";
@@ -11,7 +12,7 @@ interface Props {
   onRemove: (to: string) => void;
 }
 
-export default function LinkedNotesList({
+function LinkedNotesListInner({
   links,
   titleMap,
   snippetMap,
@@ -29,6 +30,7 @@ export default function LinkedNotesList({
           onClick={onAdd}
           className="y-tip w-6 h-6 flex items-center justify-center text-t2 hover:text-char hover:bg-s2 rounded transition"
           data-tip="Add connection"
+          data-tip-align="right"
           aria-label="Add connection"
         >
           <PlusIcon />
@@ -100,3 +102,5 @@ export default function LinkedNotesList({
     </div>
   );
 }
+
+export default memo(LinkedNotesListInner);

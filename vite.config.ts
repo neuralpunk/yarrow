@@ -29,4 +29,28 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+
+  build: {
+    // Keep the initial payload lean: split the heavy vendor code out of the
+    // main entry so the first paint only parses what the shell actually needs.
+    // React stays with the app entry (every path uses it); CodeMirror, D3,
+    // and @tauri-apps plugins become their own chunks loaded on demand.
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("d3")) return "vendor-d3";
+          if (
+            id.includes("@codemirror") ||
+            id.includes("@lezer") ||
+            id.includes("codemirror")
+          ) return "vendor-codemirror";
+          if (id.includes("lucide-react")) return "vendor-icons";
+          if (id.includes("@tauri-apps")) return "vendor-tauri";
+        },
+      },
+    },
+    // Raise the warning threshold to a sane value post-split.
+    chunkSizeWarningLimit: 650,
+  },
 }));

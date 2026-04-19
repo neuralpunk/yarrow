@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { NoteSummary } from "../../lib/types";
 import { dailyLabel, todayIso } from "../../lib/format";
 import { JournalIcon } from "../../lib/icons";
@@ -16,7 +16,7 @@ interface Props {
  * entries. Daily notes always live on `main`, so opening one may auto-switch
  * the current path (AppShell surfaces that to the user).
  */
-export default function JournalList({ entries, activeSlug, onOpenDaily }: Props) {
+function JournalListInner({ entries, activeSlug, onOpenDaily }: Props) {
   const today = todayIso();
   const todaySlug = `daily/${today}`;
   const todayActive = activeSlug === todaySlug;
@@ -101,3 +101,5 @@ export default function JournalList({ entries, activeSlug, onOpenDaily }: Props)
     </div>
   );
 }
+
+export default memo(JournalListInner);

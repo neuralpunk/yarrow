@@ -5,12 +5,13 @@
 Yarrow is a local-first desktop note-taking app built around the way thinking
 actually works — non-linear, branching, and never lost. Your notes are plain
 markdown files in a folder you choose. Every change is a silent checkpoint you
-can scrub back to. Every time you want to try a different take on an idea, you
-open a new **direction**, and the original stays exactly where it was.
+can scrub back to. **Paths** are named lenses over your notes — collections
+you can arrange as a tree, rooted at a designated main, so you can see at a
+glance which notes matter under which *"if…"*.
 
-Under the hood, Yarrow is [git](https://git-scm.com/). At the surface, there is
-no git anywhere — no commits, no branches, no HEAD. Just writing, paths you
-can fork and return to, and connections you can draw between ideas.
+Under the hood, Yarrow is [git](https://git-scm.com/). At the surface, there
+is no git anywhere — no commits, no HEAD, no checkouts. Just writing, a graph
+of paths to arrange your notes by, and connections you can draw between ideas.
 
 ---
 
@@ -24,7 +25,9 @@ can fork and return to, and connections you can draw between ideas.
 - [Install — from source](#install--from-source)
 - [First run](#first-run)
 - [Keyboard shortcuts](#keyboard-shortcuts)
+- [Paths](#paths)
 - [Sync](#sync)
+- [Encryption](#encryption)
 - [Principles](#principles)
 - [Built with](#built-with)
 - [License](#license)
@@ -36,26 +39,32 @@ can fork and return to, and connections you can draw between ideas.
 A single-binary desktop app for the kind of thinking that doesn't fit in a
 linear outline. Features:
 
-- **Branching paths** — try a different angle on any note without losing the original
+- **Paths as collections** — named lenses over your notes, branching off a designated root. One note can live in many paths; selecting a path never hides your other notes
+- **Forking Road map** — full-screen graph of your paths, left → right, with drag-pan, scroll-zoom, inline "+ branch here" on every node, and hover-highlighted lineage (ancestry + descendants)
+- **Per-path Map view** — open the connection graph filtered to any path's member notes
+- **Designated main note** per path — the anchor that shows on the path's card
 - **Silent auto-checkpointing** — every pause is a checkpoint you can scrub back through
 - **Checkpoint & restore modal** — Now / Then side-by-side with diff highlighting
-- **Path diffing** — compare any two paths prose-level, see what diverged
-- **Path export** — save a path as a Markdown bundle anyone can read
 - **Typed connections** — `supports`, `challenges`, `came from`, `open question`
 - **Radial connections graph** — structured layout with arrows, legend, and an expand-to-fullscreen view
-- **`[[wikilinks]]`** with inline autocomplete and hover-to-preview
+- **`[[wikilinks]]`** with inline autocomplete, hover preview, and a per-link path-membership chip ("applies on 3 of 5 paths") plus a one-click "Start a path from this note"
 - **`![[transclusion]]`** — embed another note, a heading, or a block into any note
 - **`??` open questions** that surface in a dedicated panel
 - **Pinned notes** — anchor a handful of always-visible notes at the top of the sidebar
+- **Tags** — read from frontmatter, shown as a counted sidebar panel and filterable via `#tag` in the command palette
+- **Templates** — pick a scaffold when you create a note; ships with meeting notes, book notes, vacation planner, morning pages, project brief, and daily journal
+- **Local encryption** — per-note, opt-in ChaCha20-Poly1305 + Argon2id with a BIP39 12-word recovery phrase; frontmatter stays plaintext so graph, tags, and links keep working on locked notes
+- **Bulk select** — multi-select notes in the sidebar and delete them in one go
 - **Daily notes / journal** with a `Today` shortcut, recency sidebar, and month-grid calendar
-- **Journal templates** — drop a `daily.md` template with `{{date}}` / `{{weekday}}` substitution
 - **Quick capture** (`⌘⇧Space` / `Ctrl+Shift+Space`) — pop a small window, append a timestamped entry to the scratchpad
 - **Attachments** — drop images or files into the editor; inline image preview
-- **Static-site export** — turn your workspace into a shareable HTML folder
+- **Static-site export** — turn your workspace into a shareable HTML folder with client-side search
 - **Command palette** (`⌘K` / `Ctrl+K`) and **quick note switcher** (`⌘O` / `Ctrl+O`)
 - **Full history** — scrub any note back to any past version
 - **Git-anywhere sync** — point it at GitHub, Gitea, or any bare server
-- **Themes** — warm cream (light), warm dusk (dark), auto, and Blueberry + Yellow
+- **Editorial type** — body renders in Source Serif 4 at a reading size; UI chrome stays in Inter; metadata in JetBrains Mono
+- **Reading mode ↔ Writing mode** — toggle from the right rail (or Settings → Writing) to flip between fully rendered markdown (`##` headings, `**bold**`, `[[wikilinks]]` all collapsed inline) and raw markdown for structural edits
+- **Themes** — paper & plum (light), ink & plum (dark), and auto
 - **Native-feeling window chrome** — custom titlebar shows app name, version, and workspace
 - **Plain markdown forever** — no proprietary format, no lock-in
 
@@ -69,19 +78,24 @@ sitting inside a real git repository.
 ```
 your-workspace/
 ├── .yarrow/
-│   ├── config.toml          # workspace preferences (shared)
-│   ├── credentials.toml     # sync tokens (per-machine, gitignored)
-│   ├── scratchpad.md        # throwaway jotting (gitignored)
+│   ├── config.toml              # workspace preferences (shared)
+│   ├── path-collections.toml    # your paths — a tree of note collections
+│   ├── credentials.toml         # sync tokens (per-machine, gitignored)
+│   ├── security.toml            # wrapped encryption keys (shared — opaque)
+│   ├── scratchpad.md            # throwaway jotting (gitignored)
 │   ├── templates/
-│   │   └── daily.md         # optional — rendered into new journal entries
-│   └── index.json           # derived link cache (gitignored)
+│   │   ├── daily.md             # rendered into new journal entries
+│   │   ├── meeting.md
+│   │   ├── book.md
+│   │   └── …                    # your own templates live here too
+│   └── index.json               # derived link / tag cache (gitignored)
 ├── notes/
 │   ├── my-first-note.md
 │   ├── another-note.md
 │   └── daily/
-│       └── 2026-04-17.md    # journal entries
+│       └── 2026-04-17.md        # journal entries
 ├── attachments/
-│   └── 7f2c…e1.png          # content-addressed by SHA-256 prefix
+│   └── 7f2c…e1.png              # content-addressed by SHA-256 prefix
 └── .gitignore
 ```
 
@@ -89,16 +103,21 @@ Every `.md` file has YAML frontmatter (title, timestamps, typed links, tags).
 Reciprocal links are written on both sides of each connection, so your notes
 remain readable outside Yarrow in any plain-text editor.
 
-The mapping of Yarrow vocabulary to git primitives (fully hidden from the UI):
+**Paths are collections of note slugs**, not separate copies of your notes.
+They're stored as a simple TOML tree in `.yarrow/path-collections.toml` —
+one note can belong to many paths, and the file is readable and editable by
+hand if you like.
+
+Yarrow still uses git for **checkpoints** (every pause is a commit), **history**
+(scrub any note back to any past version), and **sync** (push/pull the whole
+workspace to any remote you own). Those three are the remaining Yarrow-to-git
+vocabulary mappings — paths and branches are no longer the same thing.
 
 | You see… | Under the hood |
 |---|---|
 | **checkpoint** | commit |
-| **path** | branch |
-| **new direction** | `git checkout -b` |
-| **bring together** | merge |
-| **sync** | `git push` + `git pull` |
 | **history** | `git log` for one file |
+| **sync** | `git push` + `git pull` |
 | **what were you thinking?** | optional commit message suffix |
 
 Because the workspace is a real git repo, you can always `cd` into it and use
@@ -122,6 +141,18 @@ Intel Macs.
 3. First launch: right-click the app → *Open* → *Open* to bypass Gatekeeper.
    (Until the app is notarized, macOS flags it as unsigned. This is safe and
    Gatekeeper will remember your choice.)
+
+> **Upgrading from a pre-1.0.0 build on macOS?** The 1.0.0 release changes
+> the bundle identifier (the trailing `.app` conflicted with macOS's
+> application-bundle extension). macOS treats the new build as a separate
+> app, so before installing 1.0.0:
+>
+> 1. Quit Yarrow if it's running.
+> 2. Drag the old **Yarrow.app** from `/Applications` to the Trash.
+> 3. Install 1.0.0 from the new `.dmg`.
+>
+> **Your notes are safe.** Yarrow stores everything in the workspace
+> folder you picked — nothing note-related lives inside the app bundle.
 
 To uninstall: drag `Yarrow.app` to the Trash. Your workspaces live in
 whatever folder you chose — Yarrow never writes anywhere else.
@@ -270,15 +301,62 @@ Yarrow will happily re-index on the next launch.
 | `⌘K` / `Ctrl+K` | Command palette — search, jump, run anything |
 | `⌘O` / `Ctrl+O` | Quick note switcher (fuzzy title search) |
 | `⌘N` / `Ctrl+N` | New note |
-| `⌘⇧N` / `Ctrl+Shift+N` | Explore a new direction (new path) |
+| `⌘⇧N` / `Ctrl+Shift+N` | Start a new path |
+| `⌘⇧B` / `Ctrl+Shift+B` | Branch from the current note (same dialog) |
 | `⌘T` / `Ctrl+T` | Jump to today's journal (auto-switches to main) |
 | `⌘←` / `Ctrl+←` | Previous journal entry (while a daily note is open) |
 | `⌘→` / `Ctrl+→` | Next journal entry (while a daily note is open) |
 | `⌘⇧Space` / `Ctrl+Shift+Space` | Quick capture → scratchpad |
 | `⌘\` / `Ctrl+\` | Toggle focus mode |
+| `⌘L` / `Ctrl+L` | Lock encrypted notes (only when encryption is enabled) |
 | `⌘,` / `Ctrl+,` | Open Settings |
 
 ---
+
+## Paths
+
+A **path** in Yarrow is a named collection of notes arranged as a branch off a
+designated root. The shape is a tree: the root (`main` by default) is the
+trunk, every other path is a child of some other path, and one note can
+belong to many paths at once. Selecting a path never changes which notes you
+can read — it's a lens, not a view-switch.
+
+Every path has:
+
+- **A name** — a slug like `if-seattle-job`.
+- **An `if…` condition** — the question this path is asking
+  (*"If the Seattle job comes through"*). Shown on the path card and on
+  the fork signpost in the graph.
+- **A parent** — every path except the root descends from another path.
+- **A main note (★)** — the anchor. Shown on the path card and in the
+  detail header. Any member note can be designated.
+- **Members** — the note slugs this path contains. Add or remove them
+  from the detail panel; the notes themselves are never copied or moved.
+
+**Starting a new path.** Press `⌘⇧B` / `Ctrl+Shift+B` (from anywhere) or click
+*Branch this* in the toolbar. You write the *"if…"* question; the path is
+auto-named, created as a child of the root by default (pick any other path
+from the chip row if you want a sub-branch), and the note you were writing
+becomes its main note.
+
+**The Forking Road map.** Open from the right-rail *Paths* button. Left to
+right: root on the left, forks fan out to the right. Drag to pan, scroll to
+zoom, `+` on any card to branch from there, click a node to select it and
+open the detail panel. The selection highlights the path's **ancestry**
+(what it's under) and **descendants** (what branches off it).
+
+**The per-path Map.** Every path detail panel has an *Open the map for this
+path* button. It opens the full connection graph filtered to only that
+path's member notes and their wikilinks — the fast answer to *"what does
+this path actually hold together?"*
+
+**Managing paths.** In the detail panel: rename, edit the *"if…"*, designate
+a main note, add and remove member notes, spin any member note off into its
+own child path with one click. Deleting a path never deletes its notes;
+children reattach to the deleted path's parent.
+
+`.yarrow/path-collections.toml` is the whole story — readable, committable,
+editable by hand. If something looks wrong, open it.
 
 ## Sync
 
@@ -296,12 +374,43 @@ HTTPS private repos, and click *Sync*. The token is stored in
 Conflicts that arise from a pull surface through Yarrow's built-in
 side-by-side resolver (*"your thinking diverged"*).
 
+## Encryption
+
+**Encryption is optional and per-note.** Turn it on from
+**Settings → Security**, pick a password, and write down the 12-word recovery
+phrase Yarrow shows you once. Then mark individual notes as encrypted from
+the command palette (*Encrypt this note*) — the rest of your workspace stays
+plain markdown.
+
+Under the hood:
+
+- **ChaCha20-Poly1305** AEAD seals each note body with a fresh 12-byte nonce.
+- **Argon2id** (m = 64 MiB, t = 3, p = 1) derives keys from your password and
+  from the recovery phrase.
+- The workspace master key is **wrapped twice** in `.yarrow/security.toml` —
+  once by the password-derived key and once by the recovery-derived key — so
+  either can unlock without storing the other.
+- Frontmatter (title, tags, links) stays plaintext. The sidebar, tag filter,
+  and connection graph keep working on encrypted notes.
+- Your password is never persisted. The master key lives in RAM for the
+  session and is zeroed on lock, on idle timeout (configurable, default
+  15 min), and on app quit.
+- Encrypted notes are **skipped** by static-site export and full-text body
+  search. Diffs for encrypted notes in the history slider are decrypted on
+  demand against the session key.
+
+Lose both your password and your recovery phrase and the encrypted notes are
+gone. There is no backdoor — that's the point.
+
 ## Principles
 
 - **Nothing you write is ever lost.** Abandoned paths are an archive, not the trash.
 - **Plain text, forever.** `.md` files in a folder. Open in any editor.
 - **Local-first.** Works fully offline. Sync to a remote you own, or don't.
-- **Human vocabulary.** Paths, checkpoints, directions — never git jargon.
+- **Human vocabulary.** Paths are collections, checkpoints are commits — never git jargon in the UI.
+- **Your notes, your keys.** Encryption is opt-in and client-side. Yarrow
+  never sees your password, and there is no recovery backdoor beyond the
+  phrase you wrote down.
 
 ## Built with
 

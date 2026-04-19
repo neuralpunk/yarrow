@@ -4,6 +4,10 @@ import Onboarding from "./components/Onboarding";
 import AppShell from "./components/AppShell";
 import Titlebar from "./components/Titlebar";
 import { useTheme } from "./lib/theme";
+// Side-effect import: applies the saved UI font + scale at module-load
+// time so even the Onboarding screen renders in the user's preferred
+// chrome face, not a flash of Inter.
+import "./lib/uiPrefs";
 
 export default function App() {
   useTheme();
@@ -26,7 +30,15 @@ export default function App() {
         ) : !workspacePath ? (
           <Onboarding onReady={setWorkspacePath} />
         ) : (
-          <AppShell workspacePath={workspacePath} onClose={() => setWorkspacePath(null)} />
+          // Key by path so switching workspaces fully remounts AppShell —
+          // every piece of state (active note, paths, caches) is scoped to
+          // the previous workspace and has no business surviving the jump.
+          <AppShell
+            key={workspacePath}
+            workspacePath={workspacePath}
+            onClose={() => setWorkspacePath(null)}
+            onSwitchWorkspace={setWorkspacePath}
+          />
         )}
       </div>
     </div>

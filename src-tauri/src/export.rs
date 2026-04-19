@@ -32,6 +32,8 @@ pub struct ExportReport {
     pub dest: String,
     pub notes_exported: usize,
     pub attachments_exported: usize,
+    #[serde(default)]
+    pub encrypted_skipped: usize,
 }
 
 pub fn run(root: &Path, dest: &Path) -> Result<ExportReport> {
@@ -40,12 +42,22 @@ pub fn run(root: &Path, dest: &Path) -> Result<ExportReport> {
     // Gather content
     let summaries = notes::list(root)?;
     let mut rendered: Vec<RenderedNote> = Vec::with_capacity(summaries.len());
+    let mut raw_bodies: Vec<(String, String)> = Vec::with_capacity(summaries.len());
+    let mut skipped = 0usize;
     for s in &summaries {
         let n = notes::read(root, &s.slug)?;
+        // Per spec: encrypted notes are skipped on static export. The count
+        // is surfaced in the report so the user can see they're excluded.
+        if n.frontmatter.encrypted {
+            skipped += 1;
+            continue;
+        }
+        raw_bodies.push((n.slug.clone(), n.body.clone()));
         rendered.push(render_note(&n));
     }
 
     let graph_json = graph_payload(root)?;
+    let search_json = search_payload(&rendered, &raw_bodies);
     let cfg = workspace::read_config(root).ok();
     let title = cfg
         .as_ref()
@@ -54,7 +66,10 @@ pub fn run(root: &Path, dest: &Path) -> Result<ExportReport> {
 
     // Write files
     std::fs::write(dest.join("styles.css"), STYLES)?;
-    std::fs::write(dest.join("index.html"), build_index(&title, &rendered, &graph_json))?;
+    std::fs::write(
+        dest.join("index.html"),
+        build_index(&title, &rendered, &graph_json, &search_json),
+    )?;
 
     // Copy attachments if any
     let attach_count = copy_attachments(root, dest)?;
@@ -63,6 +78,7 @@ pub fn run(root: &Path, dest: &Path) -> Result<ExportReport> {
         dest: dest.to_string_lossy().to_string(),
         notes_exported: rendered.len(),
         attachments_exported: attach_count,
+        encrypted_skipped: skipped,
     })
 }
 
@@ -143,8 +159,52 @@ fn graph_payload(root: &Path) -> Result<String> {
         notes: vec![],
         links: vec![],
         last_built: String::new(),
+        tags: vec![],
     });
     Ok(serde_json::to_string(&g).unwrap_or_else(|_| "{\"notes\":[],\"links\":[]}".into()))
+}
+
+#[derive(Serialize)]
+struct SearchEntry {
+    slug: String,
+    title: String,
+    text: String,
+}
+
+fn search_payload(rendered: &[RenderedNote], raw_bodies: &[(String, String)]) -> String {
+    let lookup: std::collections::HashMap<&str, &str> = raw_bodies
+        .iter()
+        .map(|(s, b)| (s.as_str(), b.as_str()))
+        .collect();
+    let entries: Vec<SearchEntry> = rendered
+        .iter()
+        .map(|n| SearchEntry {
+            slug: n.slug.clone(),
+            title: n.title.clone(),
+            text: lookup
+                .get(n.slug.as_str())
+                .map(|s| snippet_source(s))
+                .unwrap_or_default(),
+        })
+        .collect();
+    serde_json::to_string(&entries).unwrap_or_else(|_| "[]".into())
+}
+
+/// Compress a note body for the search index: collapse whitespace, cap length
+/// so the index stays under a few hundred KB even for big vaults.
+fn snippet_source(body: &str) -> String {
+    let mut out = String::with_capacity(body.len().min(4096));
+    let mut prev_space = false;
+    for c in body.chars() {
+        if c.is_whitespace() {
+            if !prev_space { out.push(' '); prev_space = true; }
+        } else {
+            out.push(c);
+            prev_space = false;
+        }
+        if out.len() >= 4096 { break; }
+    }
+    out.trim().to_string()
 }
 
 fn copy_attachments(root: &Path, dest: &Path) -> Result<usize> {
@@ -170,7 +230,7 @@ fn copy_attachments(root: &Path, dest: &Path) -> Result<usize> {
 
 // ── templates ───────────────────────────────────────────────────────────
 
-fn build_index(title: &str, notes: &[RenderedNote], graph_json: &str) -> String {
+fn build_index(title: &str, notes: &[RenderedNote], graph_json: &str, search_json: &str) -> String {
     let mut toc = String::new();
     let mut body = String::new();
     for n in notes {
@@ -201,6 +261,59 @@ fn build_index(title: &str, notes: &[RenderedNote], graph_json: &str) -> String 
   <h1>{title}</h1>
   <div class="y-sub">exported from Yarrow · {count} notes</div>
 </header>
+<div class="y-search">
+  <input id="y-search-input" type="search" placeholder="Search these notes…" autocomplete="off">
+  <ol id="y-search-results"></ol>
+</div>
+<script>
+window.__yarrow_search = {search};
+(function() {{
+  var input = document.getElementById('y-search-input');
+  var out = document.getElementById('y-search-results');
+  if (!input || !out) return;
+  function esc(s) {{ return s.replace(/[&<>"]/g, function(c){{ return {{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}}[c]; }}); }}
+  function run(q) {{
+    q = q.trim().toLowerCase();
+    out.innerHTML = '';
+    if (!q) {{ out.style.display = 'none'; return; }}
+    out.style.display = 'block';
+    var hits = (window.__yarrow_search || [])
+      .map(function(n) {{
+        var t = n.title.toLowerCase();
+        var b = (n.text || '').toLowerCase();
+        var score = 0;
+        if (t.indexOf(q) !== -1) score += 5;
+        if (b.indexOf(q) !== -1) score += 1;
+        return {{n: n, score: score, pos: b.indexOf(q)}};
+      }})
+      .filter(function(h) {{ return h.score > 0; }})
+      .sort(function(a, b) {{ return b.score - a.score; }})
+      .slice(0, 20);
+    if (hits.length === 0) {{
+      out.innerHTML = '<li class="y-search-empty">No matches.</li>';
+      return;
+    }}
+    hits.forEach(function(h) {{
+      var snippet = '';
+      if (h.pos >= 0) {{
+        var s = Math.max(0, h.pos - 40);
+        var e = Math.min((h.n.text || '').length, h.pos + 80);
+        snippet = (h.n.text || '').slice(s, e);
+      }}
+      var li = document.createElement('li');
+      li.innerHTML = '<a href="#note-' + esc(h.n.slug) + '"><strong>' + esc(h.n.title) + '</strong>' + (snippet ? '<span class="y-search-snippet">…' + esc(snippet) + '…</span>' : '') + '</a>';
+      out.appendChild(li);
+    }});
+  }}
+  input.addEventListener('input', function(e) {{ run(e.target.value); }});
+  input.addEventListener('keydown', function(e) {{
+    if (e.key === 'Enter') {{
+      var first = out.querySelector('a');
+      if (first) {{ location.hash = first.getAttribute('href'); input.value = ''; run(''); }}
+    }}
+  }});
+}})();
+</script>
 <nav class="y-toc">
   <h3>Contents</h3>
   <ol>{toc}</ol>
@@ -247,6 +360,7 @@ fn build_index(title: &str, notes: &[RenderedNote], graph_json: &str) -> String 
         count = notes.len(),
         toc = toc,
         graph = graph_json,
+        search = search_json,
         body = body,
     )
 }
@@ -325,6 +439,7 @@ pub fn export_path_markdown(
         dest: dest.to_string_lossy().to_string(),
         notes_exported: count,
         attachments_exported: attach_count,
+        encrypted_skipped: 0,
     })
 }
 
@@ -374,6 +489,15 @@ body {
 .y-hdr { padding: 48px 24px 24px; text-align: center; border-bottom: 1px solid var(--bd); }
 .y-hdr h1 { font-family: ui-serif, Georgia, 'Oranienbaum', serif; font-size: 42px; margin: 0; letter-spacing: -0.01em; }
 .y-sub { color: var(--t3); font-size: 13px; font-family: ui-monospace, 'JetBrains Mono', monospace; margin-top: 6px; }
+.y-search { max-width: 720px; margin: 20px auto 0; padding: 0 24px; }
+.y-search input { width: 100%; padding: 10px 14px; font-size: 15px; border: 1px solid var(--bd); border-radius: 8px; background: var(--bg); color: var(--char); font-family: inherit; outline: none; }
+.y-search input:focus { border-color: var(--yel); box-shadow: 0 0 0 3px var(--yelp); }
+.y-search ol { display: none; list-style: none; padding: 6px; margin: 8px 0 0; background: var(--s1); border: 1px solid var(--bd); border-radius: 8px; max-height: 360px; overflow-y: auto; }
+.y-search li { padding: 6px 8px; border-radius: 5px; }
+.y-search li:hover { background: var(--yelp); }
+.y-search li a { text-decoration: none; color: var(--char); display: block; }
+.y-search-snippet { display: block; font-size: 12px; color: var(--t3); margin-top: 2px; font-style: italic; }
+.y-search-empty { color: var(--t3); font-style: italic; padding: 8px; }
 .y-toc { max-width: 720px; margin: 24px auto; padding: 18px 24px; background: var(--s1); border: 1px solid var(--bd); border-radius: 10px; }
 .y-toc h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--t3); }
 .y-toc ol { margin: 0; padding-left: 18px; }

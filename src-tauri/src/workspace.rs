@@ -47,6 +47,8 @@ pub struct Preferences {
     pub ask_thinking_on_close: bool,
     #[serde(default = "default_editor_font_size")]
     pub editor_font_size: u32,
+    #[serde(default = "default_idle_lock")]
+    pub encryption_idle_timeout_secs: u32,
 }
 
 fn default_decay() -> u32 {
@@ -61,6 +63,9 @@ fn default_true() -> bool {
 fn default_editor_font_size() -> u32 {
     16
 }
+fn default_idle_lock() -> u32 {
+    900 // 15 minutes
+}
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -70,6 +75,28 @@ impl Default for Preferences {
             focus_mode_default: false,
             ask_thinking_on_close: true,
             editor_font_size: default_editor_font_size(),
+            encryption_idle_timeout_secs: default_idle_lock(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MappingSection {
+    #[serde(default = "default_mode")]
+    pub mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main_note: Option<String>,
+}
+
+fn default_mode() -> String {
+    "mapped".into()
+}
+
+impl Default for MappingSection {
+    fn default() -> Self {
+        Self {
+            mode: default_mode(),
+            main_note: None,
         }
     }
 }
@@ -82,11 +109,14 @@ pub struct WorkspaceConfig {
     pub sync: SyncSection,
     #[serde(default)]
     pub preferences: Preferences,
+    #[serde(default)]
+    pub mapping: MappingSection,
 }
 
 const YARROW_DIR: &str = ".yarrow";
 const CONFIG_FILE: &str = "config.toml";
 const CREDENTIALS_FILE: &str = "credentials.toml";
+const SECURITY_FILE: &str = "security.toml";
 const NOTES_DIR: &str = "notes";
 const SCRATCHPAD_FILE: &str = "scratchpad.md";
 const INDEX_FILE: &str = "index.json";
@@ -115,6 +145,38 @@ pub fn notes_dir(root: &Path) -> PathBuf {
 
 pub fn scratchpad_path(root: &Path) -> PathBuf {
     yarrow_dir(root).join(SCRATCHPAD_FILE)
+}
+
+pub fn security_path(root: &Path) -> PathBuf {
+    yarrow_dir(root).join(SECURITY_FILE)
+}
+
+pub fn read_security(root: &Path) -> Result<Option<crate::crypto::WorkspaceEnvelope>> {
+    let path = security_path(root);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(path)?;
+    let env: crate::crypto::WorkspaceEnvelope = toml::from_str(&raw)?;
+    if env.enabled { Ok(Some(env)) } else { Ok(None) }
+}
+
+pub fn write_security(root: &Path, env: &crate::crypto::WorkspaceEnvelope) -> Result<()> {
+    let path = security_path(root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let raw = toml::to_string_pretty(env)?;
+    std::fs::write(path, raw)?;
+    Ok(())
+}
+
+pub fn clear_security(root: &Path) -> Result<()> {
+    let path = security_path(root);
+    if path.exists() {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
 }
 
 pub fn templates_dir(root: &Path) -> PathBuf {
@@ -187,17 +249,25 @@ fn write_credentials(root: &Path, creds: &Credentials) -> Result<()> {
 }
 
 /// Initialize a new Yarrow workspace at `root`.
-/// - `git init`
-/// - writes `.yarrow/config.toml`
-/// - writes `.gitignore`
-/// - creates `notes/getting-started.md`
-/// - makes the initial checkpoint
-pub fn init(root: &Path, workspace_name: &str) -> Result<WorkspaceConfig> {
+///
+/// `mode` is "mapped" (branch path mapping enabled, default) or "basic".
+/// When `starting_note_title` is provided AND mode is mapped, a note with that
+/// title is created and recorded as the workspace's `main_note`. Otherwise the
+/// usual `getting-started.md` seed is written.
+pub fn init(
+    root: &Path,
+    workspace_name: &str,
+    mode: &str,
+    starting_note_title: Option<&str>,
+) -> Result<WorkspaceConfig> {
     std::fs::create_dir_all(root)?;
 
     let repo = git::init_workspace(root)?;
-    // Initial default branch: ensure we have "main" once a commit is made.
-    // We'll create the initial commit and then (if needed) rename HEAD.
+
+    let mapping = MappingSection {
+        mode: if mode == "basic" { "basic".into() } else { "mapped".into() },
+        ..MappingSection::default()
+    };
 
     let config = WorkspaceConfig {
         workspace: WorkspaceSection {
@@ -206,6 +276,7 @@ pub fn init(root: &Path, workspace_name: &str) -> Result<WorkspaceConfig> {
         },
         sync: SyncSection::default(),
         preferences: Preferences::default(),
+        mapping,
     };
 
     std::fs::create_dir_all(yarrow_dir(root))?;
@@ -213,10 +284,27 @@ pub fn init(root: &Path, workspace_name: &str) -> Result<WorkspaceConfig> {
     write_config(root, &config)?;
     std::fs::write(root.join(".gitignore"), GITIGNORE)?;
 
-    // Seed note
-    let seed = crate::notes::seed_note_markdown();
-    let seed_path = notes_dir(root).join("getting-started.md");
-    std::fs::write(&seed_path, seed)?;
+    let mut config = config;
+    if config.mapping.mode == "mapped" {
+        if let Some(title) = starting_note_title.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            let note = crate::notes::create(root, title)?;
+            config.mapping.main_note = Some(note.slug.clone());
+            write_config(root, &config)?;
+        } else {
+            let seed = crate::notes::seed_note_markdown();
+            let seed_path = notes_dir(root).join("getting-started.md");
+            std::fs::write(&seed_path, seed)?;
+            config.mapping.main_note = Some("getting-started".into());
+            write_config(root, &config)?;
+        }
+    } else {
+        let seed = crate::notes::seed_note_markdown();
+        let seed_path = notes_dir(root).join("getting-started.md");
+        std::fs::write(&seed_path, seed)?;
+    }
+
+    // Seed default templates (ignore errors — templates are a convenience).
+    let _ = crate::templates::seed_defaults(root);
 
     // Initial checkpoint
     git::checkpoint(&repo, "checkpoint: workspace created")?;
@@ -245,5 +333,8 @@ pub fn open(root: &Path) -> Result<WorkspaceConfig> {
     if !is_yarrow_workspace(root) {
         return Err(YarrowError::NoWorkspace);
     }
+    // Back-fill default templates for workspaces created before 1.0.0 so the
+    // palette's "New from template…" list is non-empty on first upgrade.
+    let _ = crate::templates::seed_defaults(root);
     read_config(root)
 }

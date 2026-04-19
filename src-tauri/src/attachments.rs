@@ -23,10 +23,9 @@ pub const ATTACHMENTS_DIR: &str = "attachments";
 /// this to recognise `![](attachments/abc.png)` lines for inline preview.
 pub const MARKDOWN_PREFIX: &str = "attachments/";
 
-/// Hard cap on a single attachment — 50 MB is enough for images, PDFs, and
-/// audio clips the app is plausibly used for, while preventing a paste/drop
-/// from spiking RAM. A note workspace isn't a media library.
-pub const MAX_ATTACHMENT_BYTES: usize = 50 * 1024 * 1024;
+/// Hard cap on a single attachment. A note workspace isn't a media library —
+/// 10 MB covers typical images and PDFs while keeping sync payloads sane.
+pub const MAX_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AttachmentRef {
@@ -123,9 +122,14 @@ fn sanitize_alt_text(raw: &str) -> String {
     let cleaned: String = raw
         .chars()
         .map(|c| {
-            if c == '\n' || c == '\r' || c == '\t' {
-                ' '
-            } else if matches!(c, '`' | '[' | ']' | '(' | ')' | '|' | '<' | '>' | '"' | '\\') {
+            // Collapse whitespace control characters AND the markdown link
+            // metacharacters to a space — either would break the emitted
+            // `![alt](path)` if left in place.
+            if c == '\n'
+                || c == '\r'
+                || c == '\t'
+                || matches!(c, '`' | '[' | ']' | '(' | ')' | '|' | '<' | '>' | '"' | '\\')
+            {
                 ' '
             } else {
                 c

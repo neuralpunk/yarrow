@@ -33,7 +33,11 @@ pub fn search(root: &Path, query: &str, limit: usize) -> Result<Vec<SearchHit>> 
             Err(_) => continue,
         };
         let title_lower = note.frontmatter.title.to_lowercase();
-        let body_lower = note.body.to_lowercase();
+        // Encrypted bodies are opaque ciphertext at rest — matching against
+        // base64 would produce false positives. Fall back to title + tags +
+        // slug only, per the open question in the 1.0.0 spec.
+        let searchable_body = if note.frontmatter.encrypted { String::new() } else { note.body.clone() };
+        let body_lower = searchable_body.to_lowercase();
         let slug_lower = note.slug.to_lowercase();
 
         let mut score = 0i32;
@@ -60,7 +64,11 @@ pub fn search(root: &Path, query: &str, limit: usize) -> Result<Vec<SearchHit>> 
             continue;
         }
 
-        let snippet = extract_snippet(&note.body, &q_lower, &terms);
+        let snippet = if note.frontmatter.encrypted {
+            "🔒 encrypted — unlock to preview".to_string()
+        } else {
+            extract_snippet(&note.body, &q_lower, &terms)
+        };
         hits.push(SearchHit {
             slug: note.slug.clone(),
             title: if note.frontmatter.title.is_empty() {
@@ -73,7 +81,7 @@ pub fn search(root: &Path, query: &str, limit: usize) -> Result<Vec<SearchHit>> 
         });
     }
 
-    hits.sort_by(|a, b| b.score.cmp(&a.score));
+    hits.sort_by_key(|h| std::cmp::Reverse(h.score));
     hits.truncate(limit);
     Ok(hits)
 }

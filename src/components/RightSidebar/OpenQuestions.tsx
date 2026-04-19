@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { OpenQuestion } from "../../lib/forkDetection";
 import { HelpIcon } from "../../lib/icons";
 
@@ -6,7 +7,7 @@ interface Props {
   onJump: (line: number) => void;
 }
 
-export default function OpenQuestions({ questions, onJump }: Props) {
+function OpenQuestionsInner({ questions, onJump }: Props) {
   if (questions.length === 0) return null;
   return (
     <div className="border-t border-bd px-3 py-3">
@@ -17,6 +18,7 @@ export default function OpenQuestions({ questions, onJump }: Props) {
         <span
           className="y-tip text-t3 inline-flex"
           data-tip="Lines that start with ?? in your note"
+          data-tip-align="right"
         >
           <HelpIcon />
         </span>
@@ -39,3 +41,5 @@ export default function OpenQuestions({ questions, onJump }: Props) {
     </div>
   );
 }
+
+export default memo(OpenQuestionsInner);

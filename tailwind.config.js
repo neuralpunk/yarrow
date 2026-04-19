@@ -27,16 +27,15 @@ export default {
         link:     "var(--link)",
       },
       fontFamily: {
-        serif: ['Oranienbaum', 'ui-serif', 'Georgia', 'serif'],
-        sans:  ['Figtree', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        serif: ['"Source Serif 4"', 'ui-serif', 'Georgia', 'serif'],
+        sans:  ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono:  ['"JetBrains Mono"', 'ui-monospace', 'Menlo', 'monospace'],
       },
       fontSize: {
-        // tuned for anti-aliased legibility at small sizes
         "2xs": ["12px", "16px"],
         xs:    ["13px", "18px"],
         sm:    ["14px", "20px"],
-        base:  ["15px", "23px"],
+        base:  ["17px", "28px"],
       },
       keyframes: {
         fadeIn: {
@@ -56,12 +55,17 @@ export default {
           "0%, 100%": { opacity: 1 },
           "50%": { opacity: 0.4 },
         },
+        slideInRight: {
+          "0%": { opacity: 0, transform: "translateX(16px)" },
+          "100%": { opacity: 1, transform: "translateX(0)" },
+        },
       },
       animation: {
-        fadeIn:    "fadeIn 200ms ease-out",
-        slideUp:   "slideUp 220ms ease-out",
-        forkSplit: "forkSplit 900ms ease-out forwards",
-        pulse2:    "pulse2 1.6s ease-in-out infinite",
+        fadeIn:       "fadeIn 200ms ease-out",
+        slideUp:      "slideUp 220ms ease-out",
+        forkSplit:    "forkSplit 900ms ease-out forwards",
+        pulse2:       "pulse2 1.6s ease-in-out infinite",
+        slideInRight: "slideInRight 180ms ease-out",
       },
     },
   },

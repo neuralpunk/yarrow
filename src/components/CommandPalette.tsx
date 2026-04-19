@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/tauri";
-import type { NoteSummary, PathInfo, SearchHit } from "../lib/types";
+import type { EncryptionStatus, NoteSummary, PathInfo, SearchHit, TagCount } from "../lib/types";
 import {
   SearchIcon,
   CommandIcon,
@@ -12,7 +12,7 @@ import {
 import { SK } from "../lib/platform";
 
 interface Action {
-  kind: "command" | "note" | "path" | "search";
+  kind: "command" | "note" | "path" | "search" | "tag" | "template";
   key: string;
   label: string;
   sublabel?: string;
@@ -37,6 +37,21 @@ interface Props {
   onConnect: () => void;
   onOpenHistory: () => void;
   onJumpToday: () => void;
+  tags?: TagCount[];
+  onFilterTag?: (tag: string) => void;
+  templates?: { name: string; label: string }[];
+  onNewFromTemplate?: (name: string) => void;
+  onOpenTemplatePicker?: () => void;
+  encryption?: EncryptionStatus;
+  activeIsEncrypted?: boolean;
+  onLockEncryption?: () => void;
+  onUnlockEncryption?: () => void;
+  onEncryptActiveNote?: () => void;
+  onDecryptActiveNote?: () => void;
+  onOpenSecurity?: () => void;
+  onSwitchWorkspace?: () => void;
+  /** When false, path + connect commands are filtered out of the palette. */
+  mappingEnabled?: boolean;
 }
 
 export default function CommandPalette(props: Props) {
@@ -80,7 +95,23 @@ export default function CommandPalette(props: Props) {
   }, [q, open]);
 
   const actions: Action[] = useMemo(() => {
-    const trimmed = q.trim().toLowerCase();
+    const rawTrimmed = q.trim();
+    const trimmed = rawTrimmed.toLowerCase();
+    const isTagMode = rawTrimmed.startsWith("#");
+    const tagQuery = isTagMode ? rawTrimmed.slice(1).toLowerCase() : "";
+
+    if (isTagMode && props.tags) {
+      return props.tags
+        .filter((t) => !tagQuery || t.tag.toLowerCase().includes(tagQuery))
+        .slice(0, 20)
+        .map<Action>((t) => ({
+          kind: "tag",
+          key: `tag-${t.tag}`,
+          label: `#${t.tag}`,
+          sublabel: `${t.count} note${t.count === 1 ? "" : "s"} — filter the list`,
+          run: () => { onClose(); props.onFilterTag?.(t.tag); },
+        }));
+    }
 
     const commands: Action[] = [
       {
@@ -90,6 +121,15 @@ export default function CommandPalette(props: Props) {
         hint: SK.newNote,
         run: () => { onClose(); props.onNewNote(); },
       },
+      ...(props.onOpenTemplatePicker
+        ? [{
+            kind: "command" as const,
+            key: "new-from-template",
+            label: "New note from template…",
+            sublabel: "pick a scaffold: meeting notes, book notes, morning pages…",
+            run: () => { onClose(); props.onOpenTemplatePicker!(); },
+          }]
+        : []),
       {
         kind: "command",
         key: "jump-today",
@@ -98,21 +138,25 @@ export default function CommandPalette(props: Props) {
         hint: SK.jumpToday,
         run: () => { onClose(); props.onJumpToday(); },
       },
-      {
-        kind: "command",
-        key: "new-direction",
-        label: "Explore a new direction",
-        sublabel: "branch this note's path so you can try something without losing what you have",
-        hint: SK.newDirection,
-        run: () => { onClose(); props.onNewDirection(); },
-      },
-      {
-        kind: "command",
-        key: "connect",
-        label: "Connect this note to another",
-        sublabel: "supports · challenges · came from · open question",
-        run: () => { onClose(); props.onConnect(); },
-      },
+      ...(props.mappingEnabled !== false
+        ? [
+            {
+              kind: "command" as const,
+              key: "new-direction",
+              label: "Explore a new direction",
+              sublabel: "branch this note's path so you can try something without losing what you have",
+              hint: SK.newDirection,
+              run: () => { onClose(); props.onNewDirection(); },
+            },
+            {
+              kind: "command" as const,
+              key: "connect",
+              label: "Connect this note to another",
+              sublabel: "supports · challenges · came from · open question",
+              run: () => { onClose(); props.onConnect(); },
+            },
+          ]
+        : []),
       {
         kind: "command",
         key: "history",
@@ -139,7 +183,65 @@ export default function CommandPalette(props: Props) {
         label: "Sync workspace",
         run: () => { onClose(); props.onSync(); },
       },
+      ...(props.onSwitchWorkspace
+        ? [{
+            kind: "command" as const,
+            key: "switch-workspace",
+            label: "Switch workspace…",
+            sublabel: "jump to another workspace or start a new one",
+            hint: SK.switchWorkspace,
+            run: () => { onClose(); props.onSwitchWorkspace!(); },
+          }]
+        : []),
     ];
+
+    // ── encryption commands (only surfaced when relevant) ──
+    const enc = props.encryption;
+    if (enc) {
+      if (!enc.enabled) {
+        commands.push({
+          kind: "command",
+          key: "enc-setup",
+          label: "Set up local encryption…",
+          sublabel: "per-note, opt-in. Frontmatter stays plaintext.",
+          run: () => { onClose(); props.onOpenSecurity?.(); },
+        });
+      } else if (!enc.unlocked) {
+        commands.push({
+          kind: "command",
+          key: "enc-unlock",
+          label: "Unlock encrypted notes",
+          sublabel: "enter your workspace password",
+          run: () => { onClose(); props.onUnlockEncryption?.(); },
+        });
+      } else {
+        commands.push({
+          kind: "command",
+          key: "enc-lock",
+          label: "Lock encrypted notes",
+          sublabel: "zeroes the session key until you unlock again",
+          hint: "⌃L",
+          run: () => { onClose(); props.onLockEncryption?.(); },
+        });
+        if (props.activeIsEncrypted) {
+          commands.push({
+            kind: "command",
+            key: "enc-decrypt-this",
+            label: "Decrypt this note",
+            sublabel: "rewrite body as plaintext",
+            run: () => { onClose(); props.onDecryptActiveNote?.(); },
+          });
+        } else {
+          commands.push({
+            kind: "command",
+            key: "enc-encrypt-this",
+            label: "Encrypt this note",
+            sublabel: "seal the body; frontmatter stays legible",
+            run: () => { onClose(); props.onEncryptActiveNote?.(); },
+          });
+        }
+      }
+    }
     const filterCommands = trimmed
       ? commands.filter((c) =>
           (c.label + " " + (c.sublabel ?? "")).toLowerCase().includes(trimmed),
@@ -157,17 +259,19 @@ export default function CommandPalette(props: Props) {
         run: () => { onClose(); props.onSelectNote(n.slug); },
       }));
 
-    const pathActions: Action[] = props.paths
-      .filter((p) => !p.is_current)
-      .filter((p) => !trimmed || p.name.toLowerCase().includes(trimmed))
-      .slice(0, 4)
-      .map((p) => ({
-        kind: "path" as const,
-        key: `path-${p.name}`,
-        label: `Switch to path: ${p.name}`,
-        sublabel: "follow this direction",
-        run: () => { onClose(); props.onSwitchPath(p.name); },
-      }));
+    const pathActions: Action[] = props.mappingEnabled === false
+      ? []
+      : props.paths
+          .filter((p) => !p.is_current)
+          .filter((p) => !trimmed || p.name.toLowerCase().includes(trimmed))
+          .slice(0, 4)
+          .map((p) => ({
+            kind: "path" as const,
+            key: `path-${p.name}`,
+            label: `Switch to path: ${p.name}`,
+            sublabel: "follow this direction",
+            run: () => { onClose(); props.onSwitchPath(p.name); },
+          }));
 
     const searchActions: Action[] = hits.map((h) => ({
       kind: "search" as const,
@@ -178,11 +282,22 @@ export default function CommandPalette(props: Props) {
       run: () => { onClose(); props.onSelectNote(h.slug); },
     }));
 
+    const templateActions: Action[] = (props.templates ?? [])
+      .filter((t) => !trimmed || (t.label + " " + t.name).toLowerCase().includes(trimmed))
+      .slice(0, 6)
+      .map<Action>((t) => ({
+        kind: "template",
+        key: `tpl-${t.name}`,
+        label: `New note from template: ${t.label}`,
+        sublabel: "scaffolds a new note using this template",
+        run: () => { onClose(); props.onNewFromTemplate?.(t.name); },
+      }));
+
     // Ordering: commands (if query is short or matches), then notes, then search, then paths
     if (!trimmed) {
-      return [...filterCommands, ...noteActions];
+      return [...filterCommands, ...templateActions, ...noteActions];
     }
-    return [...filterCommands, ...noteActions, ...searchActions, ...pathActions];
+    return [...filterCommands, ...templateActions, ...noteActions, ...searchActions, ...pathActions];
   }, [q, hits, props, onClose]);
 
   useEffect(() => {
@@ -294,5 +409,7 @@ function iconFor(kind: Action["kind"]) {
     case "note": return <NoteIcon size={13} />;
     case "path": return <NewDirectionIcon size={13} />;
     case "search": return <SearchIcon size={13} />;
+    case "tag": return <span className="text-[13px] font-mono leading-none">#</span>;
+    case "template": return <NoteIcon size={13} />;
   }
 }

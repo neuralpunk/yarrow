@@ -1,11 +1,13 @@
 // All git2-rs operations live here. No other module calls git2 directly.
 // User-facing vocabulary: "checkpoint" = commit, "path" = branch, "sync" = push/pull.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use git2::{
-    BranchType, Cred, FetchOptions, IndexAddOption, MergeOptions, ObjectType, Oid,
+    BranchType, Commit, Cred, FetchOptions, IndexAddOption, MergeOptions, ObjectType, Oid,
     PushOptions, RemoteCallbacks, Repository, RepositoryState, ResetType, Signature, Sort,
+    Tree, TreeBuilder,
 };
 use serde::{Deserialize, Serialize};
 
@@ -47,6 +49,71 @@ pub fn checkpoint(repo: &Repository, message: &str) -> Result<Oid> {
     if let Some(parent) = &parent_commit {
         if parent.tree()?.id() == tree_id {
             return Ok(parent.id());
+        }
+
+        // Oscillation coalescing. A very common pattern:
+        //   1. User types a space        → save → commit A (adds " ")
+        //   2. User backspaces the space → save → commit B (removes " ")
+        // Commit A and commit B both have real diffs, but the net effect
+        // is zero. If the working tree matches any recent local ancestor,
+        // roll HEAD back to that ancestor instead of stacking a new
+        // commit. Result: no history entry at all for paired edits that
+        // end back where they started.
+        //
+        // Guardrails:
+        //   • Only walk linear ancestry (no merge commits) — we can't
+        //     safely collapse one parent of a merge without losing the
+        //     other.
+        //   • Only coalesce past commits that aren't yet on a remote.
+        //     Anything published is immutable as far as we're concerned
+        //     — rewriting it would force-push on next sync.
+        //   • Small window (5 commits) so typical oscillation is caught
+        //     without infinite history walks.
+        const MAX_COALESCE: usize = 5;
+
+        // Collect remote-tracking tips so we can spot commits that have
+        // already been published. `refs/remotes/*` covers every remote.
+        let mut published: Vec<Oid> = Vec::new();
+        if let Ok(iter) = repo.references_glob("refs/remotes/*") {
+            for r in iter.flatten() {
+                if let Ok(c) = r.peel_to_commit() {
+                    published.push(c.id());
+                }
+            }
+        }
+        let is_published = |oid: Oid| -> bool {
+            published.iter().any(|&rem| {
+                rem == oid || repo.graph_descendant_of(rem, oid).unwrap_or(false)
+            })
+        };
+
+        // Skip coalescing entirely during a merge: mid-merge the working
+        // tree can coincidentally match a pre-merge ancestor, and rolling
+        // HEAD back there would destroy the in-progress merge state.
+        let in_merge = !matches!(repo.state(), RepositoryState::Clean);
+
+        // Only coalesce if HEAD itself isn't already pushed — if it is,
+        // we'd rewrite published history on the next sync.
+        if !in_merge && !is_published(parent.id()) && parent.parent_count() == 1 {
+            let mut cursor = parent.parent(0).ok();
+            for _ in 0..MAX_COALESCE {
+                let Some(ancestor) = cursor else { break; };
+                if ancestor.tree()?.id() == tree_id {
+                    // Match. Roll the current branch ref back to this
+                    // ancestor and return — no new commit, no diff.
+                    let target = ancestor.id();
+                    if let Ok(mut head_ref) = repo.head() {
+                        // `head_ref` resolves to the branch ref (e.g.
+                        // refs/heads/main) so set_target moves the
+                        // branch, not HEAD-as-symbolic.
+                        let _ = head_ref
+                            .set_target(target, "yarrow: coalesce oscillating save");
+                    }
+                    return Ok(target);
+                }
+                if ancestor.parent_count() != 1 { break; }
+                cursor = ancestor.parent(0).ok();
+            }
         }
     }
 
@@ -100,6 +167,102 @@ pub fn create_path(repo: &Repository, name: &str) -> Result<()> {
     repo.branch(&sanitized, &head_commit, false)?;
     switch_path(repo, &sanitized)?;
     Ok(())
+}
+
+/// Same as `create_path`, but returns the sanitized branch name it produced
+/// so the caller can address it (e.g. to write meta immediately after fork).
+pub fn create_path_named(repo: &Repository, name: &str) -> Result<String> {
+    let sanitized = sanitize_branch_name(name);
+    let head_commit = repo.head()?.peel_to_commit()?;
+    repo.branch(&sanitized, &head_commit, false)?;
+    switch_path(repo, &sanitized)?;
+    Ok(sanitized)
+}
+
+/// Commit a single file change (add/update or delete) onto a branch without
+/// touching the working tree or HEAD. Used by "this note applies / doesn't
+/// apply on this path" toggles so the user doesn't have to switch branches
+/// just to edit the membership of a note.
+///
+/// Fails if `branch` is the *current* branch — for that, the normal save +
+/// autocheckpoint path is correct and avoids working-tree drift.
+pub fn branch_commit_file_change(
+    repo: &Repository,
+    branch: &str,
+    relpath: &str,
+    content: Option<&[u8]>,
+    message: &str,
+) -> Result<Oid> {
+    if current_path_name(repo).ok().as_deref() == Some(branch) {
+        return Err(YarrowError::Other(
+            "This path is the one you're on — edit the note directly instead.".into(),
+        ));
+    }
+
+    let branch_ref = repo.find_branch(branch, BranchType::Local)?;
+    let tip_commit = branch_ref.get().peel_to_commit()?;
+    let tip_tree = tip_commit.tree()?;
+
+    // In-memory index: mutate the tree without touching disk.
+    let mut index = git2::Index::new()?;
+    index.read_tree(&tip_tree)?;
+
+    match content {
+        Some(bytes) => {
+            let blob_oid = repo.blob(bytes)?;
+            let entry = git2::IndexEntry {
+                ctime: git2::IndexTime::new(0, 0),
+                mtime: git2::IndexTime::new(0, 0),
+                dev: 0,
+                ino: 0,
+                mode: 0o100644,
+                uid: 0,
+                gid: 0,
+                file_size: bytes.len() as u32,
+                id: blob_oid,
+                flags: 0,
+                flags_extended: 0,
+                path: relpath.as_bytes().to_vec(),
+            };
+            index.add(&entry)?;
+        }
+        None => {
+            // Best-effort remove — if the path isn't indexed, nothing to do.
+            let _ = index.remove_path(Path::new(relpath));
+        }
+    }
+
+    let new_tree_oid = index.write_tree_to(repo)?;
+    let new_tree = repo.find_tree(new_tree_oid)?;
+    let sig = signature()?;
+    let ref_name = format!("refs/heads/{}", branch);
+    let new_commit_oid = repo.commit(
+        Some(&ref_name),
+        &sig,
+        &sig,
+        message,
+        &new_tree,
+        &[&tip_commit],
+    )?;
+    Ok(new_commit_oid)
+}
+
+/// Read a file at the tip of a specific branch, bypassing the working tree.
+/// Returns `None` if the branch doesn't exist, the file isn't present at
+/// that tip, or reading the blob fails. Used to aggregate per-branch
+/// metadata (e.g. path conditions) without switching branches.
+pub fn read_file_at_branch(
+    repo: &Repository,
+    branch: &str,
+    relpath: &str,
+) -> Option<Vec<u8>> {
+    let b = repo.find_branch(branch, BranchType::Local).ok()?;
+    let commit = b.get().peel_to_commit().ok()?;
+    let tree = commit.tree().ok()?;
+    let entry = tree.get_path(Path::new(relpath)).ok()?;
+    let object = entry.to_object(repo).ok()?;
+    let blob = object.as_blob()?;
+    Some(blob.content().to_vec())
 }
 
 pub fn switch_path(repo: &Repository, name: &str) -> Result<()> {
@@ -465,9 +628,9 @@ fn sanitize_branch_name(name: &str) -> String {
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '/' {
                 c.to_ascii_lowercase()
-            } else if c.is_whitespace() {
-                '-'
             } else {
+                // Whitespace + anything else collapses to a dash so the
+                // branch name stays safe for refs/heads/* on every filesystem.
                 '-'
             }
         })
@@ -730,4 +893,429 @@ pub fn finalize_merge(repo: &Repository, extra_note: Option<&str>) -> Result<Oid
     )?;
     repo.cleanup_state()?;
     Ok(oid)
+}
+
+// ───────────────────── history-rewrite for encryption ─────────────────────
+//
+// When a user encrypts a note, the current commit holds ciphertext but every
+// prior commit still contains the plaintext blob in `.git/objects`. Anyone
+// with filesystem access can `git log -p` the file and recover the clear
+// text. This breaks the encryption story.
+//
+// `rewrite_file_history` walks every local branch, rebuilds each commit so
+// the target file's blob is replaced by a caller-supplied transform, and
+// re-points every ref to the rewritten tip. After the walk, old commit
+// objects are unreachable; `gc_unreachable` then asks git (best-effort) to
+// prune them from the object store.
+//
+// Tradeoffs:
+//   • Every commit SHA on every branch shifts. A remote with the old
+//     history will reject `sync` until the user force-pushes. This is a
+//     deliberate user-facing tradeoff the encrypt command surfaces.
+//   • Tags and remote-tracking refs are not rewritten. Yarrow doesn't
+//     create tags. Remote-tracking refs will diverge and get fixed on the
+//     next sync.
+//   • Reflogs are cleared by the caller via `clear_reflogs` so they can't
+//     be used to resurrect the old commits.
+
+/// Rewrite every commit reachable from any local branch so that the blob at
+/// `relpath` is replaced by `transform(old_bytes)` whenever it appears.
+///
+/// `transform` returns `Ok(Some(new_bytes))` to substitute, `Ok(None)` to
+/// leave the blob untouched (e.g. commits where the file is already
+/// encrypted). Commits where the file doesn't exist in the tree at all are
+/// still rewritten (their parents may have been remapped), but the tree for
+/// that commit is reused as-is.
+///
+/// Returns the number of commits rewritten.
+pub fn rewrite_file_history<F>(
+    repo: &Repository,
+    relpath: &Path,
+    mut transform: F,
+) -> Result<usize>
+where
+    F: FnMut(&[u8]) -> Result<Option<Vec<u8>>>,
+{
+    // Split the path into string components once — git's internal paths are
+    // always forward-slashed regardless of host OS.
+    let components: Vec<String> = relpath
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    if components.is_empty() {
+        return Ok(0);
+    }
+
+    // Collect every local branch tip up front. We rewrite across *all*
+    // branches so historical paths don't become a decryption oracle.
+    let branch_tips: Vec<(String, Oid)> = repo
+        .branches(Some(BranchType::Local))?
+        .filter_map(|b| b.ok())
+        .filter_map(|(branch, _)| {
+            let name = branch.name().ok().flatten()?.to_string();
+            let oid = branch.get().peel_to_commit().ok()?.id();
+            Some((name, oid))
+        })
+        .collect();
+
+    if branch_tips.is_empty() {
+        return Ok(0);
+    }
+
+    // Walk every reachable commit in parents-first order so a commit's new
+    // parents already exist in `map` by the time we rebuild it.
+    let mut revwalk = repo.revwalk()?;
+    revwalk.set_sorting(Sort::TOPOLOGICAL | Sort::REVERSE)?;
+    for (_, oid) in &branch_tips {
+        revwalk.push(*oid)?;
+    }
+
+    let mut map: HashMap<Oid, Oid> = HashMap::new();
+    let mut rewritten = 0usize;
+
+    for maybe in revwalk {
+        let old_oid = maybe?;
+        let commit = repo.find_commit(old_oid)?;
+        let old_tree = commit.tree()?;
+
+        // Rebuild the tree, substituting the target blob when present.
+        let new_tree_oid = rebuild_tree_with_blob(
+            repo,
+            &old_tree,
+            &components,
+            0,
+            &mut transform,
+        )?;
+        let new_tree = repo.find_tree(new_tree_oid)?;
+
+        // Map parents — any parent we've seen got rewritten; use the new
+        // oid. A root commit simply has no parents.
+        let new_parent_oids: Vec<Oid> = commit
+            .parents()
+            .map(|p| *map.get(&p.id()).unwrap_or(&p.id()))
+            .collect();
+        let new_parents: Vec<Commit> = new_parent_oids
+            .iter()
+            .map(|o| repo.find_commit(*o))
+            .collect::<std::result::Result<_, _>>()?;
+        let parent_refs: Vec<&Commit> = new_parents.iter().collect();
+
+        let new_oid = repo.commit(
+            None, // do not move any ref yet
+            &commit.author(),
+            &commit.committer(),
+            commit.message().unwrap_or(""),
+            &new_tree,
+            &parent_refs,
+        )?;
+
+        if new_oid != old_oid {
+            rewritten += 1;
+        }
+        map.insert(old_oid, new_oid);
+    }
+
+    // Re-point every branch to its rewritten tip.
+    for (name, old_tip) in &branch_tips {
+        if let Some(&new_tip) = map.get(old_tip) {
+            if new_tip == *old_tip {
+                continue;
+            }
+            let mut branch = repo.find_branch(name, BranchType::Local)?;
+            branch
+                .get_mut()
+                .set_target(new_tip, "yarrow: seal encrypted history")?;
+        }
+    }
+
+    // HEAD is symbolic (points at a branch name), so moving the branch also
+    // moves HEAD. If HEAD is detached we update it explicitly.
+    if let Ok(head) = repo.head() {
+        if !head.is_branch() {
+            if let Some(old_head_oid) = head.target() {
+                if let Some(&new_head_oid) = map.get(&old_head_oid) {
+                    repo.set_head_detached(new_head_oid)?;
+                }
+            }
+        }
+    }
+
+    Ok(rewritten)
+}
+
+/// Recursive helper: return the oid of a new tree where the blob at
+/// `components[depth..]` has been replaced via `transform`. When the file
+/// isn't in the tree we return the original tree oid unchanged (callers can
+/// still use this — they pay a tiny lookup cost but no write).
+fn rebuild_tree_with_blob<F>(
+    repo: &Repository,
+    tree: &Tree,
+    components: &[String],
+    depth: usize,
+    transform: &mut F,
+) -> Result<Oid>
+where
+    F: FnMut(&[u8]) -> Result<Option<Vec<u8>>>,
+{
+    let entry_name = &components[depth];
+    let entry = match tree.get_name(entry_name) {
+        Some(e) => e,
+        None => return Ok(tree.id()), // file doesn't exist at this commit
+    };
+
+    if depth == components.len() - 1 {
+        // Final component — should be the blob itself.
+        if entry.kind() != Some(ObjectType::Blob) {
+            return Ok(tree.id());
+        }
+        let blob = repo.find_blob(entry.id())?;
+        let replacement = transform(blob.content())?;
+        let new_blob_bytes = match replacement {
+            Some(b) => b,
+            None => return Ok(tree.id()),
+        };
+        let new_blob_oid = repo.blob(&new_blob_bytes)?;
+        let mut builder: TreeBuilder = repo.treebuilder(Some(tree))?;
+        builder.insert(entry_name, new_blob_oid, entry.filemode())?;
+        Ok(builder.write()?)
+    } else {
+        // Intermediate component — descend into the subtree.
+        if entry.kind() != Some(ObjectType::Tree) {
+            return Ok(tree.id());
+        }
+        let subtree = repo.find_tree(entry.id())?;
+        let new_subtree_oid =
+            rebuild_tree_with_blob(repo, &subtree, components, depth + 1, transform)?;
+        if new_subtree_oid == subtree.id() {
+            return Ok(tree.id());
+        }
+        let mut builder: TreeBuilder = repo.treebuilder(Some(tree))?;
+        builder.insert(entry_name, new_subtree_oid, entry.filemode())?;
+        Ok(builder.write()?)
+    }
+}
+
+// ───────────────────── history pruning ─────────────────────
+//
+// User-facing "forget old checkpoints." Walks every commit reachable from any
+// local branch and drops ones matching a caller-supplied predicate, splicing
+// kept children onto the dropped commit's mapped parent. Merge commits are
+// never dropped (splicing one side of a merge changes the meaning of the
+// other side).
+//
+// Same rewrite tradeoff as encryption-sealing: SHAs change, so a previously
+// synced remote diverges until the user force-pushes.
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PruneReport {
+    pub removed: usize,
+    pub kept: usize,
+}
+
+/// Rewrite all reachable history, dropping commits where `should_drop` returns
+/// true. Returns how many commits were dropped.
+fn rewrite_history_dropping<F>(repo: &Repository, mut should_drop: F) -> Result<PruneReport>
+where
+    F: FnMut(&Commit, &Tree) -> Result<bool>,
+{
+    let branch_tips: Vec<(String, Oid)> = repo
+        .branches(Some(BranchType::Local))?
+        .filter_map(|b| b.ok())
+        .filter_map(|(branch, _)| {
+            let name = branch.name().ok().flatten()?.to_string();
+            let oid = branch.get().peel_to_commit().ok()?.id();
+            Some((name, oid))
+        })
+        .collect();
+
+    if branch_tips.is_empty() {
+        return Ok(PruneReport { removed: 0, kept: 0 });
+    }
+
+    let mut revwalk = repo.revwalk()?;
+    revwalk.set_sorting(Sort::TOPOLOGICAL | Sort::REVERSE)?;
+    for (_, oid) in &branch_tips {
+        revwalk.push(*oid)?;
+    }
+
+    // For each old oid: Some(new_oid) = replacement, None = dropped with no
+    // remaining parent (happens only when a root commit is dropped).
+    let mut map: HashMap<Oid, Option<Oid>> = HashMap::new();
+    let mut removed = 0usize;
+    let mut kept = 0usize;
+
+    for maybe in revwalk {
+        let old_oid = maybe?;
+        let commit = repo.find_commit(old_oid)?;
+        let tree = commit.tree()?;
+
+        // Resolve each original parent through the map. A parent that was
+        // itself dropped with no replacement contributes nothing.
+        let new_parent_oids: Vec<Oid> = commit
+            .parents()
+            .filter_map(|p| map.get(&p.id()).copied().unwrap_or(Some(p.id())))
+            .collect();
+
+        let is_merge = commit.parent_count() >= 2;
+        let drop_this = !is_merge && should_drop(&commit, &tree)?;
+
+        if drop_this && new_parent_oids.len() <= 1 {
+            // Splice: point children at our single (or zero) parent.
+            map.insert(old_oid, new_parent_oids.into_iter().next());
+            removed += 1;
+            continue;
+        }
+
+        let parents_identical = commit.parent_count() == new_parent_oids.len()
+            && commit
+                .parents()
+                .zip(new_parent_oids.iter())
+                .all(|(p, np)| p.id() == *np);
+        if parents_identical {
+            map.insert(old_oid, Some(old_oid));
+            kept += 1;
+            continue;
+        }
+
+        let new_parent_commits: Vec<Commit> = new_parent_oids
+            .iter()
+            .map(|o| repo.find_commit(*o))
+            .collect::<std::result::Result<_, _>>()?;
+        let parent_refs: Vec<&Commit> = new_parent_commits.iter().collect();
+
+        let new_oid = repo.commit(
+            None,
+            &commit.author(),
+            &commit.committer(),
+            commit.message().unwrap_or(""),
+            &tree,
+            &parent_refs,
+        )?;
+        map.insert(old_oid, Some(new_oid));
+        kept += 1;
+    }
+
+    // Re-point every branch to its rewritten tip. If the tip was dropped with
+    // no replacement (whole branch would disappear), leave it alone.
+    for (name, old_tip) in &branch_tips {
+        match map.get(old_tip) {
+            Some(Some(new_tip)) if *new_tip != *old_tip => {
+                let mut branch = repo.find_branch(name, BranchType::Local)?;
+                branch.get_mut().set_target(*new_tip, "yarrow: prune history")?;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(PruneReport { removed, kept })
+}
+
+/// Drop every checkpoint older than `cutoff_secs` (unix timestamp). Children
+/// of a pruned commit inherit its parent, so the surviving history is still
+/// linear — only the old tail vanishes.
+pub fn prune_older_than(repo: &Repository, cutoff_secs: i64) -> Result<PruneReport> {
+    rewrite_history_dropping(repo, |commit, _tree| {
+        Ok(commit.time().seconds() < cutoff_secs)
+    })
+}
+
+/// Drop checkpoints whose note bodies were all empty — these typically come
+/// from "new note" creations and scaffolds that the user hadn't filled in yet.
+pub fn prune_empty_content(repo: &Repository) -> Result<PruneReport> {
+    rewrite_history_dropping(repo, |_commit, tree| Ok(tree_has_empty_notes(repo, tree)))
+}
+
+/// True if the tree has at least one `notes/*.md` file AND every such file's
+/// body (content after the `---` frontmatter) is whitespace. A tree with no
+/// notes at all also returns true — those are early setup commits with no
+/// user content.
+fn tree_has_empty_notes(repo: &Repository, tree: &Tree) -> bool {
+    let mut saw_any_note = false;
+    let mut all_empty = true;
+    let _ = tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        let name = entry.name().unwrap_or("");
+        if !name.ends_with(".md") {
+            return git2::TreeWalkResult::Ok;
+        }
+        let full = format!("{}{}", dir, name);
+        if !full.starts_with("notes/") {
+            return git2::TreeWalkResult::Ok;
+        }
+        saw_any_note = true;
+        let Ok(blob) = repo.find_blob(entry.id()) else {
+            return git2::TreeWalkResult::Ok;
+        };
+        let content = String::from_utf8_lossy(blob.content());
+        if note_body_has_content(&content) {
+            all_empty = false;
+            return git2::TreeWalkResult::Abort;
+        }
+        git2::TreeWalkResult::Ok
+    });
+    if !saw_any_note {
+        return true;
+    }
+    all_empty
+}
+
+/// True if the markdown file's body (after frontmatter) contains any
+/// non-whitespace characters.
+fn note_body_has_content(raw: &str) -> bool {
+    let body = if let Some(rest) = raw.strip_prefix("---\n") {
+        match rest.find("\n---\n") {
+            Some(end) => &rest[end + 5..],
+            None => rest,
+        }
+    } else {
+        raw
+    };
+    body.chars().any(|c| !c.is_whitespace())
+}
+
+/// Clear all reflog entries so the old commit oids can't be recovered via
+/// `git reflog`. Called after `rewrite_file_history`.
+pub fn clear_reflogs(repo: &Repository) -> Result<()> {
+    // Enumerate every ref that could have a reflog and drop it entirely.
+    for maybe in repo.references()? {
+        let r = maybe?;
+        if let Some(name) = r.name() {
+            // `reflog_delete` wipes the log file for a ref; ignore "no
+            // reflog" errors (detached HEAD, remote refs without logs, …).
+            let _ = repo.reflog_delete(name);
+        }
+    }
+    let _ = repo.reflog_delete("HEAD");
+    Ok(())
+}
+
+/// Best-effort: ask the system `git` to prune unreachable objects so the
+/// plaintext blobs no longer sit in `.git/objects`. If `git` isn't on PATH
+/// we quietly skip — the rewrite still severed every reference, the loose
+/// objects just linger until the user runs `git gc` themselves.
+pub fn gc_unreachable(repo: &Repository) -> Result<()> {
+    let Some(workdir) = repo.workdir() else {
+        return Ok(());
+    };
+    // `--prune=now` drops all unreachable loose objects immediately.
+    // `--quiet` keeps the subprocess silent on stdout.
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(workdir)
+        .arg("gc")
+        .arg("--prune=now")
+        .arg("--quiet")
+        .status();
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        _ => {
+            // Not a hard failure — the sever is the essential part, gc is
+            // just cleanup. We log but don't propagate.
+            eprintln!(
+                "yarrow: `git gc` unavailable or failed; plaintext objects \
+                 remain loose until the user runs `git gc --prune=now` in \
+                 the workspace."
+            );
+            Ok(())
+        }
+    }
 }

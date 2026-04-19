@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { Graph, LinkType } from "../../lib/types";
-import { LINK_TYPE_LABELS } from "../../lib/types";
 
 function themeColor(name: string, fallback: string): string {
   const v = getComputedStyle(document.documentElement)
@@ -10,25 +9,22 @@ function themeColor(name: string, fallback: string): string {
   return v || fallback;
 }
 
-function linkColor(type: LinkType): string {
-  switch (type) {
-    case "supports": return themeColor("--yel", "#e8b820");
-    case "challenges": return themeColor("--danger", "#d97706");
-    case "came-from": return themeColor("--accent2", "#8b8050");
-    case "open-question": return themeColor("--yeld", "#b8900e");
-  }
-}
-
 interface Props {
   graph: Graph | null;
   activeSlug: string | null;
+  /** The workspace's starting note. Rendered in a distinct color so "home"
+   *  is legible at a glance in every Map view. */
+  mainNoteSlug?: string | null;
   onSelect: (slug: string) => void;
+  /** Fill the parent container instead of using the inline fixed height. */
+  fillHeight?: boolean;
 }
 
 interface Node extends d3.SimulationNodeDatum {
   slug: string;
   title: string;
   isActive: boolean;
+  isMain: boolean;
   distance: number;
   degree: number;
 }
@@ -46,7 +42,7 @@ interface Hover {
 const INLINE_HEIGHT = 300;
 const NODE_MARGIN = 18;
 
-export default function ConnectionGraph({ graph, activeSlug, onSelect }: Props) {
+export default function ConnectionGraph({ graph, activeSlug, mainNoteSlug, onSelect, fillHeight }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   // Close on Escape while expanded
@@ -89,10 +85,11 @@ export default function ConnectionGraph({ graph, activeSlug, onSelect }: Props) 
         key="inline"
         graph={graph}
         activeSlug={activeSlug}
+        mainNoteSlug={mainNoteSlug ?? null}
         onSelect={onSelect}
-        height={INLINE_HEIGHT}
-        expanded={false}
-        onExpand={() => setExpanded(true)}
+        height={fillHeight ? null : INLINE_HEIGHT}
+        expanded={!!fillHeight}
+        onExpand={fillHeight ? undefined : () => setExpanded(true)}
       />
       {expanded && (
         <div
@@ -121,6 +118,7 @@ export default function ConnectionGraph({ graph, activeSlug, onSelect }: Props) 
                 key="expanded"
                 graph={graph}
                 activeSlug={activeSlug}
+                mainNoteSlug={mainNoteSlug ?? null}
                 onSelect={(slug) => { setExpanded(false); onSelect(slug); }}
                 height={null}
                 expanded={true}
@@ -136,13 +134,14 @@ export default function ConnectionGraph({ graph, activeSlug, onSelect }: Props) 
 interface ViewProps {
   graph: Graph;
   activeSlug: string | null;
+  mainNoteSlug: string | null;
   onSelect: (slug: string) => void;
   height: number | null; // null → fill container
   expanded: boolean;
   onExpand?: () => void;
 }
 
-function GraphView({ graph, activeSlug, onSelect, height, expanded, onExpand }: ViewProps) {
+function GraphView({ graph, activeSlug, mainNoteSlug, onSelect, height, expanded, onExpand }: ViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const recenterRef = useRef<() => void>(() => {});
@@ -214,6 +213,7 @@ function GraphView({ graph, activeSlug, onSelect, height, expanded, onExpand }: 
       slug: n.slug,
       title: n.title,
       isActive: n.slug === activeSlug,
+      isMain: !!mainNoteSlug && n.slug === mainNoteSlug,
       distance: distances[n.slug] ?? Infinity,
       degree: degree[n.slug] ?? 0,
     }));
@@ -255,68 +255,26 @@ function GraphView({ graph, activeSlug, onSelect, height, expanded, onExpand }: 
       .attr("viewBox", `0 0 ${width} ${heightPx}`);
     svg.selectAll("*").remove();
 
-    const defs = svg.append("defs");
-    (["supports", "challenges", "came-from", "open-question"] as LinkType[]).forEach((t) => {
-      defs
-        .append("marker")
-        .attr("id", `yarrow-arrow-${t}-${expanded ? "x" : "i"}`)
-        .attr("viewBox", "0 -4 8 8")
-        .attr("refX", 8)
-        .attr("refY", 0)
-        .attr("markerWidth", 6)
-        .attr("markerHeight", 6)
-        .attr("orient", "auto")
-        .append("path")
-        .attr("d", "M0,-4L8,0L0,4")
-        .attr("fill", linkColor(t))
-        .attr("opacity", 0.75);
-    });
-
     const zoomLayer = svg.append("g").attr("class", "zoom-layer");
     const g = zoomLayer.append("g");
 
-    if (activeSlug && visibleNodes.some((n) => n.isActive)) {
-      const guide = themeColor("--bd", "#ddd5a0");
-      g.append("circle")
-        .attr("cx", cx).attr("cy", cy).attr("r", ringR1)
-        .attr("fill", "none").attr("stroke", guide).attr("stroke-dasharray", "2 4").attr("opacity", 0.35);
-      g.append("circle")
-        .attr("cx", cx).attr("cy", cy).attr("r", ringR2)
-        .attr("fill", "none").attr("stroke", guide).attr("stroke-dasharray", "2 4").attr("opacity", 0.25);
-    }
-
+    // Editorial style: one quiet edge color, no arrows, no direction. The
+    // typed-link metadata still exists in the data but the map is about
+    // *proximity*, not grammar. Dashed stays for open-questions so that the
+    // single exception to "everything is connected" reads at a glance.
+    const edgeColor = themeColor("--yel", "#7A4E6E");
     const linkSel = g
       .append("g")
       .attr("fill", "none")
       .selectAll("path")
       .data(visibleLinks)
       .join("path")
-      .attr("stroke", (d) => linkColor(d.type))
-      .attr("stroke-opacity", 0.7)
-      .attr("stroke-width", expanded ? 1.5 : 1.25)
-      .attr("stroke-dasharray", (d) => (d.type === "open-question" ? "5 3" : null))
-      .attr("marker-end", (d) => `url(#yarrow-arrow-${d.type}-${expanded ? "x" : "i"})`)
-      .attr("cursor", "pointer")
-      .on("mouseenter", function (event, d) {
-        d3.select(this).attr("stroke-opacity", 1).attr("stroke-width", expanded ? 2.5 : 2);
-        const rect = containerRef.current!.getBoundingClientRect();
-        const src = typeof d.source === "object" ? (d.source as Node) : null;
-        const tgt = typeof d.target === "object" ? (d.target as Node) : null;
-        setHover({
-          x: event.clientX - rect.left,
-          y: event.clientY - rect.top,
-          title: `${src?.title ?? ""} ${LINK_TYPE_LABELS[d.type]} ${tgt?.title ?? ""}`,
-          sub: d.type,
-        });
-      })
-      .on("mousemove", function (event) {
-        const rect = containerRef.current!.getBoundingClientRect();
-        setHover((h) => (h ? { ...h, x: event.clientX - rect.left, y: event.clientY - rect.top } : h));
-      })
-      .on("mouseleave", function () {
-        d3.select(this).attr("stroke-opacity", 0.7).attr("stroke-width", expanded ? 1.5 : 1.25);
-        setHover(null);
-      });
+      .attr("stroke", edgeColor)
+      .attr("stroke-opacity", 0.35)
+      .attr("stroke-width", expanded ? 1.25 : 1)
+      .attr("stroke-linecap", "round")
+      .attr("stroke-dasharray", (d) => (d.type === "open-question" ? "4 4" : null))
+      .attr("pointer-events", "none");
 
     const nodeSel = g
       .append("g")
@@ -328,11 +286,12 @@ function GraphView({ graph, activeSlug, onSelect, height, expanded, onExpand }: 
       .on("mouseenter", function (event, d) {
         const rect = containerRef.current!.getBoundingClientRect();
         const connCount = adj[d.slug]?.size ?? 0;
+        const mainTag = d.isMain ? "★ main · " : "";
         setHover({
           x: event.clientX - rect.left,
           y: event.clientY - rect.top,
           title: d.title,
-          sub: `${connCount} connection${connCount === 1 ? "" : "s"} · click to open`,
+          sub: `${mainTag}${connCount} connection${connCount === 1 ? "" : "s"} · click to open`,
         });
       })
       .on("mousemove", function (event) {
@@ -341,66 +300,110 @@ function GraphView({ graph, activeSlug, onSelect, height, expanded, onExpand }: 
       })
       .on("mouseleave", () => setHover(null));
 
-    const bg = themeColor("--bg", "#fdfcf3");
-    const activeFill = themeColor("--yel", "#e8b820");
-    const activeStroke = themeColor("--yeld", "#b8900e");
-    const nodeStroke = themeColor("--bd2", "#c8bf80");
-    const textColor = themeColor("--char", "#181602");
-    const mutedText = themeColor("--t2", "#4f4a24");
+    const activeFill = themeColor("--yel", "#7A4E6E");
+    const activeText = themeColor("--on-yel", "#FFFFFF");
+    const neighborFill = themeColor("--s2", "#E8E4DA");
+    const neighborStroke = themeColor("--bd2", "rgba(30,28,22,0.18)");
+    const textColor = themeColor("--char", "#22201C");
+    const mutedText = themeColor("--t2", "#5A5550");
+    // Warm gold specifically for the workspace's main note. Distinct from
+    // the plum `--yel` used for the active node so "main" reads even when
+    // you're viewing a different note — and reads doubly when main *is*
+    // the active note (plum fill + gold ring).
+    const mainColor = "#D4A04A";
+
+    // Bigger, flatter, editorial circles. The active note is plum-filled; all
+    // neighbors share the same muted paper chip treatment regardless of
+    // distance. The workspace's main note wears a gold ring on top so it's
+    // always locatable.
+    const radiusFor = (d: Node) => {
+      if (d.isActive) return expanded ? 52 : 38;
+      if (d.isMain) return expanded ? 42 : 32;
+      if (d.distance === 1) return expanded ? 38 : 28;
+      return expanded ? 32 : 24;
+    };
 
     nodeSel
-      .filter((d) => d.isActive)
       .append("circle")
-      .attr("r", expanded ? 22 : 16)
-      .attr("fill", "none")
-      .attr("stroke", activeFill)
-      .attr("stroke-opacity", 0.25)
-      .attr("stroke-width", expanded ? 8 : 6);
-
-    nodeSel
-      .append("circle")
-      .attr("r", (d) => {
-        if (d.isActive) return expanded ? 11 : 8;
-        if (d.distance === 1) return expanded ? 7 : 5.5;
-        return expanded ? 5 : 4;
+      .attr("r", radiusFor)
+      .attr("fill", (d) => (d.isActive ? activeFill : neighborFill))
+      .attr("stroke", (d) => {
+        if (d.isMain) return mainColor;
+        if (d.isActive) return activeFill;
+        return neighborStroke;
       })
-      .attr("fill", (d) => (d.isActive ? activeFill : bg))
-      .attr("stroke", (d) => (d.isActive ? activeStroke : nodeStroke))
-      .attr("stroke-width", (d) => (d.isActive ? 2 : 1.25))
+      .attr("stroke-width", (d) => {
+        if (d.isMain) return 3;
+        if (d.isActive) return 0;
+        return 1;
+      })
       .attr("opacity", (d) => {
-        if (d.isActive) return 1;
+        if (d.isActive || d.isMain) return 1;
         if (d.distance === 1) return 1;
-        if (d.distance === 2) return 0.75;
-        return 0.55;
+        if (d.distance === 2) return 0.9;
+        return 0.8;
       });
 
+    // Gold ★ anchor mark on the main note, centered above its label so
+    // the "this is home" cue reads even when the title fills the chip.
     nodeSel
+      .filter((d) => d.isMain)
       .append("text")
-      .attr("y", (d) => {
-        const r = d.isActive ? (expanded ? 11 : 8) : d.distance === 1 ? (expanded ? 7 : 5.5) : (expanded ? 5 : 4);
-        return r + (d.isActive ? 14 : 11);
-      })
       .attr("text-anchor", "middle")
-      .attr("font-family", "'Figtree', ui-sans-serif, system-ui, sans-serif")
-      .attr("font-size", (d) => {
-        if (d.isActive) return expanded ? 13 : 12;
-        if (d.distance === 1) return expanded ? 11.5 : 10.5;
-        return expanded ? 10.5 : 9.5;
-      })
-      .attr("font-weight", (d) => (d.isActive ? 600 : 450))
-      .attr("fill", (d) => (d.isActive ? textColor : mutedText))
-      .attr("opacity", (d) => {
-        if (d.isActive) return 1;
-        if (d.distance === 1) return 0.95;
-        if (d.distance === 2) return expanded ? 0.85 : 0.65;
-        return expanded ? 0.6 : 0;
-      })
-      .text((d) => {
-        const maxLen = expanded
-          ? d.isActive ? 40 : d.distance === 1 ? 30 : 22
-          : d.isActive ? 26 : d.distance === 1 ? 20 : 14;
-        return truncate(d.title, maxLen);
+      .attr("y", (d) => -radiusFor(d) - 6)
+      .attr("font-size", 12)
+      .attr("fill", mainColor)
+      .text("★");
+
+    // Labels live INSIDE the circles — italic serif, wrapped to two lines
+    // when the title is long so the chip stays compact.
+    const fontSize = (d: Node) => {
+      if (d.isActive) return expanded ? 15 : 13;
+      if (d.distance === 1) return expanded ? 12 : 10.5;
+      return expanded ? 11 : 10;
+    };
+
+    nodeSel.each(function (d) {
+      const r = radiusFor(d);
+      const sel = d3.select(this);
+      const maxChars = Math.max(8, Math.floor(r / (d.isActive ? 3.2 : 3.5)));
+      const lines = wrapLabel(d.title, maxChars, 2);
+      const lineH = fontSize(d) * 1.12;
+      const startY = -((lines.length - 1) * lineH) / 2;
+      const text = sel
+        .append("text")
+        .attr("text-anchor", "middle")
+        .attr("font-family", "'Source Serif 4', ui-serif, Georgia, serif")
+        .attr("font-style", "italic")
+        .attr("font-size", fontSize(d))
+        .attr("font-weight", d.isActive ? 500 : 400)
+        .attr("fill", d.isActive ? activeText : textColor)
+        .attr("opacity", d.isActive ? 1 : d.distance <= 1 ? 0.95 : 0.75)
+        .attr("pointer-events", "none")
+        .attr("dominant-baseline", "central");
+      lines.forEach((line, i) => {
+        text
+          .append("tspan")
+          .attr("x", 0)
+          .attr("y", startY + i * lineH)
+          .text(line);
       });
+      // Outside-circle caption for far-ring nodes (distance > 2) that skip
+      // the inside label in favor of something readable against the canvas.
+      if (!d.isActive && d.distance > 2) {
+        sel
+          .append("text")
+          .attr("y", r + 14)
+          .attr("text-anchor", "middle")
+          .attr("font-family", "'Source Serif 4', ui-serif, Georgia, serif")
+          .attr("font-style", "italic")
+          .attr("font-size", expanded ? 10.5 : 9.5)
+          .attr("fill", mutedText)
+          .attr("opacity", 0.7)
+          .attr("pointer-events", "none")
+          .text(truncate(d.title, expanded ? 22 : 16));
+      }
+    });
 
     const simulation = d3
       .forceSimulation<Node>(visibleNodes)
@@ -417,14 +420,20 @@ function GraphView({ graph, activeSlug, onSelect, height, expanded, onExpand }: 
           })
           .strength(0.35),
       )
-      .force("charge", d3.forceManyBody<Node>().strength((d) => (d.isActive ? -250 : expanded ? -180 : -120)))
+      .force("charge", d3.forceManyBody<Node>().strength((d) => (d.isActive ? -600 : expanded ? -360 : -240)))
       .force("radial", d3.forceRadial<Node>((d) => {
         if (d.isActive) return 0;
         if (d.distance === 1) return ringR1;
         if (d.distance === 2) return ringR2;
         return ringR2 + 40;
-      }, cx, cy).strength(0.45))
-      .force("collide", d3.forceCollide<Node>((d) => (d.isActive ? (expanded ? 32 : 26) : expanded ? 26 : 18)));
+      }, cx, cy).strength(0.55))
+      // Collision radius matches the actual drawn circle + breathing room —
+      // no more overlapping chips.
+      .force("collide", d3.forceCollide<Node>((d) => {
+        if (d.isActive) return (expanded ? 52 : 38) + 10;
+        if (d.distance === 1) return (expanded ? 38 : 28) + 8;
+        return (expanded ? 32 : 24) + 6;
+      }));
 
     simulation.on("tick", () => {
       const active = visibleNodes.find((n) => n.isActive);
@@ -443,18 +452,22 @@ function GraphView({ graph, activeSlug, onSelect, height, expanded, onExpand }: 
         const sy = d.source.y ?? 0;
         const tx = d.target.x ?? 0;
         const ty = d.target.y ?? 0;
-        const mx = (sx + tx) / 2;
-        const my = (sy + ty) / 2;
+        // Straight lines, trimmed at the circle edges so the stroke butts
+        // cleanly against each chip instead of piercing through it.
         const dx = tx - sx;
         const dy = ty - sy;
         const norm = Math.sqrt(dx * dx + dy * dy) || 1;
-        const offset = 14;
-        const ox = (dx / norm) * offset;
-        const oy = (dy / norm) * offset;
-        const curve = 12;
-        const cpx = mx - (dy / norm) * curve;
-        const cpy = my + (dx / norm) * curve;
-        return `M${sx},${sy} Q${cpx},${cpy} ${tx - ox},${ty - oy}`;
+        const srcNode = d.source as Node;
+        const tgtNode = d.target as Node;
+        const srcR =
+          (srcNode.isActive ? (expanded ? 52 : 38) : srcNode.distance === 1 ? (expanded ? 38 : 28) : (expanded ? 32 : 24));
+        const tgtR =
+          (tgtNode.isActive ? (expanded ? 52 : 38) : tgtNode.distance === 1 ? (expanded ? 38 : 28) : (expanded ? 32 : 24));
+        const sox = (dx / norm) * srcR;
+        const soy = (dy / norm) * srcR;
+        const tox = (dx / norm) * tgtR;
+        const toy = (dy / norm) * tgtR;
+        return `M${sx + sox},${sy + soy} L${tx - tox},${ty - toy}`;
       });
       nodeSel.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
     });
@@ -558,19 +571,23 @@ function GraphView({ graph, activeSlug, onSelect, height, expanded, onExpand }: 
           </div>
         )}
 
-        <div className="absolute bottom-2 left-2 right-2 flex items-center gap-2 flex-wrap">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-2 py-1 rounded-md bg-bg/85 backdrop-blur border border-bd text-2xs text-t2">
-            <LegendSwatch color="var(--yel)" label="supports" />
-            <LegendSwatch color="var(--danger)" label="challenges" />
-            <LegendSwatch color="var(--accent2)" label="came from" />
-            <LegendSwatch color="var(--yeld)" label="open question" dashed />
+        {/* Legend — identifies the gold-ringed main note so the Map never
+            leaves the user guessing which circle is "home." */}
+        {mainNoteSlug && (
+          <div className="absolute bottom-3 left-3 flex items-center gap-3 px-2.5 py-1.5 rounded-md bg-bg/90 backdrop-blur border border-bd text-2xs font-mono text-t2">
+            <LegendSwatch kind="main" label="main" />
+            <LegendSwatch kind="active" label="you're here" />
+            <LegendSwatch kind="neighbor" label="connected" />
           </div>
-          {expanded && (
-            <div className="ml-auto text-2xs text-t3 font-mono hidden md:block">
+        )}
+
+        {expanded && (
+          <div className="absolute bottom-3 right-3 flex items-center justify-end">
+            <div className="text-2xs text-t3 font-mono hidden md:block">
               scroll to zoom · drag to pan · click a node to open
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {hover && (
           <div
@@ -621,6 +638,32 @@ function FilterIcon() {
   );
 }
 
+function LegendSwatch({ kind, label }: { kind: "main" | "active" | "neighbor"; label: string }) {
+  const styles: Record<typeof kind, React.CSSProperties> = {
+    main: {
+      background: "var(--s2)",
+      border: "2px solid #D4A04A",
+    },
+    active: {
+      background: "var(--yel)",
+      border: "0",
+    },
+    neighbor: {
+      background: "var(--s2)",
+      border: "1px solid var(--bd2)",
+    },
+  };
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+        style={styles[kind]}
+      />
+      <span>{label}</span>
+    </span>
+  );
+}
+
 function RecenterIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
@@ -638,22 +681,45 @@ function ExpandIcon() {
   );
 }
 
-function LegendSwatch({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <svg width="14" height="4" viewBox="0 0 14 4" aria-hidden="true">
-        <line
-          x1="0" y1="2" x2="14" y2="2"
-          stroke={color}
-          strokeWidth="1.5"
-          strokeDasharray={dashed ? "3 2" : undefined}
-        />
-      </svg>
-      <span>{label}</span>
-    </span>
-  );
-}
-
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+/**
+ * Wrap a title into at most `maxLines` lines, each ≤ `maxChars`. Breaks on
+ * word boundaries; falls back to a truncated single line when the word
+ * doesn't fit.
+ */
+function wrapLabel(s: string, maxChars: number, maxLines: number): string[] {
+  const words = s.trim().split(/\s+/);
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    const candidate = cur ? `${cur} ${w}` : w;
+    if (candidate.length <= maxChars) {
+      cur = candidate;
+    } else if (!cur) {
+      // Single word longer than the cap — keep it whole on its own line,
+      // we'll truncate at the end if we exceed maxLines.
+      cur = w;
+      lines.push(cur);
+      cur = "";
+    } else {
+      lines.push(cur);
+      cur = w;
+      if (lines.length === maxLines - 1 && (cur.length > maxChars || words.indexOf(w) < words.length - 1)) {
+        // Final allowed line: pack remaining words and truncate.
+        const rest = words.slice(words.indexOf(w)).join(" ");
+        lines.push(truncate(rest, maxChars));
+        return lines;
+      }
+    }
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = truncate(kept[maxLines - 1], maxChars);
+    return kept;
+  }
+  return lines;
 }

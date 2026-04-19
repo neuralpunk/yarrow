@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { api } from "../../lib/tauri";
 import type { NoteSummary } from "../../lib/types";
 import { parseEmbeds, resolveEmbed, type Embed } from "../../lib/transclusion";
@@ -18,7 +18,7 @@ interface Resolved {
   content: string;
 }
 
-export default function Transclusions({ body, notes, onNavigate, refreshToken }: Props) {
+function TransclusionsInner({ body, notes, onNavigate, refreshToken }: Props) {
   const [resolved, setResolved] = useState<Resolved[]>([]);
 
   useEffect(() => {
@@ -97,3 +97,5 @@ export default function Transclusions({ body, notes, onNavigate, refreshToken }:
     </div>
   );
 }
+
+export default memo(TransclusionsInner);

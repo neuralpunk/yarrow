@@ -6,6 +6,100 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [1.0.0] — 2026-04-17
+
+The 1.0 release pairs a daily-tool feature set (templates, tags, per-note
+encryption, workspace switching) with a full editorial redesign that gives
+Yarrow the feel of a field notebook instead of a code editor, and rebuilds
+the Paths system from the ground up.
+
+### Highlights
+
+- **Editorial redesign.** Source Serif 4 body at 17px, reading-mode ↔
+  writing-mode toggle that collapses raw markdown when you're not editing,
+  a new paper-and-plum palette, a right tool-rail for Map / Links /
+  History / Paths, and a redesigned Connections map with bigger, calmer
+  circles and a flat visual language.
+- **Paths, rethought.** Paths are no longer git branches — they're named
+  **collections of notes** branching off a designated root, stored in
+  `.yarrow/path-collections.toml`. A fullscreen Forking Road graph with
+  pan/zoom, a detail panel that shows exactly which notes are in a path,
+  and a ★ main note per path. One note can live in many paths; selecting
+  a path never changes what you can read elsewhere.
+- **Workspace modes.** Each workspace picks **Branch path mapping**
+  (default) or **Basic notes**. Basic mode hides the Map, Paths, and
+  linking affordances for users who just want a plain notebook. Mapped
+  workspaces anchor on a designated **starting note**, settable during
+  onboarding or via Settings.
+- **Templates.** Six bundled (*Daily journal*, *Meeting notes*,
+  *Book notes*, *Vacation planner*, *Project brief*, *Morning pages*),
+  with `{{date}}` / `{{weekday}}` / `{{title}}` / `{{cursor}}` placeholders
+  and a *Start from* chip row on the new-note modal. Manageable under
+  Settings → Templates.
+- **Tags.** YAML frontmatter tags surfaced first-class: a collapsible
+  Tags panel in the sidebar, `#tag` search in the palette, and a filter
+  pill on the note list.
+- **Local encryption (opt-in, per-note).** ChaCha20-Poly1305 + Argon2id,
+  BIP39 recovery phrase, session unlock with idle timeout. Body-only —
+  frontmatter stays plaintext so links/tags/backlinks keep working. `⌘L`
+  to lock; history scrubs decrypted checkpoints on demand. Encrypting a
+  note seals history by rewriting past blobs too.
+- **Workspace switching.** Sidebar chip + `⌘⇧O` popover for recent
+  workspaces, plus *New workspace* and *Open another folder…* actions.
+  Full remount on switch so no state leaks between workspaces.
+- **Scratchpad, redesigned.** Docked right-side pane (resizable, toggled
+  via `⌘⇧S`), inline "Keep as note", and an editor right-click → *Send
+  to scratchpad* that auto-opens the pane.
+- **Performance.** Initial JS payload ~985 KB → ~302 KB raw (322 → 92 KB
+  gzipped) via React.lazy + manual chunks; idle warm-up prefetches heavy
+  screens; hovering a note row prefetches it into a small LRU. Read/write
+  mode toggle is hot-swapped via a CodeMirror Compartment — no flicker.
+- **Checkpoint bloat fixes.** No-op saves are detected and skipped;
+  oscillating edits (type → save → undo → save) coalesce onto the prior
+  ancestor instead of stacking empty checkpoints.
+- **Settings buildout.** Eight tabs (Appearance / Writing / Templates /
+  Sync / Security / Workspace / Shortcuts / About), a search box, an
+  interface-font + size picker, and a *Trim checkpoint history* pane
+  that can forget old or empty checkpoints.
+- **Quality-of-life.** Three-state save indicator, undo-delete toast
+  (6.5s), word count + reading time with live selection count, a "today"
+  chip on same-day notes, *Copy as markdown* and *Reveal in file manager*
+  in the right-click menu, and a static-site export that now ships with
+  client-side search.
+
+### New keyboard shortcuts
+
+- `⌘⇧B` / `Ctrl+Shift+B` — branch this note
+- `⌘⇧O` / `Ctrl+Shift+O` — workspace switcher
+- `⌘⇧S` / `Ctrl+Shift+S` — toggle scratchpad
+- `⌘L` / `Ctrl+L` — lock encrypted notes (only when encryption is on)
+
+### Upgrade notes
+
+- `.yarrow/path-collections.toml` is a new **committed** file, auto-seeded
+  on first open with a single "main" collection containing every note.
+- `.yarrow/security.toml` is **committed** once encryption is enabled — it
+  holds the wrapped master key (opaque without your password or recovery
+  phrase), so recovery works on any device with the repo.
+- `config.toml` gains a `[mapping]` section (`mode`, `main_note`) and
+  `preferences.encryption_idle_timeout_secs`. Older configs default
+  silently — mapped mode with no main note prompts once on first Map/Paths
+  click.
+- Frontmatter gains optional `pinned`, `encrypted`, `kdf`, `salt`, `nonce`
+  fields. They only serialize when set; existing notes are byte-identical
+  on re-save.
+- `.yarrow/templates/` is back-filled with the six bundled templates on
+  first open — existing custom templates are preserved.
+- Existing git branches (the old "paths") stay on disk but are no longer
+  surfaced. Delete them with `git branch -D` if you want a clean repo.
+- New localStorage keys (per-machine): `yarrow.uiFont`, `yarrow.uiScale`,
+  `yarrow.scratchpadWidth`. All have sane defaults.
+- History pruning and "seal history on encrypt" rewrite git SHAs on local
+  branches — synced workspaces will need a force-push after. Both modals
+  surface this caveat.
+
+---
+
 ## [0.3.0] — 2026-04-17
 
 A release that deepens Yarrow's "living map of your thinking" identity. Five

@@ -1,5 +1,4 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import Logo from "./Logo";
 import { APP_VERSION } from "../lib/version";
 
 interface Props {
@@ -13,10 +12,9 @@ export default function Titlebar({ workspaceName }: Props) {
       data-tauri-drag-region
       className="h-8 shrink-0 flex items-center px-3 gap-2 bg-bg-soft border-b border-bd select-none"
     >
-      <Logo size={14} className="shrink-0 opacity-80 pointer-events-none" />
       <span
         data-tauri-drag-region
-        className="font-serif text-[13px] text-char pointer-events-none"
+        className="font-serif italic text-[14px] text-char pointer-events-none"
       >
         Yarrow
       </span>

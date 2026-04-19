@@ -77,25 +77,27 @@ export default function HistorySlider({
   const selected = idx >= 0 ? history[idx] : null;
   const isLatest = idx === 0;
 
+  const previewBody = useMemo(() => stripFrontmatter(preview), [preview]);
+
   const diff = useMemo(() => {
-    if (!preview) return { added: 0, removed: 0 };
+    if (previewBody == null) return { added: 0, removed: 0 };
     const a = new Set(
       currentBody.split("\n").map((l) => l.trim()).filter(Boolean),
     );
     const b = new Set(
-      preview.split("\n").map((l) => l.trim()).filter(Boolean),
+      previewBody.split("\n").map((l) => l.trim()).filter(Boolean),
     );
     let added = 0;
     let removed = 0;
     for (const l of a) if (!b.has(l)) added++;
     for (const l of b) if (!a.has(l)) removed++;
     return { added, removed };
-  }, [preview, currentBody]);
+  }, [previewBody, currentBody]);
 
   const diffLines = useMemo(() => {
-    if (!preview) return [] as Array<{ text: string; kind: "same" | "gone" | "new" }>;
+    if (previewBody == null) return [] as Array<{ text: string; kind: "same" | "gone" | "new" }>;
     const aLines = currentBody.split("\n");
-    const bLines = preview.split("\n");
+    const bLines = previewBody.split("\n");
     const aSet = new Set(aLines.map((l) => l.trim()));
     const bSet = new Set(bLines.map((l) => l.trim()));
     const out: Array<{ text: string; kind: "same" | "gone" | "new" }> = [];
@@ -107,7 +109,7 @@ export default function HistorySlider({
       if (!bSet.has(l.trim())) out.push({ text: l, kind: "new" });
     }
     return out;
-  }, [preview, currentBody]);
+  }, [previewBody, currentBody]);
 
   // Buckets for the left timeline column.
   const bucketed = useMemo(() => {
@@ -254,7 +256,7 @@ export default function HistorySlider({
               )}
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4 bg-bg">
-              {preview != null ? (
+              {previewBody != null ? (
                 showDiffOnly ? (
                   <div className="font-sans text-sm leading-relaxed space-y-0.5">
                     {diffLines.filter((l) => l.kind !== "same").length === 0 && (
@@ -282,7 +284,7 @@ export default function HistorySlider({
                   </div>
                 ) : (
                   <pre className="whitespace-pre-wrap font-sans text-sm text-char leading-relaxed">
-                    {preview || <span className="text-t3 italic">(empty)</span>}
+                    {previewBody || <span className="text-t3 italic">(empty)</span>}
                   </pre>
                 )
               ) : (
@@ -371,4 +373,15 @@ export default function HistorySlider({
       </div>
     </div>
   );
+}
+
+function stripFrontmatter(raw: string | null): string | null {
+  if (raw == null) return null;
+  if (!raw.startsWith("---")) return raw;
+  const end = raw.indexOf("\n---", 3);
+  if (end === -1) return raw;
+  let after = end + 4;
+  if (raw[after] === "\r") after++;
+  if (raw[after] === "\n") after++;
+  return raw.slice(after);
 }
