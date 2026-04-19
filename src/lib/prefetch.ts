@@ -33,4 +33,13 @@ export function prefetchHeavyChunks() {
     void import("../components/QuickCapture");
     void import("../components/Scratchpad");
   });
+  // 1.1 surfaces — warmed last so they don't compete with the editor warm
+  // for first-paint idle time. Reading mode is high-value because flipping
+  // into it is a common interaction.
+  schedule(() => {
+    void import("../components/Editor/NoteReader");
+    void import("../components/DecisionMatrix");
+    void import("../components/FindReplace");
+    void import("../components/Trash");
+  });
 }

@@ -125,6 +125,8 @@ const GITIGNORE: &str = "\
 .yarrow/index.json
 .yarrow/scratchpad.md
 .yarrow/credentials.toml
+.yarrow/trash/
+.yarrow/session.json
 ";
 
 pub fn yarrow_dir(root: &Path) -> PathBuf {

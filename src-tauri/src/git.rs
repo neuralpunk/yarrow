@@ -455,6 +455,90 @@ pub fn notes_on_path(repo: &Repository, path_name: &str) -> Result<Vec<(String, 
     Ok(out)
 }
 
+/// One side of a path comparison entry — kept generic so the frontend can
+/// diff arbitrary slugs without schema churn.
+#[derive(serde::Serialize)]
+pub struct PathDiffEntry {
+    pub slug: String,
+    pub status: &'static str, // "added" | "removed" | "modified" | "same"
+    pub left_excerpt: Option<String>,
+    pub right_excerpt: Option<String>,
+    pub left_lines: usize,
+    pub right_lines: usize,
+}
+
+#[derive(serde::Serialize)]
+pub struct PathComparison {
+    pub left: String,
+    pub right: String,
+    pub entries: Vec<PathDiffEntry>,
+    pub summary: PathCompareSummary,
+}
+
+#[derive(serde::Serialize)]
+pub struct PathCompareSummary {
+    pub added: usize,
+    pub removed: usize,
+    pub modified: usize,
+    pub same: usize,
+}
+
+fn excerpt(body: &str, max_chars: usize) -> Option<String> {
+    let trimmed = body.trim_start_matches(|c: char| c == '-' || c.is_whitespace());
+    let cleaned: String = trimmed
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with("---"))
+        .take(4)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if cleaned.is_empty() { return None; }
+    if cleaned.len() <= max_chars { return Some(cleaned); }
+    Some(cleaned.chars().take(max_chars).collect::<String>() + "…")
+}
+
+/// Compare two paths note-by-note. The result lists every slug on either
+/// side, marking it added/removed/modified/same plus short excerpts so the
+/// UI can render a side-by-side without a second round-trip.
+pub fn compare_paths(repo: &Repository, left: &str, right: &str) -> Result<PathComparison> {
+    use std::collections::BTreeMap;
+    let left_notes = notes_on_path(repo, left)?;
+    let right_notes = notes_on_path(repo, right)?;
+    let mut by_slug: BTreeMap<String, (Option<String>, Option<String>)> = BTreeMap::new();
+    for (slug, body) in left_notes {
+        by_slug.entry(slug).or_insert((None, None)).0 = Some(body);
+    }
+    for (slug, body) in right_notes {
+        by_slug.entry(slug).or_insert((None, None)).1 = Some(body);
+    }
+    let mut entries = Vec::with_capacity(by_slug.len());
+    let mut summary = PathCompareSummary { added: 0, removed: 0, modified: 0, same: 0 };
+    for (slug, (l, r)) in by_slug {
+        let status: &'static str = match (&l, &r) {
+            (Some(_), None) => { summary.removed += 1; "removed" }
+            (None, Some(_)) => { summary.added += 1; "added" }
+            (Some(a), Some(b)) if a == b => { summary.same += 1; "same" }
+            (Some(_), Some(_)) => { summary.modified += 1; "modified" }
+            (None, None) => continue,
+        };
+        let left_lines = l.as_ref().map(|s| s.lines().count()).unwrap_or(0);
+        let right_lines = r.as_ref().map(|s| s.lines().count()).unwrap_or(0);
+        entries.push(PathDiffEntry {
+            slug,
+            status,
+            left_excerpt: l.as_deref().and_then(|b| excerpt(b, 240)),
+            right_excerpt: r.as_deref().and_then(|b| excerpt(b, 240)),
+            left_lines,
+            right_lines,
+        });
+    }
+    Ok(PathComparison {
+        left: left.to_string(),
+        right: right.to_string(),
+        entries,
+        summary,
+    })
+}
+
 pub fn note_at_checkpoint(repo: &Repository, note_relpath: &str, oid: Oid) -> Result<String> {
     let commit = repo.find_commit(oid)?;
     let tree = commit.tree()?;

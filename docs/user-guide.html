@@ -1,0 +1,1538 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Yarrow User Guide — every feature, explained from scratch</title>
+<meta name="description" content="A complete, no-prior-knowledge guide to Yarrow 1.1 — notes, links, paths, the map, history, sync, encryption, the decision matrix. With diagrams." />
+
+<meta id="meta-theme-color" name="theme-color" content="#F7F5F0" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="guide.css" />
+
+<script>
+  (function () {
+    var valid = { light: 1, dark: 1 };
+    var mode;
+    try { var t = localStorage.getItem('yarrow.site.theme'); if (t && valid[t]) mode = t; } catch (_) {}
+    if (!mode) mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', mode);
+  })();
+</script>
+</head>
+<body>
+
+<!-- ═══ masthead ═══ -->
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="index.html">
+      Yarrow
+      <span class="version">User Guide · v1.1</span>
+    </a>
+    <span></span>
+    <div class="mast-nav">
+      <a href="index.html#gallery">A look</a>
+      <a href="index.html#whats-new">What's new</a>
+      <a href="index.html#features">Features</a>
+      <a href="index.html#download">Download</a>
+      <span class="sep">·</span>
+      <div class="theme-toggle" role="radiogroup" aria-label="Theme">
+        <button type="button" data-theme-value="light" aria-pressed="false" aria-label="Light theme" title="Light">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
+        <button type="button" data-theme-value="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+      </div>
+      <a class="btn-mini" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+        Download 1.1
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ guide layout — TOC + content ═══ -->
+<div class="guide-layout page">
+
+  <!-- ── sticky table of contents ── -->
+  <aside class="guide-toc" aria-label="Contents">
+    <div class="toc-head">Contents</div>
+    <details class="toc-mobile-collapse" open>
+    <summary>Contents</summary>
+    <nav>
+      <div class="toc-group">
+        <span class="toc-group-h">Start here</span>
+        <a href="#what-is-yarrow">What Yarrow is</a>
+        <a href="#install">Installing</a>
+        <a href="#first-workspace">Your first workspace</a>
+        <a href="#first-note">Your first note</a>
+      </div>
+      <div class="toc-group">
+        <span class="toc-group-h">Writing</span>
+        <a href="#editor-layout">The editor at a glance</a>
+        <a href="#markdown">Writing in markdown</a>
+        <a href="#reading-mode">Reading vs writing mode</a>
+        <a href="#math-code">Math &amp; code</a>
+        <a href="#smart-paste">Smart paste</a>
+        <a href="#spell-check">Spell-check</a>
+        <a href="#attachments">Attachments &amp; images</a>
+      </div>
+      <div class="toc-group">
+        <span class="toc-group-h">Connecting ideas</span>
+        <a href="#wikilinks">[[Wikilinks]]</a>
+        <a href="#typed-links">Typed connections</a>
+        <a href="#transclusion">Transclusion</a>
+        <a href="#open-questions">?? open questions</a>
+        <a href="#tags">Tags</a>
+        <a href="#pinned">Pinned notes</a>
+        <a href="#map">The Connections Map</a>
+      </div>
+      <div class="toc-group">
+        <span class="toc-group-h">Paths — the big idea</span>
+        <a href="#paths-intro">What a path is</a>
+        <a href="#starting-path">Starting a path</a>
+        <a href="#forking-road">The Forking Road</a>
+        <a href="#path-detail">Editing a path</a>
+        <a href="#promote">Promoting a side path</a>
+        <a href="#ghost">Ghost paths</a>
+        <a href="#decision-tools">Decision tools</a>
+        <a href="#decision-matrix">The decision matrix</a>
+        <a href="#path-compare">Comparing two paths</a>
+      </div>
+      <div class="toc-group">
+        <span class="toc-group-h">Time travel</span>
+        <a href="#history">History &amp; checkpoints</a>
+        <a href="#trash">Trash &amp; undelete</a>
+      </div>
+      <div class="toc-group">
+        <span class="toc-group-h">Power tools</span>
+        <a href="#palette">The command palette</a>
+        <a href="#find-replace">Find &amp; replace</a>
+        <a href="#templates">Templates</a>
+        <a href="#daily">Daily journal</a>
+        <a href="#scratchpad">Scratchpad &amp; quick capture</a>
+        <a href="#print">Print / save as PDF</a>
+        <a href="#multi-window">Multiple windows</a>
+      </div>
+      <div class="toc-group">
+        <span class="toc-group-h">Workspaces</span>
+        <a href="#workspaces">Switching workspaces</a>
+        <a href="#obsidian">Importing from Obsidian</a>
+        <a href="#sync">Sync</a>
+        <a href="#encryption">Encryption</a>
+        <a href="#export">Static-site export</a>
+      </div>
+      <div class="toc-group">
+        <span class="toc-group-h">Reference</span>
+        <a href="#settings">Settings tour</a>
+        <a href="#shortcuts">All keyboard shortcuts</a>
+        <a href="#filesystem">Where files live</a>
+        <a href="#glossary">Glossary</a>
+      </div>
+    </nav>
+    </details>
+  </aside>
+
+  <!-- ── content column ── -->
+  <main class="guide-main">
+
+    <header class="guide-hero">
+      <div class="eyebrow"><span class="dot"></span> User Guide · Yarrow 1.1</div>
+      <h1>Everything Yarrow does, <em>explained from scratch.</em></h1>
+      <p class="lede">
+        Welcome! This guide is for everyone — whether you've never used
+        a notes app before, or you're already comfortable with computers
+        and want to dig into the details. Read it from top to bottom if
+        you're new, or use the menu on the left to jump to whatever
+        you're curious about.
+      </p>
+      <p class="callout">
+        <strong>About the keys we mention.</strong> Mac uses the
+        <kbd>⌘</kbd> (Command) key; Windows and Linux use <kbd>Ctrl</kbd>.
+        We'll write <kbd>⌘K</kbd> throughout the guide — on a PC just
+        use <kbd>Ctrl+K</kbd> instead.
+      </p>
+    </header>
+
+    <!-- ═════════════════════════ START ═════════════════════════ -->
+    <section id="what-is-yarrow" class="guide-section">
+      <h2>What Yarrow is</h2>
+      <p>
+        Yarrow is a desktop notebook for the kind of thinking that doesn't
+        sit still. You write in plain text, you link your ideas to each
+        other, and any time you want to try something a different way, you
+        can branch off into a <em>path</em> — a parallel "what if I went
+        this direction instead?" version of your notes that sits
+        alongside the original. Nothing you write is ever lost; every
+        pause becomes a checkpoint you can scroll back to.
+      </p>
+      <p>
+        You don't need to be a programmer or know any special tools to
+        use it. There's no syntax to memorize, no app to learn, no
+        account to make.
+      </p>
+      <div class="three-up">
+        <div class="three-card">
+          <h4>Your notes are just files</h4>
+          <p>Each note is a plain text file in a folder you pick. You can open them in any other app — TextEdit, Notepad, Word — or copy them anywhere. Yarrow doesn't lock them up.</p>
+        </div>
+        <div class="three-card">
+          <h4>Lives on your computer</h4>
+          <p>Everything runs on your machine. No account, no sign-up, no internet required. If you want a backup or to use Yarrow on two computers, you can — but only if you choose to.</p>
+        </div>
+        <div class="three-card">
+          <h4>Remembers everything</h4>
+          <p>Yarrow saves every pause as a tiny snapshot, so you can always scroll back to an older version of a note. Try a different angle on something? Branch into a path; the original waits for you.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ install ═══ -->
+    <section id="install" class="guide-section">
+      <h2>Installing Yarrow</h2>
+      <p>
+        Head to the
+        <a href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">downloads page</a>
+        and pick the file for your computer. Yarrow is small — about
+        15&nbsp;MB — and won't slow your machine down.
+      </p>
+      <div class="three-up">
+        <div class="three-card">
+          <h4>Mac</h4>
+          <p>Download the <code>.dmg</code> file, open it, and drag the Yarrow icon into your Applications folder. The first time you open it, right-click on Yarrow and pick "Open" — your Mac will ask if you're sure (we're not yet a "registered" developer with Apple). Click "Open" again and you're set.</p>
+        </div>
+        <div class="three-card">
+          <h4>Linux</h4>
+          <p>Three options: the AppImage works on any Linux without installing anything (just make it executable and double-click); the <code>.deb</code> is for Ubuntu, Debian, and similar; the <code>.rpm</code> is for Fedora, RHEL, and openSUSE. The installer takes care of any system bits Yarrow needs.</p>
+        </div>
+        <div class="three-card">
+          <h4>Windows</h4>
+          <p>Run the <code>.msi</code> installer to install Yarrow normally, or use the portable <code>.exe</code> if you want to run it without installing. Windows 11 has everything Yarrow needs built in; older versions may ask you to install one small Microsoft component.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ first workspace ═══ -->
+    <section id="first-workspace" class="guide-section">
+      <h2>Your first workspace</h2>
+      <p>
+        A <strong>workspace</strong> is just a folder full of notes.
+        You can have as many workspaces as you want — one for
+        personal stuff, one for work, one for a school project — and
+        they don't share anything. Switching between them is fast
+        and clean.
+      </p>
+      <p>
+        The first time you open Yarrow, you'll see a welcome screen
+        with two big buttons. Click <strong>Create a new workspace</strong>
+        and a small wizard walks you through it.
+      </p>
+
+      <figure class="diagram">
+        <svg viewBox="0 0 720 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The two-step new-workspace wizard: choose what you're starting from, then name it and pick a location.">
+          <!-- Step 1 -->
+          <g>
+            <rect x="20" y="30" width="320" height="320" rx="12" fill="var(--bg-soft)" stroke="var(--bd2)"/>
+            <text x="40" y="60" font-family="serif" font-size="16" fill="var(--char)">Step 1 of 2 — Shape</text>
+            <text x="40" y="78" font-family="sans-serif" font-size="11" fill="var(--t3)">Pick what you're starting from</text>
+            <rect x="40" y="100" width="280" height="60" rx="8" fill="var(--yelp)" stroke="var(--yel)"/>
+            <text x="56" y="124" font-family="serif" font-size="14" fill="var(--char)">Start with a blank notebook</text>
+            <text x="56" y="142" font-family="sans-serif" font-size="11" fill="var(--t2)">A fresh workspace, seeded with one note.</text>
+            <rect x="40" y="180" width="280" height="60" rx="8" fill="var(--bg)" stroke="var(--bd)"/>
+            <text x="56" y="204" font-family="serif" font-size="14" fill="var(--char)">Import an Obsidian vault</text>
+            <text x="56" y="222" font-family="sans-serif" font-size="11" fill="var(--t2)">Bring an existing vault — wikilinks &amp; tags preserved.</text>
+            <rect x="240" y="305" width="80" height="28" rx="6" fill="var(--yel)"/>
+            <text x="280" y="323" font-family="sans-serif" font-size="11" fill="var(--on-yel)" text-anchor="middle">Next →</text>
+          </g>
+          <!-- arrow -->
+          <path d="M 350 190 L 380 190" stroke="var(--t3)" stroke-width="2" fill="none" marker-end="url(#a)"/>
+          <defs>
+            <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--t3)"/>
+            </marker>
+          </defs>
+          <!-- Step 2 -->
+          <g>
+            <rect x="380" y="30" width="320" height="320" rx="12" fill="var(--bg-soft)" stroke="var(--bd2)"/>
+            <text x="400" y="60" font-family="serif" font-size="16" fill="var(--char)">Step 2 of 2 — Details</text>
+            <text x="400" y="78" font-family="sans-serif" font-size="11" fill="var(--t3)">Name it, place it, choose mode</text>
+            <text x="400" y="105" font-family="mono" font-size="9" fill="var(--t3)">WORKSPACE NAME</text>
+            <rect x="400" y="112" width="280" height="26" rx="4" fill="var(--bg)" stroke="var(--bd)"/>
+            <text x="408" y="129" font-family="sans-serif" font-size="11" fill="var(--char)">My Yarrow</text>
+            <text x="400" y="158" font-family="mono" font-size="9" fill="var(--t3)">WHERE IT LIVES</text>
+            <rect x="400" y="165" width="220" height="26" rx="4" fill="var(--bg)" stroke="var(--bd)"/>
+            <text x="408" y="182" font-family="mono" font-size="10" fill="var(--char)">~/Documents/Yarrow</text>
+            <rect x="624" y="165" width="56" height="26" rx="4" fill="var(--s2)" stroke="var(--bd)"/>
+            <text x="652" y="182" font-family="sans-serif" font-size="10" fill="var(--char)" text-anchor="middle">Browse…</text>
+            <text x="400" y="208" font-family="mono" font-size="9" fill="var(--t3)">HOW WILL YOU USE IT?</text>
+            <rect x="400" y="215" width="135" height="40" rx="6" fill="var(--yelp)" stroke="var(--yel)"/>
+            <text x="467" y="231" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">Branch path</text>
+            <text x="467" y="246" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">mapping</text>
+            <rect x="545" y="215" width="135" height="40" rx="6" fill="var(--bg)" stroke="var(--bd)"/>
+            <text x="612" y="238" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">Basic notes</text>
+            <text x="400" y="282" font-family="mono" font-size="9" fill="var(--t3)">Will create:</text>
+            <text x="400" y="296" font-family="mono" font-size="10" fill="var(--char)">~/Documents/Yarrow/My Yarrow</text>
+            <rect x="600" y="305" width="80" height="28" rx="6" fill="var(--yel)"/>
+            <text x="640" y="323" font-family="sans-serif" font-size="11" fill="var(--on-yel)" text-anchor="middle">Create</text>
+          </g>
+        </svg>
+        <figcaption>Two steps: choose your starting shape, then fill in the details. The "Will create:" preview shows the absolute path forming live.</figcaption>
+      </figure>
+
+      <h3>The two flavors</h3>
+      <p>
+        Step 2 also asks how you want to use this workspace:
+      </p>
+      <ul class="bullet-list">
+        <li><strong>Branch path mapping</strong> (recommended) — the full Yarrow experience. Notes can link to each other, you can branch into paths, and a beautiful map shows how your ideas connect.</li>
+        <li><strong>Basic notes</strong> — a simple notebook with no extra moving parts. Just notes and folders, like a plain text journal. Pick this if you only want to jot things down.</li>
+      </ul>
+      <p class="callout">
+        You can switch flavors later from Settings → Workspace, and you
+        won't lose any notes either way.
+      </p>
+    </section>
+
+    <!-- ═══ first note ═══ -->
+    <section id="first-note" class="guide-section">
+      <h2>Your first note</h2>
+      <p>
+        Press <kbd>⌘N</kbd> (or <kbd>Ctrl+N</kbd>) to start a new note.
+        A small box appears asking for a title — type something like
+        "Grocery list" or "Book ideas" and hit <kbd>Enter</kbd>. The
+        editor opens, and you can start writing right away.
+      </p>
+      <p>
+        You'll never see a "save" button in Yarrow. About three seconds
+        after you stop typing, your work is quietly saved. A faint
+        <em>saved</em> pulse near the top tells you it landed. If you
+        ever want to see an older version, you can — Yarrow keeps every
+        version of every note, forever.
+      </p>
+      <p>
+        To delete a note, right-click it in the sidebar and pick
+        <em>Delete</em>. Don't worry about clicking the wrong thing —
+        deleted notes go to the <strong>Trash</strong> (bottom of the
+        sidebar), where you can pull them back any time.
+      </p>
+    </section>
+
+    <!-- ═══ editor layout ═══ -->
+    <section id="editor-layout" class="guide-section">
+      <h2>The editor at a glance</h2>
+      <p>
+        Open Yarrow and you'll see four regions. Don't worry about
+        memorizing them — pretty much everything is one click away from
+        wherever you are.
+      </p>
+      <figure class="diagram screenshot">
+        <div class="screenshot-frame">
+          <img src="main-light.png" alt="A screenshot of the main Yarrow window — sidebar on the left, editor in the middle, tool-rail on the right." class="shot-light shown" />
+          <img src="main-dark.png" alt="The same window in the dark theme." class="shot-dark hidden-shot" />
+          <!-- Callout overlay. Coords are percentages of the image so the
+               numbered pins line up no matter the rendered size. -->
+          <svg class="callouts" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <!-- Pin 1: left sidebar (notes list) -->
+            <circle cx="11" cy="50" r="2.4" class="pin"/>
+            <text x="11" y="50.9" class="pin-text" text-anchor="middle">1</text>
+            <!-- Pin 2: top toolbar / path ribbon -->
+            <circle cx="36" cy="6.2" r="2.4" class="pin"/>
+            <text x="36" y="7.1" class="pin-text" text-anchor="middle">2</text>
+            <!-- Pin 3: editor body -->
+            <circle cx="55" cy="36" r="2.4" class="pin"/>
+            <text x="55" y="36.9" class="pin-text" text-anchor="middle">3</text>
+            <!-- Pin 4: right tool-rail -->
+            <circle cx="97" cy="22" r="2.4" class="pin"/>
+            <text x="97" y="22.9" class="pin-text" text-anchor="middle">4</text>
+          </svg>
+        </div>
+        <figcaption>The four regions you'll meet on day one.</figcaption>
+      </figure>
+      <ol class="callout-list">
+        <li>
+          <span class="callout-num">1</span>
+          <div>
+            <strong>The sidebar</strong> on the left is your shelf. Every
+            note you've written lives here. The ★ on one of them marks
+            your workspace's "starting" note — the heart of your
+            collection. Below it you'll find your journal entries, your
+            paths (more on those later), and a button for the
+            scratchpad and the trash.
+          </div>
+        </li>
+        <li>
+          <span class="callout-num">2</span>
+          <div>
+            <strong>The top strip</strong> tells you which path you're
+            on (it'll usually say <em>main</em>, which is the trunk),
+            and gives you one-click buttons for branching off into a
+            new direction, opening the connections map, and the full
+            paths view.
+          </div>
+        </li>
+        <li>
+          <span class="callout-num">3</span>
+          <div>
+            <strong>The editor</strong> is where you write. There's no
+            save button — Yarrow saves silently a few seconds after
+            each pause, so you can just focus on the words. Click the
+            big title at the top to rename the note.
+          </div>
+        </li>
+        <li>
+          <span class="callout-num">4</span>
+          <div>
+            <strong>The tool-rail</strong> on the right is a tiny column
+            of icons. From top to bottom: flip between writing and
+            reading mode, see the connections map, see what links to
+            this note, scrub the timeline, open the paths view,
+            scratchpad, and settings. Hover any icon for its name.
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ═══ markdown ═══ -->
+    <section id="markdown" class="guide-section">
+      <h2>Writing in markdown</h2>
+      <p>
+        Yarrow notes use a simple way of formatting called
+        <strong>markdown</strong>. You don't have to learn it all — most
+        people get by with two or three of these. Type any of these and
+        Yarrow does the styling for you:
+      </p>
+      <table class="md-table">
+        <thead><tr><th>You type</th><th>You get</th></tr></thead>
+        <tbody>
+          <tr><td><code># Heading</code></td><td>A big heading</td></tr>
+          <tr><td><code>## Smaller heading</code></td><td>A smaller heading</td></tr>
+          <tr><td><code>**bold**</code></td><td><strong>bold</strong></td></tr>
+          <tr><td><code>*italic*</code></td><td><em>italic</em></td></tr>
+          <tr><td><code>- list item</code></td><td>A bullet list</td></tr>
+          <tr><td><code>1. first</code></td><td>A numbered list</td></tr>
+          <tr><td><code>&gt; quote</code></td><td>A quoted paragraph</td></tr>
+          <tr><td><code>`code`</code></td><td><code>inline code</code></td></tr>
+          <tr><td><code>```python<br/>code block<br/>```</code></td><td>A syntax-highlighted code block</td></tr>
+          <tr><td><code>[link text](https://…)</code></td><td>A web link</td></tr>
+          <tr><td><code>[[Other Note]]</code></td><td>A wikilink to another note</td></tr>
+          <tr><td><code>$x^2$</code> / <code>$$\int…$$</code></td><td>Inline / block math</td></tr>
+          <tr><td><code>?? something I'm unsure about</code></td><td>An open question (tracked)</td></tr>
+        </tbody>
+      </table>
+      <p>
+        While you're actively writing on a line you'll see the symbols
+        themselves (the asterisks, the dashes). Move your cursor away
+        and they tuck out of sight, leaving clean reading text. Click
+        back into a line to edit the markup.
+      </p>
+    </section>
+
+    <!-- ═══ reading mode ═══ -->
+    <section id="reading-mode" class="guide-section">
+      <h2>Reading vs writing mode</h2>
+      <p>
+        The top icon on the right side of the window (a pair of glasses,
+        or a pencil) lets you flip between two ways of looking at a note:
+        <strong>writing mode</strong>, where you can edit, and
+        <strong>reading mode</strong>, which lays the note out cleanly,
+        like a printed page.
+      </p>
+      <p>
+        Reading mode is for reading — code blocks get a soft background,
+        tables get tidy lines, quotes get a yellow accent bar, math
+        equations render properly, and the links to other notes look
+        like little colored pills you can click. Click <em>switch to
+        writing</em> in the small line above the title to flip back to
+        editing.
+      </p>
+      <figure class="diagram">
+        <svg viewBox="0 0 760 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Side-by-side: writing mode shows raw markdown; reading mode shows the same content fully rendered.">
+          <rect x="10" y="10" width="365" height="200" rx="8" fill="var(--bg)" stroke="var(--bd)"/>
+          <text x="22" y="30" font-family="mono" font-size="9" fill="var(--t3)">WRITING MODE</text>
+          <text x="22" y="56" font-family="mono" font-size="11" fill="var(--char)"># Paris</text>
+          <text x="22" y="76" font-family="mono" font-size="11" fill="var(--char)">Four days. **Stay** in [[Le Marais]].</text>
+          <text x="22" y="96" font-family="mono" font-size="11" fill="var(--char)">- Louvre — book ahead</text>
+          <text x="22" y="116" font-family="mono" font-size="11" fill="var(--char)">- Picasso — under-rated</text>
+          <text x="22" y="146" font-family="mono" font-size="11" fill="var(--char)">```python</text>
+          <text x="22" y="162" font-family="mono" font-size="11" fill="var(--char)">def cost(): return 1200</text>
+          <text x="22" y="178" font-family="mono" font-size="11" fill="var(--char)">```</text>
+
+          <rect x="385" y="10" width="365" height="200" rx="8" fill="var(--bg)" stroke="var(--bd)"/>
+          <text x="397" y="30" font-family="mono" font-size="9" fill="var(--t3)">READING MODE</text>
+          <text x="397" y="56" font-family="serif" font-size="18" fill="var(--char)" font-weight="600">Paris</text>
+          <text x="397" y="80" font-family="serif" font-size="12" fill="var(--char)">Four days. <tspan font-weight="700">Stay</tspan> in <tspan fill="var(--yeld)" font-weight="500">Le Marais</tspan>.</text>
+          <text x="397" y="106" font-family="serif" font-size="12" fill="var(--char)">• Louvre — book ahead</text>
+          <text x="397" y="124" font-family="serif" font-size="12" fill="var(--char)">• Picasso — under-rated</text>
+          <rect x="397" y="138" width="200" height="48" rx="4" fill="var(--s1)" stroke="var(--bd)"/>
+          <text x="405" y="156" font-family="mono" font-size="11" fill="var(--yeld)">def</text>
+          <text x="430" y="156" font-family="mono" font-size="11" fill="var(--char)">cost(): </text>
+          <text x="478" y="156" font-family="mono" font-size="11" fill="var(--yeld)">return</text>
+          <text x="520" y="156" font-family="mono" font-size="11" fill="var(--sage)">1200</text>
+        </svg>
+        <figcaption>Same content, two surfaces. Hover the wikilink in reading mode to preview the target note; click to open it.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ═══ math + code ═══ -->
+    <section id="math-code" class="guide-section">
+      <h2>Math &amp; code</h2>
+
+      <h3>Math equations</h3>
+      <p>
+        If you write equations, you can wrap them in dollar signs and
+        Yarrow will format them properly. One pair of dollars for an
+        equation that flows in your sentence, two pairs for an equation
+        that gets its own centered line:
+      </p>
+      <pre><code>The energy is $E = mc^2$.
+
+$$
+\int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}
+$$</code></pre>
+      <p>
+        Click into the dollars to edit the equation; click somewhere
+        else and it renders. (Yarrow uses standard LaTeX notation, the
+        same thing math textbooks and academic papers use.)
+      </p>
+
+      <h3>Code samples</h3>
+      <p>
+        For programmers (and anyone keeping recipe-like step-by-step
+        notes), wrap a chunk in three backticks and Yarrow will format
+        it as code:
+      </p>
+      <pre><code>```python
+def hello():
+    return "world"
+```</code></pre>
+      <p>
+        Pop in a language name after the opening backticks (like
+        <code>python</code>, <code>javascript</code>, <code>rust</code>,
+        or <code>bash</code>) and Yarrow will color the keywords for
+        you. In reading mode, code blocks get their own boxed
+        background — easy to tell apart from the prose.
+      </p>
+    </section>
+
+    <!-- ═══ smart paste ═══ -->
+    <section id="smart-paste" class="guide-section">
+      <h2>Pasting links</h2>
+      <p>
+        Copy a web address from anywhere — your browser, an email, a
+        chat — and paste it into a Yarrow note. The address shows up
+        right away, and a second later Yarrow swaps it for a tidy link
+        with the page's actual title (so you don't have to type "BBC
+        News article" yourself).
+      </p>
+      <p>
+        Want to use your own words for the link label? Highlight the
+        text first, then paste the address — the highlighted text
+        becomes the link, no title fetch needed.
+      </p>
+    </section>
+
+    <!-- ═══ spell-check ═══ -->
+    <section id="spell-check" class="guide-section">
+      <h2>Spell-check</h2>
+      <p>
+        Yarrow underlines misspelled words with a wavy red line as you
+        write. <strong>Right-click</strong> any underlined word and
+        you'll get a small list of suggested fixes — pick one to swap
+        it in.
+      </p>
+      <p>
+        At the bottom of the suggestions you'll see
+        <strong>Add to dictionary</strong>. Click it for words Yarrow
+        doesn't know but should — names, places, terms specific to
+        your work. Those words are remembered for this workspace, so
+        if you share it with someone else they get your vocabulary too.
+      </p>
+    </section>
+
+    <!-- ═══ attachments ═══ -->
+    <section id="attachments" class="guide-section">
+      <h2>Pictures &amp; files</h2>
+      <p>
+        To add a picture or any file to a note, drag it from your desktop
+        right onto the note. Or copy a screenshot and paste it. Yarrow
+        tucks the file safely inside your workspace and inserts a
+        reference where your cursor is.
+      </p>
+      <p>
+        Pictures show up as actual previews inside the note — no clicking
+        through. If a picture's missing (you moved it or renamed
+        something), Yarrow shows a small red block where it should be,
+        so you'll spot it.
+      </p>
+    </section>
+
+    <!-- ═══ wikilinks ═══ -->
+    <section id="wikilinks" class="guide-section">
+      <h2>[[Wikilinks]] — connecting notes by name</h2>
+      <p>
+        To link one note to another, type two square brackets
+        (<code>[[</code>) anywhere. A little menu pops up showing every
+        note in your workspace; keep typing to narrow it down, then
+        press <kbd>Enter</kbd> to insert the link. Click the link
+        any time to jump to that note. (The two-square-brackets
+        idea comes from Wikipedia, where this style of "name-based"
+        linking started — that's why it's called a "wikilink".)
+      </p>
+      <figure class="diagram">
+        <svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Anatomy of a wikilink: brackets, the target note's title, optional alias and section.">
+          <text x="20" y="48" font-family="mono" font-size="22" fill="var(--char)">[[<tspan fill="var(--yeld)" font-weight="600">Paris</tspan>|<tspan fill="var(--sage)">my favourite city</tspan>#<tspan fill="var(--yel)">food</tspan>]]</text>
+          <line x1="48" y1="56" x2="48" y2="86" stroke="var(--t3)" stroke-width="1"/>
+          <text x="40" y="100" font-family="sans-serif" font-size="10" fill="var(--t3)">target note title</text>
+          <line x1="138" y1="56" x2="138" y2="118" stroke="var(--t3)" stroke-width="1"/>
+          <text x="138" y="132" font-family="sans-serif" font-size="10" fill="var(--t3)" text-anchor="middle">optional display label (alias)</text>
+          <line x1="280" y1="56" x2="280" y2="146" stroke="var(--t3)" stroke-width="1"/>
+          <text x="280" y="160" font-family="sans-serif" font-size="10" fill="var(--t3)" text-anchor="middle">optional section anchor</text>
+        </svg>
+        <figcaption>The simple form is <code>[[Paris]]</code>. The pipe lets you display alternative text. The hash points at a heading inside the target note.</figcaption>
+      </figure>
+      <h3>Hover to peek</h3>
+      <p>
+        Hover the mouse over any link for a moment and a small preview
+        appears with the linked note's title and the first few lines of
+        what's inside. Move into the preview to keep it open and click
+        a button to "start a path here" if you want to branch from
+        that note.
+      </p>
+      <p>
+        Previews work both while you're writing and while you're reading.
+      </p>
+      <h3>Renaming a note other notes link to</h3>
+      <p>
+        Right-click a note in the sidebar to rename it. If other notes
+        link to it, Yarrow will ask: do you want to update them all to
+        the new name, or leave them pointing at the old one? Either
+        choice is undoable from History.
+      </p>
+    </section>
+
+    <!-- ═══ typed connections ═══ -->
+    <section id="typed-links" class="guide-section">
+      <h2>Typed connections</h2>
+      <p>
+        A regular link just says "these two notes are related." Sometimes
+        you want to say <em>how</em> they're related. Yarrow gives you
+        four kinds:
+      </p>
+      <ul class="bullet-list">
+        <li><strong>supports</strong> — this note backs up the other (an example, evidence, a quote)</li>
+        <li><strong>challenges</strong> — this note pushes back on the other (a counter-point, a contradicting fact)</li>
+        <li><strong>came from</strong> — this note is where the idea in the other one started</li>
+        <li><strong>open question</strong> — this note raises a question the other might answer</li>
+      </ul>
+      <p>
+        Click the chain-link icon on the right side of the window to
+        open the Links panel for the note you're on. Search for the
+        note you want to connect to, pick the type, and Yarrow makes
+        the connection on both sides — so the other note knows it's
+        being supported (or challenged, etc.) too.
+      </p>
+    </section>
+
+    <!-- ═══ transclusion ═══ -->
+    <section id="transclusion" class="guide-section">
+      <h2>Showing one note inside another</h2>
+      <p>
+        Sometimes you want one note to actually display the contents of
+        another, not just link to it. (Useful for putting a key
+        paragraph on a "summary" note while keeping it editable in its
+        original home.) Just put an exclamation point before a normal
+        link:
+      </p>
+      <pre><code>![[Paris]]                ← show all of "Paris" inside this note
+![[Paris#food]]           ← show just the "food" heading from "Paris"
+![[Paris^cafe-list]]      ← show a specific paragraph from "Paris"</code></pre>
+      <p>
+        The right side of the window has an "Embedded" panel that lists
+        what's being pulled in. If a referenced note has been deleted,
+        you'll see a red note so you can clean up.
+      </p>
+    </section>
+
+    <!-- ═══ open questions ═══ -->
+    <section id="open-questions" class="guide-section">
+      <h2>Open questions — loose ends, tracked</h2>
+      <p>
+        While you're writing, you'll often have things you want to
+        figure out later. Start that line with two question marks
+        (<code>??</code>) and Yarrow will mark it for you:
+      </p>
+      <pre><code>?? do we need a car for the Loire?</code></pre>
+      <p>
+        Those questions get a wavy yellow underline, and they all
+        gather in the "Open Questions" panel on the right side of the
+        window. Click any one to jump back to it later. Once you've
+        answered it, just delete the <code>??</code> and it's done.
+      </p>
+    </section>
+
+    <!-- ═══ tags ═══ -->
+    <section id="tags" class="guide-section">
+      <h2>Tags</h2>
+      <p>
+        Tags help you group notes by topic — like #travel, #recipes,
+        #work, or whatever you find useful. The easiest way to add
+        them: under the title of any note, click <em>+ add tags</em>
+        and start typing. Press Enter (or comma, or space) after each
+        one. The little × on each tag removes it.
+      </p>
+      <p>
+        Once you have a few tags, you'll see a Tags section in the
+        sidebar showing every tag with the number of notes it's on.
+        Click any tag to filter your notes to just that group. From
+        anywhere in the app you can also type <code>#travel</code>
+        in the command palette (⌘K) for the same filter.
+      </p>
+    </section>
+
+    <!-- ═══ pinned ═══ -->
+    <section id="pinned" class="guide-section">
+      <h2>Pinned notes</h2>
+      <p>
+        Right-click any note → <strong>Pin to top</strong>. Pinned notes
+        get their own subsection at the top of the sidebar with a small
+        pin glyph. Useful for the handful of notes you live in.
+      </p>
+    </section>
+
+    <!-- ═══ map ═══ -->
+    <section id="map" class="guide-section">
+      <h2>The Connections Map</h2>
+      <p>
+        Click the Map icon on the tool-rail (or <kbd>⌘K</kbd> →
+        <em>Open the map</em>) for a force-directed graph of every note
+        and the typed connections between them.
+      </p>
+      <figure class="diagram">
+        <svg viewBox="0 0 600 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Connections Map: gold-ringed main note, plum active note, paper-coloured neighbours, calm edges.">
+          <line x1="120" y1="80" x2="300" y2="140" stroke="var(--t3)" stroke-width="1.5"/>
+          <line x1="300" y1="140" x2="470" y2="80" stroke="var(--t3)" stroke-width="1.5"/>
+          <line x1="300" y1="140" x2="120" y2="220" stroke="var(--t3)" stroke-width="1.5"/>
+          <line x1="300" y1="140" x2="470" y2="220" stroke="var(--t3)" stroke-width="1.5"/>
+          <line x1="300" y1="140" x2="320" y2="260" stroke="var(--t3)" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <circle cx="120" cy="80" r="34" fill="var(--s2)" stroke="var(--gold)" stroke-width="3"/>
+          <text x="120" y="76" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">Two weeks</text>
+          <text x="120" y="90" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">in Europe</text>
+          <text x="120" y="42" font-family="serif" font-size="14" fill="var(--gold)" text-anchor="middle">★</text>
+          <circle cx="300" cy="140" r="40" fill="var(--yel)" stroke="var(--yel)"/>
+          <text x="300" y="145" font-family="serif" font-size="14" fill="var(--on-yel)" text-anchor="middle">Paris</text>
+          <circle cx="470" cy="80" r="28" fill="var(--s2)" stroke="var(--bd2)"/>
+          <text x="470" y="85" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">Food</text>
+          <circle cx="120" cy="220" r="28" fill="var(--s2)" stroke="var(--bd2)"/>
+          <text x="120" y="225" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">Rome</text>
+          <circle cx="470" cy="220" r="28" fill="var(--s2)" stroke="var(--bd2)"/>
+          <text x="470" y="225" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">Budget</text>
+          <circle cx="320" cy="260" r="22" fill="var(--s2)" stroke="var(--bd2)" stroke-dasharray="3 3"/>
+          <text x="320" y="265" font-family="serif" font-size="10" fill="var(--char)" text-anchor="middle">Solo?</text>
+        </svg>
+        <figcaption>Gold ring &amp; ★ = your workspace's main note. Plum fill = the note you're currently on. Dashed edge = an open-question link. Drag any node to re-arrange; click to open.</figcaption>
+      </figure>
+      <ul class="bullet-list">
+        <li><strong>Nearby / All toggle</strong> — start with 1–2 hops to keep the picture readable; switch to All when you want the whole network.</li>
+        <li><strong>Open per path</strong> — from any path's detail panel, click <em>Open the map for this path</em> to filter the graph to only that path's notes.</li>
+        <li><strong>Expand</strong> — the maximize icon opens the map full-screen.</li>
+      </ul>
+    </section>
+
+    <!-- ═══ paths intro ═══ -->
+    <section id="paths-intro" class="guide-section">
+      <h2>Paths — the big idea</h2>
+      <p>
+        A <strong>path</strong> is Yarrow's word for a different version
+        of your notes. Every workspace starts with one path called
+        <em>main</em> — the trunk of your thinking. When you want to
+        try something a different way (a solo trip instead of a couples
+        trip, an alternate research angle, a "what if we did this in
+        June instead?"), you start a new path. The original keeps
+        going as-is; the new one branches off to the side.
+      </p>
+      <p>
+        Paths aren't copies of your notes — they're more like
+        playlists. The same note can be in many paths at once, and
+        editing it on one path affects every path it's on. Think of
+        paths as different ways of pointing at the same set of files,
+        not different files.
+      </p>
+      <figure class="diagram">
+        <svg viewBox="0 0 660 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A workspace with one main path and two side paths branching off it.">
+          <line x1="80" y1="120" x2="240" y2="120" stroke="var(--t3)" stroke-width="2"/>
+          <line x1="240" y1="120" x2="440" y2="60" stroke="var(--t3)" stroke-width="2"/>
+          <line x1="240" y1="120" x2="440" y2="180" stroke="var(--t3)" stroke-width="2"/>
+          <rect x="20" y="100" width="120" height="40" rx="6" fill="var(--bg)" stroke="var(--gold)" stroke-width="2"/>
+          <text x="80" y="118" font-family="serif" font-size="13" fill="var(--char)" text-anchor="middle">main</text>
+          <text x="80" y="132" font-family="mono" font-size="9" fill="var(--gold)" text-anchor="middle">★ MAIN</text>
+          <rect x="380" y="40" width="160" height="40" rx="6" fill="var(--bg)" stroke="var(--bd2)"/>
+          <text x="460" y="58" font-family="serif" font-size="13" fill="var(--char)" text-anchor="middle">solo trip</text>
+          <text x="460" y="72" font-family="serif" font-size="9" fill="var(--yeld)" text-anchor="middle" font-style="italic">"if I go alone"</text>
+          <rect x="380" y="160" width="160" height="40" rx="6" fill="var(--bg)" stroke="var(--bd2)"/>
+          <text x="460" y="178" font-family="serif" font-size="13" fill="var(--char)" text-anchor="middle">budget cut</text>
+          <text x="460" y="192" font-family="serif" font-size="9" fill="var(--yeld)" text-anchor="middle" font-style="italic">"if budget halves"</text>
+          <text x="80" y="180" font-family="mono" font-size="9" fill="var(--t3)" text-anchor="middle">12 notes</text>
+          <text x="460" y="100" font-family="mono" font-size="9" fill="var(--t3)" text-anchor="middle">9 notes</text>
+          <text x="460" y="220" font-family="mono" font-size="9" fill="var(--t3)" text-anchor="middle">7 notes</text>
+        </svg>
+        <figcaption>Main is the trunk; side paths branch off. Each side path is "asking a question" you can answer by working in it.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ═══ starting a path ═══ -->
+    <section id="starting-path" class="guide-section">
+      <h2>Starting a path</h2>
+      <p>
+        Three ways:
+      </p>
+      <ol class="bullet-list">
+        <li>Press <kbd>⌘⇧B</kbd> from anywhere — opens the new-path modal seeded with the current note.</li>
+        <li>Click <em>Branch this</em> in the toolbar above the editor.</li>
+        <li>Hover any wikilink → <em>Start a path from this note</em>.</li>
+      </ol>
+      <p>
+        The modal asks for a <strong>condition</strong> — the
+        <em>"if…"</em> question this path is asking, like <em>"if I go
+        alone"</em> or <em>"if the Seattle job comes through."</em> The
+        condition becomes the path's display name. The note you were on
+        becomes the path's <strong>main note</strong> (its anchor).
+      </p>
+    </section>
+
+    <!-- ═══ forking road ═══ -->
+    <section id="forking-road" class="guide-section">
+      <h2>The Forking Road graph</h2>
+      <p>
+        Click the <strong>Paths</strong> icon on the tool-rail to open the
+        full Forking Road. It shows your workspace as a tree growing left
+        to right: the root (main) on the left, side paths fanning out to
+        the right.
+      </p>
+      <ul class="bullet-list">
+        <li><strong>Drag</strong> the canvas to pan; <strong>scroll</strong> to zoom.</li>
+        <li><strong>+ button</strong> on any card to start a sub-branch from there.</li>
+        <li><strong>Click a card</strong> to select it and open the detail panel on the right.</li>
+        <li><strong>YOU ARE HERE</strong> labels the path you're currently editing in.</li>
+        <li><strong>+N / −M badge</strong> on every card shows what you'd gain or lose by switching to that path (more on this in <a href="#decision-tools">Decision tools</a>).</li>
+      </ul>
+    </section>
+
+    <!-- ═══ path detail ═══ -->
+    <section id="path-detail" class="guide-section">
+      <h2>Editing a path</h2>
+      <p>
+        Selecting a path opens its detail panel:
+      </p>
+      <ul class="bullet-list">
+        <li><strong>Header</strong> — the path's name, its <em>"if…"</em> condition (click to edit), and its parent path.</li>
+        <li><strong>If you take this path</strong> — the diff vs. your current path (covered in the next section).</li>
+        <li><strong>In this path</strong> — the member notes. Click any to open. Hover for actions: <em>mark main</em> (designate that note as the path's anchor), <em>branch</em> (spin it into a sub-path), <em>remove</em> (drop from this path; doesn't delete the note).</li>
+        <li><strong>+ add note</strong> — opens a small picker of every note not already on the path.</li>
+        <li><strong>Open the map for this path</strong> — opens the Connections Map filtered to this path's members only.</li>
+        <li><strong>Promote to main</strong> / <strong>Delete this path</strong> in the footer.</li>
+      </ul>
+    </section>
+
+    <!-- ═══ promote ═══ -->
+    <section id="promote" class="guide-section">
+      <h2>Promoting a side path to main</h2>
+      <p>
+        You explored "solo trip" as an alternative; now you've decided to
+        go alone. Click <strong>★ Promote to main…</strong> in the path
+        detail footer. The side path becomes the new trunk, and the old
+        main moves to the <strong>ghost zone</strong> — preserved, faded,
+        on the left of the live tree.
+      </p>
+    </section>
+
+    <!-- ═══ ghost ═══ -->
+    <section id="ghost" class="guide-section">
+      <h2>Ghost paths</h2>
+      <p>
+        When you promote a side path to be the new main, the old main
+        doesn't disappear — it becomes a <strong>ghost path</strong>.
+        Ghost paths sit faded to the left of the live trunk, keeping
+        all their original neighbors intact. If you change your mind
+        later, you can promote a ghost back to main and its
+        neighborhood comes along with it. Yarrow's promise is that
+        nothing you ever made gets thrown away.
+      </p>
+    </section>
+
+    <!-- ═══ decision tools ═══ -->
+    <section id="decision-tools" class="guide-section">
+      <h2>Decision tools</h2>
+      <p>
+        Once you have more than one path, the question becomes: <em>which
+        one?</em> Yarrow has four ways to answer that — without writing a
+        single side document.
+      </p>
+
+      <h3>1. The +N / −M badge on every path card</h3>
+      <p>
+        Every path card on the Forking Road shows a small badge in its
+        bottom-right corner: how many notes you'd <em>gain</em> (yellow
+        +) and how many you'd <em>lose</em> (red −) by switching to that
+        path from the one you're currently editing. Hover for a tooltip;
+        the badge disappears for the path you're already on.
+      </p>
+
+      <h3>2. The "If you take this path…" diff panel</h3>
+      <p>
+        Open any path's detail panel and the first section is a
+        three-state diff vs. your current path:
+      </p>
+      <ul class="bullet-list">
+        <li><strong>+ you'd gain</strong> — notes present in this path that aren't in yours (yellow)</li>
+        <li><strong>~ present on both, but edited differently</strong> — same note slug, divergent body (amber)</li>
+        <li><strong>− you'd leave behind</strong> — notes you have that this path doesn't (red, struck through)</li>
+      </ul>
+      <p>
+        Click the small <strong>group by tag</strong> toggle to cluster
+        each list under <code>#tag</code> headings — useful for "I'd lose
+        three #museum notes if I solo this trip."
+      </p>
+
+      <h3>3. Hover to highlight</h3>
+      <p>
+        Pointing at any path card lights up its slugs in the note-list
+        sidebar (yellow background) and dims the rest. Releasing the
+        hover brings everything back. Opening a path's detail panel keeps
+        the highlight on for as long as the panel is open.
+      </p>
+
+      <h3>4. Drag to add</h3>
+      <p>
+        Drag any note from the sidebar onto a path card on the graph (or
+        onto the "In this path" section of an open path). The card
+        highlights as a drop target; releasing adds the note. No menu
+        diving.
+      </p>
+    </section>
+
+    <!-- ═══ decision matrix ═══ -->
+    <section id="decision-matrix" class="guide-section">
+      <h2>The decision matrix</h2>
+      <p>
+        For when the diff isn't enough and you need a spreadsheet of
+        choices. Open it from <kbd>⌘K</kbd> →
+        <em>Decision matrix…</em>.
+      </p>
+      <p>
+        Rows are notes, columns are paths, cells are ✓ (the note is on
+        that path) or · (it isn't). Click the ☆ next to any row to mark
+        that note as <strong>must-have</strong>. Starred rows bubble to
+        the top; the cell turns into a red ✗ if a starred note is missing
+        from a path.
+      </p>
+      <figure class="diagram">
+        <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The decision matrix: notes as rows, paths as columns, checkmarks for membership, score per path.">
+          <rect x="10" y="10" width="680" height="200" rx="8" fill="var(--bg)" stroke="var(--bd)"/>
+          <line x1="10" y1="50" x2="690" y2="50" stroke="var(--bd)"/>
+          <line x1="280" y1="10" x2="280" y2="210" stroke="var(--bd)"/>
+          <line x1="420" y1="10" x2="420" y2="210" stroke="var(--bd)"/>
+          <line x1="560" y1="10" x2="560" y2="210" stroke="var(--bd)"/>
+          <text x="20" y="35" font-family="mono" font-size="9" fill="var(--t3)">NOTE</text>
+          <text x="350" y="32" font-family="serif" font-size="13" fill="var(--char)" text-anchor="middle">main</text>
+          <text x="350" y="44" font-family="mono" font-size="8" fill="var(--yeld)" text-anchor="middle">★ 3/3</text>
+          <text x="490" y="32" font-family="serif" font-size="13" fill="var(--char)" text-anchor="middle">solo</text>
+          <text x="490" y="44" font-family="mono" font-size="8" fill="var(--danger)" text-anchor="middle">★ 2/3</text>
+          <text x="625" y="32" font-family="serif" font-size="13" fill="var(--char)" text-anchor="middle">budget</text>
+          <text x="625" y="44" font-family="mono" font-size="8" fill="var(--yeld)" text-anchor="middle">★ 3/3</text>
+          <!-- rows -->
+          <text x="20" y="78" font-family="sans-serif" font-size="13" fill="var(--yeld)">★</text>
+          <text x="40" y="78" font-family="serif" font-size="13" fill="var(--char)">Paris</text>
+          <text x="350" y="78" font-family="sans-serif" font-size="14" fill="var(--yeld)" text-anchor="middle">✓</text>
+          <text x="490" y="78" font-family="sans-serif" font-size="14" fill="var(--yeld)" text-anchor="middle">✓</text>
+          <text x="625" y="78" font-family="sans-serif" font-size="14" fill="var(--yeld)" text-anchor="middle">✓</text>
+          <text x="20" y="106" font-family="sans-serif" font-size="13" fill="var(--yeld)">★</text>
+          <text x="40" y="106" font-family="serif" font-size="13" fill="var(--char)">Rome</text>
+          <text x="350" y="106" font-family="sans-serif" font-size="14" fill="var(--yeld)" text-anchor="middle">✓</text>
+          <text x="490" y="106" font-family="sans-serif" font-size="14" fill="var(--danger)" text-anchor="middle">✗</text>
+          <text x="625" y="106" font-family="sans-serif" font-size="14" fill="var(--yeld)" text-anchor="middle">✓</text>
+          <text x="20" y="134" font-family="sans-serif" font-size="13" fill="var(--yeld)">★</text>
+          <text x="40" y="134" font-family="serif" font-size="13" fill="var(--char)">Lisbon</text>
+          <text x="350" y="134" font-family="sans-serif" font-size="14" fill="var(--yeld)" text-anchor="middle">✓</text>
+          <text x="490" y="134" font-family="sans-serif" font-size="14" fill="var(--yeld)" text-anchor="middle">✓</text>
+          <text x="625" y="134" font-family="sans-serif" font-size="14" fill="var(--yeld)" text-anchor="middle">✓</text>
+          <text x="20" y="162" font-family="sans-serif" font-size="13" fill="var(--t3)">☆</text>
+          <text x="40" y="162" font-family="serif" font-size="13" fill="var(--char)">Loire valley</text>
+          <text x="350" y="162" font-family="sans-serif" font-size="14" fill="var(--t2)" text-anchor="middle">✓</text>
+          <text x="490" y="162" font-family="sans-serif" font-size="14" fill="var(--bd2)" text-anchor="middle">·</text>
+          <text x="625" y="162" font-family="sans-serif" font-size="14" fill="var(--bd2)" text-anchor="middle">·</text>
+          <text x="20" y="190" font-family="sans-serif" font-size="13" fill="var(--t3)">☆</text>
+          <text x="40" y="190" font-family="serif" font-size="13" fill="var(--char)">Souvenir budget</text>
+          <text x="350" y="190" font-family="sans-serif" font-size="14" fill="var(--t2)" text-anchor="middle">✓</text>
+          <text x="490" y="190" font-family="sans-serif" font-size="14" fill="var(--bd2)" text-anchor="middle">·</text>
+          <text x="625" y="190" font-family="sans-serif" font-size="14" fill="var(--t2)" text-anchor="middle">✓</text>
+        </svg>
+        <figcaption>"Solo" is missing Rome — the red ✗ on a starred row catches the eye immediately. The score in each column header tells you how many must-haves a path satisfies.</figcaption>
+      </figure>
+      <p>
+        Top-row tools let you filter by tag, narrow by free text, or hide
+        all but the starred rows once you've decided what matters. Stars
+        persist per workspace.
+      </p>
+    </section>
+
+    <!-- ═══ path compare ═══ -->
+    <section id="path-compare" class="guide-section">
+      <h2>Comparing two paths side by side</h2>
+      <p>
+        <kbd>⌘K</kbd> → <em>Compare two paths…</em>. Pick any two paths
+        from the dropdowns. Yarrow lays them out in a two-column view
+        with every note that differs:
+        <span class="kw-add">added</span>,
+        <span class="kw-rem">removed</span>,
+        <span class="kw-mod">changed</span>, and (if you uncheck "Hide
+        identical") <span class="kw-same">same</span>. Each side shows the
+        note's first lines so you can read the divergence at a glance.
+      </p>
+    </section>
+
+    <!-- ═══ history ═══ -->
+    <section id="history" class="guide-section">
+      <h2>History &amp; checkpoints</h2>
+      <p>
+        Every save is a <strong>checkpoint</strong>. Click the History
+        icon on the tool-rail (or use <kbd>⌘K</kbd> → <em>Open history</em>)
+        to scrub through every past version of the active note.
+      </p>
+      <figure class="diagram">
+        <svg viewBox="0 0 660 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The history modal: timeline of checkpoints on the left, preview of the selected version on the right.">
+          <rect x="10" y="10" width="640" height="180" rx="10" fill="var(--bg-soft)" stroke="var(--bd2)"/>
+          <rect x="20" y="20" width="220" height="160" rx="6" fill="var(--bg)" stroke="var(--bd)"/>
+          <text x="32" y="40" font-family="mono" font-size="9" fill="var(--t3)">TODAY</text>
+          <rect x="32" y="48" width="200" height="22" rx="3" fill="var(--yelp)"/>
+          <text x="40" y="64" font-family="sans-serif" font-size="11" fill="var(--char)">14:02 · current</text>
+          <text x="40" y="84" font-family="sans-serif" font-size="11" fill="var(--char)">11:30 · added Loire</text>
+          <text x="40" y="104" font-family="sans-serif" font-size="11" fill="var(--char)">09:15 · trimmed intro</text>
+          <text x="32" y="128" font-family="mono" font-size="9" fill="var(--t3)">YESTERDAY</text>
+          <text x="40" y="146" font-family="sans-serif" font-size="11" fill="var(--char)">22:48 · ?? car for Loire?</text>
+          <text x="40" y="166" font-family="sans-serif" font-size="11" fill="var(--char)">17:09 · first draft</text>
+          <rect x="252" y="20" width="388" height="160" rx="6" fill="var(--bg)" stroke="var(--bd)"/>
+          <text x="264" y="40" font-family="mono" font-size="9" fill="var(--yeld)">+12 SINCE · −3 GONE</text>
+          <text x="264" y="62" font-family="serif" font-size="14" fill="var(--char)">Two weeks in Europe</text>
+          <text x="264" y="84" font-family="serif" font-size="11" fill="var(--char)">Fly into Paris, train south.</text>
+          <text x="264" y="100" font-family="serif" font-size="11" fill="var(--char)">Coast and food the second week.</text>
+          <text x="264" y="124" font-family="serif" font-size="11" fill="var(--sage)">+ Day-trip to the Loire if we have a car.</text>
+          <text x="264" y="140" font-family="serif" font-size="11" fill="var(--danger)" text-decoration="line-through">- old budget paragraph</text>
+          <rect x="540" y="155" width="92" height="22" rx="4" fill="var(--yel)"/>
+          <text x="586" y="170" font-family="sans-serif" font-size="11" fill="var(--on-yel)" text-anchor="middle">Restore</text>
+        </svg>
+        <figcaption>Left: the timeline, bucketed by recency. Right: a preview with diff highlighting (added in green, removed in red). <kbd>↑</kbd>/<kbd>↓</kbd> or <kbd>j</kbd>/<kbd>k</kbd> to scrub; <kbd>Enter</kbd> to restore.</figcaption>
+      </figure>
+      <p>
+        Restoring a checkpoint doesn't destroy what you have now — it
+        creates a <em>new</em> checkpoint with the older content. Your
+        path forward continues; the old version is still in the timeline.
+      </p>
+    </section>
+
+    <!-- ═══ trash ═══ -->
+    <section id="trash" class="guide-section">
+      <h2>Trash &amp; undelete</h2>
+      <p>
+        Deleting a note moves it to <code>.yarrow/trash/</code>. Open the
+        <strong>Trash</strong> button at the bottom of the sidebar to
+        see every removed note with the date you deleted it. Two actions
+        per row:
+      </p>
+      <ul class="bullet-list">
+        <li><strong>Restore</strong> — brings the note back as a new checkpoint. Note: backlinks that were stripped on delete are not auto-restored; you can re-add them.</li>
+        <li><strong>Purge</strong> — permanently removes the file from the trash dir. Cannot be undone.</li>
+      </ul>
+      <p>
+        <strong>Empty trash</strong> at the top of the modal purges
+        everything in one go.
+      </p>
+    </section>
+
+    <!-- ═══ palette ═══ -->
+    <section id="palette" class="guide-section">
+      <h2>The command palette — the fast lane</h2>
+      <p>
+        Press <kbd>⌘K</kbd> any time to open Yarrow's command palette —
+        one search box that does just about everything. Jump to a
+        note by typing its name, switch paths, run any of the menu
+        actions, all from your keyboard. Use the arrow keys to
+        navigate the list and <kbd>Enter</kbd> to pick.
+      </p>
+      <p>
+        Some things worth searching for in there: <em>New note</em>,
+        <em>Jump to today's journal</em>, <em>Open trash</em>,
+        <em>Decision matrix</em>, <em>Compare two paths</em>,
+        <em>Find &amp; replace</em>, <em>Print or save as PDF</em>,
+        <em>Open new window</em>, <em>Switch workspace</em>,
+        <em>Import an Obsidian vault</em>, <em>Sync workspace</em>,
+        and <em>Encrypt</em> / <em>Decrypt this note</em>.
+      </p>
+    </section>
+
+    <!-- ═══ find/replace ═══ -->
+    <section id="find-replace" class="guide-section">
+      <h2>Find &amp; replace, across all your notes</h2>
+      <p>
+        Press <kbd>⌘⇧F</kbd> (or <kbd>Ctrl+Shift+F</kbd>) to open the
+        find &amp; replace box. Start typing what you want to find —
+        Yarrow lists every note that contains it, with the matching
+        lines underneath, updated as you type.
+      </p>
+      <p>
+        You can choose whether to search across your whole workspace
+        or just your current path. <strong>Replace all</strong> shows a
+        confirmation step first. The whole change is recorded as a
+        single edit, so if you change your mind you can roll the entire
+        replace back from History on any of the changed notes.
+      </p>
+    </section>
+
+    <!-- ═══ templates ═══ -->
+    <section id="templates" class="guide-section">
+      <h2>Templates</h2>
+      <p>
+        When you create a new note (<kbd>⌘N</kbd>) the modal has a
+        <strong>Start from</strong> chip row at the bottom. Pick a
+        template and the new note opens pre-filled with its scaffold.
+        Yarrow ships six:
+      </p>
+      <ul class="bullet-list">
+        <li><strong>Daily journal</strong> (used automatically by ⌘T)</li>
+        <li><strong>Meeting notes</strong></li>
+        <li><strong>Book notes</strong></li>
+        <li><strong>Vacation planner</strong></li>
+        <li><strong>Project brief</strong></li>
+        <li><strong>Morning pages</strong></li>
+      </ul>
+      <p>
+        Edit any of them — and add your own — under
+        <strong>Settings → Templates</strong>. Placeholders supported:
+        <code>{{date}}</code>, <code>{{date_human}}</code>,
+        <code>{{weekday}}</code>, <code>{{title}}</code>,
+        <code>{{cursor}}</code> (where the cursor lands after creation).
+      </p>
+    </section>
+
+    <!-- ═══ daily journal ═══ -->
+    <section id="daily" class="guide-section">
+      <h2>Daily journal</h2>
+      <p>
+        Press <kbd>⌘T</kbd> to jump to today's journal entry. If today
+        doesn't exist, Yarrow creates it from the
+        <code>daily.md</code> template. Daily notes always live on
+        <code>main</code> — opening one from a side path silently
+        switches you back to main, with a small toast explaining why
+        (the journal is one stream, not N parallel ones).
+      </p>
+      <p>
+        The Journal section in the sidebar lists recent entries; the
+        calendar popover (click the month header) shows a month grid
+        with dots on every day you wrote. <kbd>⌘←</kbd> /
+        <kbd>⌘→</kbd> hop to previous / next entries while a daily note
+        is open.
+      </p>
+    </section>
+
+    <!-- ═══ scratchpad ═══ -->
+    <section id="scratchpad" class="guide-section">
+      <h2>Scratchpad &amp; quick capture</h2>
+      <p>
+        The scratchpad is a place to jot things that don't need to
+        become real notes — phone numbers, half-formed ideas, things
+        you copied from a webpage to read later. Toggle it with
+        <kbd>⌘⇧S</kbd> or the scratchpad button in the sidebar. It
+        only lives on this computer; it doesn't sync anywhere.
+      </p>
+      <p>
+        For grabbing a thought as fast as possible, hit
+        <kbd>⌘⇧Space</kbd>. A small window pops up; type, press
+        <kbd>⌘Enter</kbd>, and your note lands in the scratchpad with
+        the time stamped on it. You don't even have to be looking at
+        Yarrow.
+      </p>
+      <p>
+        Anything in the scratchpad that turns out to matter can be
+        promoted to a real note with the "Keep as note" button at the
+        bottom.
+      </p>
+    </section>
+
+    <!-- ═══ print ═══ -->
+    <section id="print" class="guide-section">
+      <h2>Print / save as PDF</h2>
+      <p>
+        <kbd>⌘P</kbd> renders the active note via pulldown-cmark with
+        print-friendly serif styling and opens your OS print dialog.
+        Pick "Save as PDF" (every modern OS print panel has it) to get
+        a self-contained PDF of the note.
+      </p>
+    </section>
+
+    <!-- ═══ multi window ═══ -->
+    <section id="multi-window" class="guide-section">
+      <h2>Multiple windows</h2>
+      <p>
+        <kbd>⌘K</kbd> → <em>Open new window</em> spawns a second window
+        onto the same workspace. Useful for putting two notes
+        side-by-side, or for working in the editor in one window while
+        watching the Map in another. Each window's position and size
+        are remembered across launches.
+      </p>
+    </section>
+
+    <!-- ═══ workspaces ═══ -->
+    <section id="workspaces" class="guide-section">
+      <h2>Switching workspaces</h2>
+      <p>
+        The workspace chip at the top of the left sidebar shows your
+        current workspace. Click it for the popover, or press
+        <kbd>⌘⇧O</kbd>, to see <strong>recent workspaces</strong> with
+        a deterministic colour badge for each, plus actions to open a
+        different folder or create a new workspace.
+      </p>
+      <p>
+        Switching is a full remount — no state from the previous
+        workspace leaks into the next.
+      </p>
+    </section>
+
+    <!-- ═══ obsidian ═══ -->
+    <section id="obsidian" class="guide-section">
+      <h2>Importing from Obsidian</h2>
+      <p>
+        Already have a notebook in Obsidian? You can bring it over.
+        Two ways to do it:
+      </p>
+      <ol class="bullet-list">
+        <li><strong>While creating a new workspace</strong> — pick "Import an Obsidian vault" in step 1 of the wizard and choose your vault folder. Yarrow names the new workspace after the folder.</li>
+        <li><strong>Into a workspace you already have</strong> — open the command palette with <kbd>⌘K</kbd>, search for <em>Import an Obsidian vault</em>, and pick the folder.</li>
+      </ol>
+      <p>
+        Yarrow brings in every note, keeps your <code>[[wikilinks]]</code>
+        and <code>#tags</code>, and ignores Obsidian's own settings
+        files. The whole import counts as one big change, so if
+        anything looks off you can roll all of it back from History.
+      </p>
+      <p>
+        If two notes happen to have the same title, Yarrow renumbers
+        the second one (so you might see <em>Paris-2</em> next to
+        <em>Paris</em>) and shows you the renames at the end so you
+        know what changed.
+      </p>
+    </section>
+
+    <!-- ═══ sync ═══ -->
+    <section id="sync" class="guide-section">
+      <h2>Sync</h2>
+      <p>
+        Sync is optional — Yarrow works perfectly offline. If you want
+        a backup somewhere, or to use Yarrow on more than one computer,
+        you can connect your workspace to a free service like
+        <a href="https://github.com">GitHub</a> and your notes will
+        upload there each time you click Sync.
+      </p>
+      <p>
+        Set it up under <strong>Settings → Sync</strong>: paste the
+        address of your GitHub repository (or any similar service),
+        give Yarrow an access code for private repositories, and click
+        Sync. The access code stays on this computer only — it never
+        gets uploaded with your notes.
+      </p>
+      <p>
+        If you're using two computers and you make different changes
+        on each before syncing, Yarrow shows you a side-by-side
+        "your thinking diverged" view so you can pick which version to
+        keep — or even merge them.
+      </p>
+    </section>
+
+    <!-- ═══ encryption ═══ -->
+    <section id="encryption" class="guide-section">
+      <h2>Encryption — keeping notes private</h2>
+      <p>
+        If you keep some notes that you'd rather no one else could read
+        (passwords, journal entries, sensitive work stuff), you can
+        encrypt them. Open <strong>Settings → Security</strong>, pick a
+        password, and Yarrow will show you a 12-word recovery phrase —
+        write it down somewhere safe. That's your "in case you forget
+        your password" backup.
+      </p>
+      <p>
+        Once that's set up, you can mark any individual note as
+        encrypted from the command palette (search for "Encrypt this
+        note"). Your other notes stay normal — encryption is per-note,
+        not all-or-nothing. Encrypted notes still show up in the
+        sidebar with their title and tags; only the body is hidden
+        until you unlock.
+      </p>
+      <p>
+        Press <kbd>⌘L</kbd> any time to lock everything immediately.
+        Yarrow also locks itself after 15 minutes of inactivity (or
+        whatever you set in Security settings) and when you quit.
+      </p>
+      <p class="callout">
+        <strong>One important warning:</strong> if you forget your
+        password <em>and</em> lose your recovery phrase, your encrypted
+        notes are gone. There's no "reset password" — that's the whole
+        point of real encryption. Treat the recovery phrase like a
+        physical key and put it somewhere you won't lose.
+      </p>
+    </section>
+
+    <!-- ═══ export ═══ -->
+    <section id="export" class="guide-section">
+      <h2>Sharing your notes as a website</h2>
+      <p>
+        Under <strong>Settings → Workspace</strong>, you'll find an
+        "Export" button. Click it and pick a folder, and Yarrow will
+        write out a complete little website of your notes — every note
+        formatted nicely, a table of contents, a clickable map of the
+        connections between notes, and a search box. Send the folder
+        to someone, upload it to your own web hosting, or just open
+        the index file in a browser. No internet required.
+      </p>
+      <p>
+        Encrypted notes are skipped — sharing those would defeat the
+        point of locking them up.
+      </p>
+    </section>
+
+    <!-- ═══ settings ═══ -->
+    <section id="settings" class="guide-section">
+      <h2>Settings tour</h2>
+      <p>
+        Open with <kbd>⌘,</kbd>. Eight tabs, each with its own
+        purpose:
+      </p>
+      <ul class="bullet-list">
+        <li><strong>Appearance</strong> — light / dark / auto theme; UI font picker (Merriweather is the new default in 1.1); UI scale (compact / cozy / roomy).</li>
+        <li><strong>Writing</strong> — editor font and size; raw markdown vs reading mode default; debounce-save interval; "what were you thinking?" prompt on close.</li>
+        <li><strong>Templates</strong> — edit, add, delete templates. The <code>daily.md</code> template is always present.</li>
+        <li><strong>Sync</strong> — remote URL, access token; manual sync trigger.</li>
+        <li><strong>Security</strong> — encryption setup, password change, recovery phrase regeneration, idle timeout, disable encryption.</li>
+        <li><strong>Workspace</strong> — workspace name, mode (mapped / basic), main note, history pruning (drop old or empty checkpoints), static-site export.</li>
+        <li><strong>Shortcuts</strong> — every keyboard binding, both platforms.</li>
+        <li><strong>About</strong> — version, build info, links.</li>
+      </ul>
+    </section>
+
+    <!-- ═══ shortcuts ═══ -->
+    <section id="shortcuts" class="guide-section">
+      <h2>All keyboard shortcuts</h2>
+      <table class="md-table">
+        <thead><tr><th>Shortcut</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>⌘K</kbd></td><td>Command palette</td></tr>
+          <tr><td><kbd>⌘O</kbd></td><td>Quick note switcher</td></tr>
+          <tr><td><kbd>⌘N</kbd></td><td>New note</td></tr>
+          <tr><td><kbd>⌘⇧N</kbd></td><td>Start a new path</td></tr>
+          <tr><td><kbd>⌘⇧B</kbd></td><td>Branch from current note</td></tr>
+          <tr><td><kbd>⌘T</kbd></td><td>Jump to today's journal</td></tr>
+          <tr><td><kbd>⌘←</kbd> / <kbd>⌘→</kbd></td><td>Previous / next journal entry</td></tr>
+          <tr><td><kbd>⌘⇧Space</kbd></td><td>Quick capture → scratchpad</td></tr>
+          <tr><td><kbd>⌘⇧S</kbd></td><td>Toggle scratchpad</td></tr>
+          <tr><td><kbd>⌘⇧O</kbd></td><td>Workspace switcher</td></tr>
+          <tr><td><kbd>⌘⇧F</kbd></td><td>Workspace-wide find &amp; replace</td></tr>
+          <tr><td><kbd>⌘P</kbd></td><td>Print or save as PDF</td></tr>
+          <tr><td><kbd>⌘\</kbd></td><td>Toggle focus mode</td></tr>
+          <tr><td><kbd>⌘L</kbd></td><td>Lock encrypted notes</td></tr>
+          <tr><td><kbd>⌘,</kbd></td><td>Open Settings</td></tr>
+        </tbody>
+      </table>
+      <p class="callout">
+        macOS users: every <kbd>⌘</kbd> in this table is <kbd>Ctrl</kbd>
+        on Windows and Linux.
+      </p>
+    </section>
+
+    <!-- ═══ filesystem ═══ -->
+    <section id="filesystem" class="guide-section">
+      <h2>Where files live</h2>
+      <p>
+        Your workspace is just a regular folder on your computer.
+        Open it in Finder, Explorer, or any file manager — your notes
+        are right there as plain text files. This is what's inside:
+      </p>
+      <pre><code>your-workspace/
+├── .yarrow/
+│   ├── config.toml              workspace settings (committed)
+│   ├── path-collections.toml    your paths, as a tree (committed)
+│   ├── credentials.toml         sync tokens (per-machine, gitignored)
+│   ├── security.toml            wrapped encryption keys (committed)
+│   ├── dictionary.txt           workspace spell-check vocabulary (committed)
+│   ├── trash/                   soft-deleted notes (gitignored)
+│   ├── session.json             window state (gitignored)
+│   ├── scratchpad.md            jotting (gitignored)
+│   ├── templates/
+│   │   └── daily.md             rendered into new journal entries
+│   └── index.json               link/tag cache (gitignored)
+├── notes/
+│   ├── paris.md
+│   ├── rome.md
+│   └── daily/
+│       └── 2026-04-19.md        journal entry
+├── attachments/
+│   └── 7f2c…e1.png              content-addressed by SHA-256 prefix
+└── .gitignore</code></pre>
+      <p>
+        Each note file starts with a small "info block" between two
+        <code>---</code> lines (called <em>frontmatter</em>) that
+        records the title, the date, the tags, and any links to other
+        notes. You can open these files in any text editor and tweak
+        them by hand — Yarrow will pick up your changes the next time
+        you open the workspace.
+      </p>
+    </section>
+
+    <!-- ═══ glossary ═══ -->
+    <section id="glossary" class="guide-section">
+      <h2>Glossary</h2>
+      <p>
+        A quick reference to the words Yarrow uses, in plain language.
+      </p>
+      <dl class="glossary">
+        <dt>Note</dt>
+        <dd>One unit of writing — a single text file in your workspace.</dd>
+        <dt>Wikilink</dt>
+        <dd>A way to link from one note to another by typing its name in double square brackets, like <code>[[My Other Note]]</code>.</dd>
+        <dt>Typed connection</dt>
+        <dd>A link between notes that says <em>how</em> they're related: this one <em>supports</em> that one, <em>challenges</em> it, <em>came from</em> it, or raises an <em>open question</em>.</dd>
+        <dt>Path</dt>
+        <dd>A "what if I tried it this way" version of your notes. Like a branch on a tree — the original keeps going, but the new path takes ideas in a different direction.</dd>
+        <dt>Main note</dt>
+        <dd>The starting note for a path. Marked with a ★ in the sidebar.</dd>
+        <dt>Ghost path</dt>
+        <dd>An old path that used to be the main trunk but isn't anymore. Faded but never deleted; you can bring it back any time.</dd>
+        <dt>Checkpoint</dt>
+        <dd>A snapshot Yarrow takes of your note every time you pause. Lets you scroll back to any past version.</dd>
+        <dt>Map</dt>
+        <dd>The visual web of all your notes and the links between them. Helps you see the shape of what you've written.</dd>
+        <dt>Scratchpad</dt>
+        <dd>A throwaway notepad for jotting things that don't need to become real notes.</dd>
+        <dt>Workspace</dt>
+        <dd>One folder full of notes. Have as many as you want — work, personal, projects, whatever.</dd>
+        <dt>Sync</dt>
+        <dd>Optional. Backs up your workspace to a service like GitHub so you can use it on more than one computer.</dd>
+      </dl>
+    </section>
+
+    <!-- ═══ next steps ═══ -->
+    <section class="guide-section guide-cta">
+      <h2>That's the whole tour.</h2>
+      <p>
+        If you're brand new, just start writing. Make a few notes, try
+        linking one to another by typing <code>[[</code>, and watch the
+        Map fill in as you go. The first time you find yourself wanting
+        to try something a different way — start a path. That's the
+        moment Yarrow earns its place on your computer.
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Download 1.1
+        </a>
+        <a class="btn ghost" href="index.html">
+          ← Back to the home page
+        </a>
+        <a class="btn quiet" href="https://github.com/neuralpunk/yarrow/issues" rel="noopener">
+          Report a bug or request a feature
+        </a>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ═══ footer ═══ -->
+<footer class="foot">
+  <div class="page foot-inner">
+    <div class="foot-brand">Yarrow</div>
+    <p class="foot-lede">Local-first, git-backed, plain-text notes for non-linear thinking.</p>
+    <div class="foot-links">
+      <a href="index.html">Home</a>
+      <a href="user-guide.html">User Guide</a>
+      <a href="https://github.com/neuralpunk/yarrow" rel="noopener">GitHub</a>
+      <a href="https://github.com/neuralpunk/yarrow/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/neuralpunk/yarrow/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+      <a href="https://github.com/neuralpunk/yarrow/issues" rel="noopener">Issues</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // ── theme toggle (same shape as index.html) ──
+  (function () {
+    var buttons = document.querySelectorAll('[data-theme-value]');
+    var meta = document.getElementById('meta-theme-color');
+    var BG = { light: '#F7F5F0', dark: '#1B1D1C' };
+    function set(mode) {
+      document.documentElement.setAttribute('data-theme', mode);
+      try { localStorage.setItem('yarrow.site.theme', mode); } catch (_) {}
+      if (meta) meta.setAttribute('content', BG[mode] || BG.light);
+      buttons.forEach(function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-theme-value') === mode ? 'true' : 'false');
+      });
+    }
+    buttons.forEach(function (b) {
+      b.addEventListener('click', function () { set(b.getAttribute('data-theme-value')); });
+    });
+    set(document.documentElement.getAttribute('data-theme') || 'light');
+  })();
+
+  // ── on mobile, default the TOC `<details>` to closed so the
+  // first paint shows the guide content. On desktop it stays open
+  // (the summary row is hidden via CSS). We re-evaluate on resize
+  // so an orientation flip or window-drag does the right thing.
+  (function () {
+    var d = document.querySelector('.toc-mobile-collapse');
+    if (!d) return;
+    var MQ = window.matchMedia('(max-width: 920px)');
+    var apply = function () {
+      // Don't fight the user — only change `open` on initial load /
+      // when crossing the breakpoint, never while a section is in
+      // active scroll-spy view.
+      d.open = !MQ.matches;
+    };
+    apply();
+    if (MQ.addEventListener) MQ.addEventListener('change', apply);
+    else if (MQ.addListener) MQ.addListener(apply);
+    // Tapping a TOC link on mobile should auto-collapse the menu so
+    // the user lands at the section without scrolling past the index.
+    d.addEventListener('click', function (e) {
+      if (!MQ.matches) return;
+      var t = e.target;
+      if (t && t.tagName === 'A') {
+        // Defer so the in-page anchor jump completes before collapse.
+        setTimeout(function () { d.open = false; }, 80);
+      }
+    });
+  })();
+
+  // ── highlight the active TOC link as you scroll ──
+  (function () {
+    var links = document.querySelectorAll('.guide-toc a');
+    if (!links.length || !('IntersectionObserver' in window)) return;
+    var byHref = {};
+    links.forEach(function (a) { byHref[a.getAttribute('href')] = a; });
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        var id = '#' + e.target.id;
+        if (e.isIntersecting && byHref[id]) {
+          links.forEach(function (l) { l.classList.remove('active'); });
+          byHref[id].classList.add('active');
+        }
+      });
+    }, { rootMargin: '-30% 0px -65% 0px', threshold: 0 });
+    document.querySelectorAll('.guide-section[id]').forEach(function (s) { io.observe(s); });
+  })();
+</script>
+
+</body>
+</html>

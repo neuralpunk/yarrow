@@ -28,7 +28,7 @@ export default {
       },
       fontFamily: {
         serif: ['"Source Serif 4"', 'ui-serif', 'Georgia', 'serif'],
-        sans:  ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans:  ['Merriweather', 'ui-serif', 'Georgia', 'serif'],
         mono:  ['"JetBrains Mono"', 'ui-monospace', 'Menlo', 'monospace'],
       },
       fontSize: {

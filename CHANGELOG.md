@@ -6,6 +6,175 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [1.1.0] — 2026-04-19
+
+The 1.1 release deepens the writing surface (real GitHub-style reading mode,
+KaTeX, code-block syntax highlighting, smart paste, spell-check) and turns
+the Paths system into a proper decision-support tool: every other path now
+tells you, at a glance, what you'd gain and what you'd leave behind by
+taking it. Workspace creation moves out of the OS folder picker into a
+guided in-app wizard that can also import an Obsidian vault.
+
+### Highlights
+
+- **GitHub-style reading mode.** The reading toggle (right rail or
+  Settings → Writing) now switches the editor for a fully rendered HTML
+  view via pulldown-cmark — themed code blocks with a darker background,
+  bordered tables, blockquote bars, task lists, and clickable wikilinks
+  that open in-app. Editing flips back to CodeMirror.
+- **Wikilink hover preview in reading mode.** The popover that's been in
+  writing mode now appears in reading mode too, with the same excerpt and
+  path-membership chips. Cache is shared across the two surfaces.
+- **Inline KaTeX math.** `$x^2$` inline and `$$\int…$$` block math render
+  to KaTeX widgets when the cursor is outside the delimiters; click in to
+  edit the LaTeX source.
+- **Code-block syntax highlighting.** Fenced ``` ```python ``` (and every
+  other language registered with `@codemirror/language-data`) now gets
+  keyword/string/comment colouring inside the editor. Reading mode keeps
+  its own themed code styling independently.
+- **Smart paste.** Paste a URL → it becomes `[<page title>](url)` after a
+  background fetch; with a selection it becomes a labeled link without the
+  fetch.
+- **Spell-check with workspace dictionary.** Misspellings get a wavy red
+  underline outside code fences / wikilinks / URLs. Right-click → suggestions
+  popover and "Add to dictionary." Custom words live in a committed
+  `.yarrow/dictionary.txt` so the team shares the same vocabulary.
+- **Path decision-support.** The Paths pane now answers *"what does taking
+  this path actually mean?"*:
+  - **Three-state diff** in the path detail panel — `+` you'd gain, `~`
+    present on both but edited differently, `−` you'd leave behind. The
+    "edited differently" group fetches a real git comparison.
+  - **Group by tag** toggle clusters the gains/losses under their tags.
+  - **Decision matrix** (palette: *Decision matrix…*) — rows are notes,
+    columns are paths, cells are ✓/✗. Star a row as must-have; column
+    headers show `★ N/M` and turn red if any starred row is missing.
+    Stars persist per-workspace.
+  - **+N / −M badges** on every path card in the Forking Road graph,
+    relative to the path you're currently on.
+  - **Hover-to-highlight** — pointing at a path card lights up its slugs
+    in the note list and dims the rest. Opening a path keeps the highlight
+    on while you read its detail panel.
+  - **Drag-to-add-to-path** — drag any sidebar note onto a path card or
+    onto an open path's "In this path" section to add it.
+- **Workspace-creation wizard.** Replaces the bare OS folder picker with a
+  two-step in-app modal: pick what you're starting from (blank notebook or
+  Obsidian vault), then name it / pick a location / choose mode / name a
+  starting note. Live "Will create:" preview shows the absolute path.
+- **Obsidian vault import.** From the new-workspace wizard *or* the
+  command palette (*Import an Obsidian vault…*). Walks `.md` files,
+  preserves `[[wikilinks]]` and `#tags`, skips `.obsidian/` and `.trash/`,
+  and lands as a single checkpoint so you can roll back the whole import.
+- **Workspace-wide find & replace.** Modal with regex toggle, scope
+  switch (workspace / current path), live preview, and an in-app confirm
+  step before applying. The whole change is one checkpoint.
+- **Trash with undelete.** Deleting a note now stashes a copy under
+  `.yarrow/trash/`. New Trash modal (left sidebar) lists removed notes
+  with restore + permanent-purge actions.
+- **Auto-rename wikilink updates.** Renaming a note pre-flights how many
+  other notes link to it; if any do, asks: *Rename only this note* or
+  *Rename and update wikilinks*. Handles `[[Title|alias]]` and
+  `[[Title#section]]` variants too.
+- **Print / save as PDF.** `⌘P` / `Ctrl+P` renders the active note via
+  pulldown-cmark with print-friendly styling and opens the OS print dialog.
+- **Multiple windows.** *Open new window* in the palette spawns a second
+  window onto the same workspace. Window position and size are remembered
+  across launches.
+- **Path comparison view.** *Compare two paths…* in the palette opens a
+  side-by-side panel with added / removed / changed / same counts.
+
+### New keyboard shortcuts
+
+- `⌘P` / `Ctrl+P` — print or save the active note as PDF
+- `⌘⇧F` / `Ctrl+Shift+F` — workspace-wide find & replace
+
+### Fixed
+
+- **Cross-note content swap.** When a note switch happened mid-debounce,
+  the editor's unmount-flush could write note A's body into note B's file
+  (`handleSave` closed over a stale `activeSlug`). The editor now passes
+  the slug captured at mount time so saves always land on the right note.
+- **Window stuck small + unresizable.** The 1.0 build set
+  `decorations: false` without supplying custom resize handles, so on most
+  Linux WMs the window had no draggable edges. Decorations are back on,
+  default size raised to 1400×900, min lowered to 820×560.
+- **Onboarding scrolled off the top.** With many recent workspaces, the
+  centered flex layout pushed the header off the scrollable region. Wrapped
+  in `min-h-full` flex so the page centers when short and scrolls cleanly
+  when long.
+- **Find & replace pop-ups.** Replaced `confirm()` and `alert()` with
+  in-app modals (panel-overlay confirm + a result modal in the shell).
+- **Browser print intercepted.** `⌘P` no longer prints the editor chrome —
+  it triggers Yarrow's own pulldown-cmark render.
+- **Tag edits dropped on fast note switch.** TagChips now flushes its pending
+  commit on unmount and refuses to be clobbered mid-edit.
+- **Trash silently overwrote prior deletions of the same name.** Stash now
+  picks a unique storage slug; restore puts the note back under its
+  original slug (suffixing if that slot is now occupied).
+- **`cmd_create_workspace_dir` accepted `.` and `..`.** Names that resolve
+  to the parent directory itself are now rejected; parent path is
+  validated before joining.
+- **`cmd_fetch_url_title` had SSRF surface.** Now requires `http(s)` and
+  refuses loopback / link-local / RFC 1918 / cloud-metadata IPs so smart
+  paste can't probe the user's intranet.
+- **Print iframe could leak in the DOM.** Added a 30 s safety-net cleanup
+  in case `onload` never fires.
+- **`Ctrl+P` opened the quick switcher instead of print.** An old keymap
+  entry bound `Ctrl+P` alongside `Ctrl+O` and short-circuited; removed.
+
+### Performance
+
+- **Save fan-out: 4 IPCs → 1.** New `cmd_save_note_full` returns the saved
+  note plus workspace summaries, graph, and orphans in one round-trip.
+- **Single notes-dir walk per save.** `notes::list` and `graph::build` now
+  share a `notes::scan` pass; previously each save walked the directory
+  twice and parsed every frontmatter twice (~2N → ~N file reads).
+- **No-op saves are free.** `cmd_save_note_full` short-circuits when the
+  body is unchanged — no scan, no checkpoint, no frontend setState fan-out.
+- **Topology refresh debounced.** `cmd_branch_topology` (a git walk) used
+  to fire after every save even though content saves can't change branch
+  topology. Now runs on a 1.5 s tail.
+- **Graph cache write skipped when unchanged.** `index.json` is compared
+  byte-for-byte before being rewritten — most edits no longer touch it.
+- **Spell-check result memoization.** Per-word `isCorrect()` results are
+  cached in a 4096-entry LRU; the spell decoration pass no longer re-runs
+  affix matching on every word every keystroke.
+- **Selection event guard.** The status bar's selection-changed event no
+  longer dispatches "0/0" on every keystroke — only when the value
+  actually changes — so AppShell stops re-rendering between characters.
+- **Memo'd Toolbar + stable callback refs.** The path ribbon was unmemo'd
+  and its parent passed inline arrows; both fixed.
+- **Tightened broad chrome transition.** The universal `aside, header, …`
+  background/border/color transition went from 220 ms → 140 ms so hover
+  state changes feel snappier; theme crossfade still rides on the body's
+  220 ms.
+- **Lazy-prefetch widened.** NoteReader, DecisionMatrix, FindReplace, and
+  Trash now warm during idle time alongside the editor + palette.
+
+### Upgrade notes
+
+- `.yarrow/dictionary.txt` is **committed** (workspace vocabulary belongs
+  with the workspace). `.yarrow/trash/` and `.yarrow/session.json` are
+  added to the gitignore.
+- New backend deps: `ureq` (URL title fetch), `regex` (find/replace),
+  `walkdir` (Obsidian importer), `tauri-plugin-window-state` (window
+  position/size persistence).
+- New frontend deps: `katex`, `nspell`, `dictionary-en`,
+  `@codemirror/language-data`. The CodeMirror chunk grew because the
+  English dictionary and the language registry are now loaded; both are
+  lazy and only paid for when the editor mounts.
+- Window position/size persists per-machine via the new plugin. If a
+  pre-existing tiny size is restored from disk, drag the window once to
+  resize and the new size will stick. To reset, delete
+  `~/.local/share/com.yarrow.desktop/.window-state` (path varies).
+- The `cmd_rename_note` IPC takes an extra `rewriteWikilinks: boolean`
+  argument. The frontend pre-flights via `cmd_count_wikilink_references`
+  and only prompts when there's actually something to rewrite.
+- `tauri.conf.json` flips `decorations` back to `true`; the custom
+  Titlebar component from 0.3 is no longer in use. Native window chrome
+  is back so resize edges and OS shortcuts work.
+
+---
+
 ## [1.0.0] — 2026-04-17
 
 The 1.0 release pairs a daily-tool feature set (templates, tags, per-note

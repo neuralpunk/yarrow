@@ -87,6 +87,21 @@ function NoteListInner({
     if (!selectMode) setSelected(new Set());
   }, [selectMode]);
 
+  // Hover-to-highlight: the paths pane fires `yarrow:path-highlight` with a
+  // slug list when the user is pointing at a path card. We dim every other
+  // row so the slugs from that path "light up" inside the note list, giving
+  // an instant ambient view of what membership means.
+  const [pathHighlight, setPathHighlight] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    const onHighlight = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ slugs: string[] | null }>).detail;
+      if (!detail || !detail.slugs) { setPathHighlight(null); return; }
+      setPathHighlight(new Set(detail.slugs));
+    };
+    window.addEventListener("yarrow:path-highlight", onHighlight as EventListener);
+    return () => window.removeEventListener("yarrow:path-highlight", onHighlight as EventListener);
+  }, []);
+
   const orphanCount = orphans.size;
   const now = Date.now();
   const decayCutoff = now - decayDays * 86400 * 1000;
@@ -129,7 +144,12 @@ function NoteListInner({
     return (
       <li
         key={n.slug}
-        className="relative flex items-center gap-1"
+        data-path-highlight={
+          pathHighlight === null
+            ? "none"
+            : pathHighlight.has(n.slug) ? "in" : "out"
+        }
+        className="relative flex items-center gap-1 yarrow-path-hl"
         onMouseEnter={() => {
           setHoveredSlug(n.slug);
           if (hoverPrefetchTimer.current) window.clearTimeout(hoverPrefetchTimer.current);
@@ -157,6 +177,16 @@ function NoteListInner({
           />
         )}
         <button
+          draggable
+          onDragStart={(e) => {
+            // Carry the slug so any path-card drop target (in PathsPane or
+            // ForkingRoad) can add the note to that path. We use both a
+            // custom mime so other drop zones can ignore us, and `text/plain`
+            // for compatibility with developer tools / external editors.
+            e.dataTransfer.setData("application/x-yarrow-note", n.slug);
+            e.dataTransfer.setData("text/plain", n.title || n.slug);
+            e.dataTransfer.effectAllowed = "copy";
+          }}
           onClick={() => {
             if (selectMode) {
               const next = new Set(selected);

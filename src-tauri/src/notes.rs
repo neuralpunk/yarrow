@@ -94,7 +94,18 @@ pub fn relative_note_path(slug: &str) -> String {
     format!("notes/{}.md", slug)
 }
 
-pub fn list(root: &Path) -> Result<Vec<NoteSummary>> {
+/// One pass over the notes directory: reads each file exactly once and
+/// returns the parsed frontmatter, body, and slug. Both `list` and
+/// `graph::build` consume this so a save no longer pays for two
+/// independent walks of the same disk tree (previously ~2N file reads
+/// per save; now N).
+pub struct ScannedNote {
+    pub slug: String,
+    pub fm: Frontmatter,
+    pub body: String,
+}
+
+pub fn scan(root: &Path) -> Result<Vec<ScannedNote>> {
     let dir = workspace::notes_dir(root);
     if !dir.exists() {
         return Ok(vec![]);
@@ -116,25 +127,35 @@ pub fn list(root: &Path) -> Result<Vec<NoteSummary>> {
         }
         let raw = std::fs::read_to_string(&path)?;
         let (fm, body) = parse(&raw);
-        let title = if fm.title.is_empty() { slug.clone() } else { fm.title.clone() };
-        let modified = if fm.modified.is_empty() { fm.created.clone() } else { fm.modified.clone() };
-        // Body excerpt is meaningless on ciphertext; substitute a fixed hint
-        // so the sidebar renders cleanly without leaking ciphertext chars.
-        let excerpt = if fm.encrypted {
-            "🔒 encrypted — unlock to preview".to_string()
-        } else {
-            excerpt_from(&body)
-        };
-        out.push(NoteSummary {
-            slug,
-            title,
-            modified,
-            excerpt,
-            pinned: fm.pinned,
-            encrypted: fm.encrypted,
-            tags: fm.tags,
-        });
+        out.push(ScannedNote { slug, fm, body });
     }
+    Ok(out)
+}
+
+/// Build a `NoteSummary` row from a scanned note. Pulled out so `list` and
+/// `cmd_save_note_full` (and other batched-IPC callers) can derive
+/// summaries without re-parsing.
+pub fn summary_from(scanned: &ScannedNote) -> NoteSummary {
+    let title = if scanned.fm.title.is_empty() { scanned.slug.clone() } else { scanned.fm.title.clone() };
+    let modified = if scanned.fm.modified.is_empty() { scanned.fm.created.clone() } else { scanned.fm.modified.clone() };
+    let excerpt = if scanned.fm.encrypted {
+        "🔒 encrypted — unlock to preview".to_string()
+    } else {
+        excerpt_from(&scanned.body)
+    };
+    NoteSummary {
+        slug: scanned.slug.clone(),
+        title,
+        modified,
+        excerpt,
+        pinned: scanned.fm.pinned,
+        encrypted: scanned.fm.encrypted,
+        tags: scanned.fm.tags.clone(),
+    }
+}
+
+pub fn list(root: &Path) -> Result<Vec<NoteSummary>> {
+    let mut out: Vec<NoteSummary> = scan(root)?.iter().map(summary_from).collect();
     out.sort_by(|a, b| b.modified.cmp(&a.modified));
     Ok(out)
 }
@@ -456,32 +477,86 @@ pub fn create(root: &Path, title: &str) -> Result<Note> {
     write(root, &slug, "", Some(fm))
 }
 
-pub fn rename(root: &Path, old_slug: &str, new_title: &str) -> Result<Note> {
+pub fn rename(
+    root: &Path,
+    old_slug: &str,
+    new_title: &str,
+    rewrite_wikilinks: bool,
+) -> Result<Note> {
+    let old_title = read(root, old_slug)
+        .map(|n| n.frontmatter.title)
+        .unwrap_or_default();
     let mut new_slug = slug_from_title(new_title);
     if new_slug == old_slug {
-        // title-only change
         let note = read(root, old_slug)?;
         let mut fm = note.frontmatter;
         fm.title = new_title.to_string();
-        // Plain `write` here; if encrypted + locked, ciphertext is preserved
-        // via write_with_key's locked-frontmatter path.
-        return write(root, old_slug, &note.body, Some(fm));
+        let updated = write(root, old_slug, &note.body, Some(fm))?;
+        if rewrite_wikilinks {
+            rewrite_wikilinks_on_rename(root, &old_title, old_slug, new_title)?;
+        }
+        return Ok(updated);
     }
     let mut n = 1;
     while note_path(root, &new_slug).exists() {
         n += 1;
         new_slug = format!("{}-{}", slug_from_title(new_title), n);
     }
-    // Physically move first so frontmatter-only rewrite finds the ciphertext
-    // at the new path — matters for encrypted notes where we can't re-seal
-    // without the key.
     std::fs::rename(note_path(root, old_slug), note_path(root, &new_slug))?;
     let moved = read(root, &new_slug)?;
     let mut fm = moved.frontmatter;
     fm.title = new_title.to_string();
     let updated = write(root, &new_slug, &moved.body, Some(fm))?;
+    // Frontmatter `links:` arrays always update — they're typed connections
+    // the user explicitly created and would be silently broken by a slug
+    // rename. Body wikilinks are opt-in (the wizard asks before mutating
+    // every note in the workspace).
     update_backlinks_on_rename(root, old_slug, &new_slug)?;
+    if rewrite_wikilinks {
+        rewrite_wikilinks_on_rename(root, &old_title, old_slug, new_title)?;
+    }
     Ok(updated)
+}
+
+/// Count notes whose body contains a wikilink to `slug` or its title — used
+/// by the rename dialog to tell the user how many notes will be touched
+/// before they decide to opt in.
+pub fn count_wikilink_refs(root: &Path, slug: &str) -> Result<usize> {
+    let title = read(root, slug)
+        .map(|n| n.frontmatter.title)
+        .unwrap_or_default();
+    let candidates: Vec<String> = {
+        let mut v = vec![slug.to_string()];
+        if !title.is_empty() && title != slug { v.push(title); }
+        v
+    };
+    let needles: Vec<(String, String)> = candidates.iter()
+        .flat_map(|n| {
+            let inline = format!("[[{}]]", n);
+            let inline_pipe = format!("[[{}|", n);
+            let inline_anchor = format!("[[{}#", n);
+            let embed = format!("![[{}]]", n);
+            let embed_pipe = format!("![[{}|", n);
+            let embed_anchor = format!("![[{}#", n);
+            vec![
+                (inline, n.clone()),
+                (inline_pipe, n.clone()),
+                (inline_anchor, n.clone()),
+                (embed, n.clone()),
+                (embed_pipe, n.clone()),
+                (embed_anchor, n.clone()),
+            ]
+        })
+        .collect();
+    let mut count = 0usize;
+    for summary in list(root)? {
+        if summary.slug == slug { continue; }
+        let note = match read(root, &summary.slug) { Ok(n) => n, Err(_) => continue };
+        for (needle, _) in &needles {
+            if note.body.contains(needle) { count += 1; break; }
+        }
+    }
+    Ok(count)
 }
 
 pub fn delete(root: &Path, slug: &str) -> Result<()> {
@@ -496,6 +571,53 @@ pub fn delete(root: &Path, slug: &str) -> Result<()> {
         note.frontmatter.links.retain(|l| l.target != slug);
         if note.frontmatter.links.len() != before {
             write(root, &summary.slug, &note.body, Some(note.frontmatter))?;
+        }
+    }
+    Ok(())
+}
+
+/// Rewrite every `[[wikilink]]` in every note's body that referred to the
+/// old title or slug so it now refers to the new title. Called from `rename`
+/// after the file move + frontmatter update.
+fn rewrite_wikilinks_on_rename(
+    root: &Path,
+    old_title: &str,
+    old_slug: &str,
+    new_title: &str,
+) -> Result<()> {
+    let candidates: Vec<String> = {
+        let mut v = vec![old_slug.to_string()];
+        if !old_title.is_empty() && old_title != old_slug { v.push(old_title.to_string()); }
+        v
+    };
+    for summary in list(root)? {
+        let note = match read(root, &summary.slug) {
+            Ok(n) => n,
+            Err(_) => continue, // encrypted/locked notes get skipped, not corrupted
+        };
+        let mut body = note.body.clone();
+        let mut changed = false;
+        for needle in &candidates {
+            // Cover `[[needle]]`, `![[needle]]`, plus aliased / anchored
+            // forms `[[needle|alias]]` and `[[needle#section]]`. Precise
+            // string replace (no regex) keeps it predictable.
+            let pairs: [(String, String); 6] = [
+                (format!("[[{}]]", needle),   format!("[[{}]]", new_title)),
+                (format!("![[{}]]", needle),  format!("![[{}]]", new_title)),
+                (format!("[[{}|", needle),    format!("[[{}|", new_title)),
+                (format!("![[{}|", needle),   format!("![[{}|", new_title)),
+                (format!("[[{}#", needle),    format!("[[{}#", new_title)),
+                (format!("![[{}#", needle),   format!("![[{}#", new_title)),
+            ];
+            for (from, to) in &pairs {
+                if body.contains(from) {
+                    body = body.replace(from, to);
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            write(root, &summary.slug, &body, Some(note.frontmatter))?;
         }
     }
     Ok(())

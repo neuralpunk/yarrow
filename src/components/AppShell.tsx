@@ -5,7 +5,7 @@ import { openQuestions } from "../lib/forkDetection";
 import { todayIso } from "../lib/format";
 import { prefetchHeavyChunks } from "../lib/prefetch";
 import { getCachedOrReadNote, invalidateAllNotes, invalidateNote } from "../lib/notePrefetch";
-import { SearchIcon, StatusDot, ScratchpadIcon, ChevronDownIcon } from "../lib/icons";
+import { SearchIcon, StatusDot, ScratchpadIcon, ChevronDownIcon, DeleteIcon } from "../lib/icons";
 import { useShowRawMarkdown, useEditorFont } from "../lib/editorPrefs";
 // Imported for its module-level side effect: applies the saved UI font
 // and UI scale to the document before first paint, so chrome doesn't
@@ -43,6 +43,12 @@ import ForkMoment from "./ForkMoment";
 const HistorySlider    = lazy(() => import("./Editor/HistorySlider"));
 const ConnectionGraph  = lazy(() => import("./RightSidebar/ConnectionGraph"));
 const Scratchpad       = lazy(() => import("./Scratchpad"));
+const Trash            = lazy(() => import("./Trash"));
+const FindReplace      = lazy(() => import("./FindReplace"));
+const PathCompare      = lazy(() => import("./PathCompare"));
+const DecisionMatrix   = lazy(() => import("./DecisionMatrix"));
+const ObsidianImport   = lazy(() => import("./ObsidianImport"));
+const SpellMenu        = lazy(() => import("./SpellMenu"));
 const QuickCapture     = lazy(() => import("./QuickCapture"));
 const Settings         = lazy(() => import("./Settings"));
 const CommandPalette   = lazy(() => import("./CommandPalette"));
@@ -56,6 +62,8 @@ const WorkspaceSwitcher = lazy(() => import("./WorkspaceSwitcher"));
 // The editor ships its own CodeMirror chunk. Keeping it lazy + idle-warmed
 // shaves the CM parse cost out of first paint without hurting time-to-edit.
 const NoteEditor       = lazy(() => import("./Editor/NoteEditor"));
+const NoteReader       = lazy(() => import("./Editor/NoteReader"));
+const OnboardingHints  = lazy(() => import("./OnboardingHints"));
 
 /**
  * Tiny Suspense wrapper for lazy-loaded modals. Each overlay gets its own
@@ -77,7 +85,7 @@ interface Props {
 export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: Props) {
   useTheme(); // applies theme class to <html>
   useEditorFont(); // applies editor font-family CSS var to <html>
-  const [showRawMarkdown] = useShowRawMarkdown();
+  const [showRawMarkdown, setShowRawMarkdown] = useShowRawMarkdown();
 
   const [config, setConfig] = useState<WorkspaceConfig | null>(null);
   const [mainNotePromptOpen, setMainNotePromptOpen] = useState(false);
@@ -106,6 +114,20 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [selectionWords, setSelectionWords] = useState(0);
   const [selectionChars, setSelectionChars] = useState(0);
   const [scratchpadOpen, setScratchpadOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const [obsidianImportOpen, setObsidianImportOpen] = useState(false);
+  const [pathCompareOpen, setPathCompareOpen] = useState(false);
+  const [decisionMatrixOpen, setDecisionMatrixOpen] = useState(false);
+  const [renamePrompt, setRenamePrompt] = useState<
+    { slug: string; nextTitle: string; refs: number } | null
+  >(null);
+  const [findReplaceResult, setFindReplaceResult] = useState<
+    { changed: number; total: number } | null
+  >(null);
+  const [spellMenu, setSpellMenu] = useState<{
+    word: string; suggestions: string[]; from: number; to: number; x: number; y: number;
+  } | null>(null);
   const [scratchpadWidth, setScratchpadWidth] = useState<number>(() => {
     // Persisted across sessions so the pane's on-screen footprint stays
     // consistent — resizing it is a per-user preference, not a per-open act.
@@ -308,9 +330,22 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
 
   useEffect(() => {
     if (activeSlug == null && notes.length > 0) {
-      setActiveSlug(notes[0].slug);
+      // Restore the last-active slug for this workspace if we have one and it
+      // still exists. Falls through to the first note otherwise.
+      const key = `yarrow.lastActive:${workspacePath}`;
+      let pick: string | null = null;
+      try { pick = localStorage.getItem(key); } catch {}
+      const exists = pick && notes.some((n) => n.slug === pick);
+      setActiveSlug(exists ? pick : notes[0].slug);
     }
-  }, [notes, activeSlug]);
+  }, [notes, activeSlug, workspacePath]);
+
+  // Persist the active slug per workspace so reopening drops the user back
+  // exactly where they were. Per-machine, so it lives in localStorage.
+  useEffect(() => {
+    if (!activeSlug) return;
+    try { localStorage.setItem(`yarrow.lastActive:${workspacePath}`, activeSlug); } catch {}
+  }, [activeSlug, workspacePath]);
 
   // Lightweight prefetch of history length so the path ribbon can show a
   // live checkpoint count without waiting for the history overlay to open.
@@ -343,6 +378,95 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     });
     return () => { alive = false; };
   }, [activeSlug, currentPath, encryption.unlocked]);
+
+  // Load the workspace's custom dictionary into the spell-checker once per
+  // workspace open. Best-effort — a missing dictionary just means the
+  // language pack alone is in effect.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [{ loadSpell, addUserWords }, words] = await Promise.all([
+          import("../lib/spell"),
+          api.readDictionary(),
+        ]);
+        await loadSpell();
+        if (!cancelled) addUserWords(words);
+      } catch (e) {
+        console.warn("dictionary load failed", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [workspacePath]);
+
+  // Right-click on a misspelled word → spell suggestion popover.
+  useEffect(() => {
+    const onSpell = (ev: Event) => {
+      const d = (ev as CustomEvent<{
+        word: string; suggestions: string[]; from: number; to: number; x: number; y: number;
+      }>).detail;
+      if (!d) return;
+      setSpellMenu(d);
+    };
+    window.addEventListener("yarrow:editor-spellcheck", onSpell as EventListener);
+    return () => window.removeEventListener("yarrow:editor-spellcheck", onSpell as EventListener);
+  }, []);
+
+  const handleAddToDictionary = useCallback(async (word: string) => {
+    try {
+      const { addUserWord, snapshotUserWords } = await import("../lib/spell");
+      addUserWord(word);
+      // Persist by writing back the merged set. Read existing first so words
+      // added in another window aren't clobbered.
+      const existing = await api.readDictionary().catch(() => [] as string[]);
+      const merged = Array.from(new Set([...existing, ...snapshotUserWords(), word]));
+      await api.writeDictionary(merged);
+    } catch (e) {
+      console.error("add to dictionary failed", e);
+    }
+  }, []);
+
+  const printActiveNote = useCallback(async (slug: string) => {
+    // Render the note to standalone HTML on the backend (uses pulldown-cmark
+    // with the same options as the static-site export), then drop it into a
+    // hidden iframe and trigger the iframe's print dialog. The user's OS
+    // print panel exposes "Save as PDF" so we don't need a PDF library here.
+    try {
+      const html = await api.renderNoteHtml(slug);
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+      let cleanedUp = false;
+      const cleanup = (delay: number) => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        // Tear down after a short delay so the print job has a chance to
+        // flush before the document is removed.
+        setTimeout(() => { try { iframe.remove(); } catch {} }, delay);
+      };
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (e) {
+          console.error("print failed", e);
+        }
+        cleanup(1000);
+      };
+      // Safety-net: if onload never fires (broken HTML, iframe denied
+      // navigation, etc.) the iframe would otherwise leak in the DOM.
+      // The print dialog is modal anyway, so 30 s of slack is plenty.
+      setTimeout(() => cleanup(0), 30000);
+      iframe.srcdoc = html;
+    } catch (e) {
+      setToast(`Couldn't prepare print preview: ${e}`);
+    }
+  }, []);
 
   const handleCreateNote = useCallback(() => {
     setNewNoteTitle("");
@@ -586,7 +710,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key === "\\") { e.preventDefault(); setFocusMode((f) => !f); return; }
       if (mod && !e.shiftKey && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(true); return; }
-      if (mod && !e.shiftKey && (e.key.toLowerCase() === "o" || e.key.toLowerCase() === "p")) {
+      if (mod && !e.shiftKey && e.key.toLowerCase() === "o") {
         e.preventDefault();
         setSwitcherOpen(true);
         return;
@@ -639,6 +763,20 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         e.preventDefault();
         setWorkspaceSwitcherOpen((o) => !o);
         return;
+      }
+      if (mod && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFindReplaceOpen(true);
+        return;
+      }
+      if (mod && !e.shiftKey && e.key.toLowerCase() === "p") {
+        // Print / save active note as PDF. Override the browser's chrome-print
+        // since we want our own print-styled rendering, not the editor UI.
+        if (activeSlug) {
+          e.preventDefault();
+          printActiveNote(activeSlug);
+          return;
+        }
       }
       if (mod && !e.shiftKey && e.key.toLowerCase() === "l") {
         // Only intercept if the user has encryption enabled — leave Ctrl+L
@@ -725,31 +863,70 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     setSelectionChars(0);
   }, [activeSlug]);
 
+  // Topology only changes on explicit path operations (create/delete/promote
+  // etc.) — never on a plain content save. We refresh it on its own debounce
+  // when the user is on a non-trivial path graph, so saves no longer pay
+  // for the git topology walk on every keystroke pause.
+  const topologyRefreshTimer = useRef<number | null>(null);
+  const queueTopologyRefresh = useCallback(() => {
+    if (topologyRefreshTimer.current) window.clearTimeout(topologyRefreshTimer.current);
+    topologyRefreshTimer.current = window.setTimeout(async () => {
+      try { setTopology(await api.branchTopology()); } catch {}
+    }, 1500);
+  }, []);
+
   const handleSave = useCallback(
-    async (body: string, thinking?: string) => {
-      if (!activeSlug) return;
+    async (slug: string, body: string, thinking?: string) => {
+      // Use the slug the editor was mounted on, not `activeSlug`. They can
+      // diverge when a note switch fires while the debounce is pending —
+      // saving against `activeSlug` in that window would write the old
+      // note's body into the new note's file (the cross-note swap bug).
+      if (!slug) return;
       try {
-        const n = await api.saveNote(activeSlug, body, thinking);
-        invalidateNote(activeSlug);
-        setActiveNote(n);
-        setCurrentBody(n.body);
-        setDirty(false);
+        // ONE IPC instead of four. The backend reads the notes dir once
+        // and returns the saved note + summaries + graph + orphans in
+        // one round-trip. Cuts post-save IPC chatter from ~5N to ~N
+        // file reads on big workspaces.
+        const out = await api.saveNoteFull(slug, body, thinking);
+        invalidateNote(slug);
+        if (slug === activeSlug) {
+          setActiveNote(out.note);
+          setCurrentBody(out.note.body);
+          setDirty(false);
+        }
+        // No-op save: backend skipped the scan; we skip the setState fan-out.
+        // The graph/orphan/notes state is unchanged from before the save, so
+        // re-setting them with empty arrays would needlessly thrash memo'd
+        // children for no observable effect.
+        if (!out.changed) return;
         setSyncStatus((s) => (s === "no-remote" ? "no-remote" : "pending"));
-        const [list, g, topo, orphansList] = await Promise.all([
-          api.listNotes(),
-          api.getGraph(),
-          api.branchTopology(),
-          api.orphans(),
-        ]);
-        setNotes(list);
-        setGraph(g);
-        setTopology(topo);
-        setOrphanSet(new Set(orphansList));
-        // Nonce consumed by the toolbar to show "saved just now" for a
-        // brief beat after the debounced write lands.
+        setNotes(out.notes);
+        setGraph(out.graph);
+        setOrphanSet(new Set(out.orphans));
         setLastSavedAt(Date.now());
+        // Topology can lag a bit — its only consumer is the path map and
+        // a single save can never change branch topology anyway.
+        queueTopologyRefresh();
       } catch (e) {
         console.error("save failed", e);
+      }
+    },
+    [activeSlug, queueTopologyRefresh],
+  );
+
+  const performRename = useCallback(
+    async (slug: string, nextTitle: string, rewriteWikilinks: boolean) => {
+      try {
+        const n = await api.renameNote(slug, nextTitle, rewriteWikilinks);
+        const list = await api.listNotes();
+        setNotes(list);
+        if (activeSlug === slug) setActiveSlug(n.slug);
+        setGraph(await api.getGraph());
+        // If we rewrote wikilinks across the workspace, every other note's
+        // body may have changed too — invalidate cached reads.
+        if (rewriteWikilinks) invalidateAllNotes();
+      } catch (e) {
+        setToast(`Couldn't rename: ${e}`);
       }
     },
     [activeSlug],
@@ -757,13 +934,17 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
 
   const handleRenameNote = useCallback(
     async (slug: string, nextTitle: string) => {
-      const n = await api.renameNote(slug, nextTitle);
-      const list = await api.listNotes();
-      setNotes(list);
-      if (activeSlug === slug) setActiveSlug(n.slug);
-      setGraph(await api.getGraph());
+      // Pre-flight: count wikilink references so we can ask the user before
+      // mutating other notes. If there are none, skip the prompt entirely.
+      let refs = 0;
+      try { refs = await api.countWikilinkReferences(slug); } catch {}
+      if (refs === 0) {
+        await performRename(slug, nextTitle, false);
+        return;
+      }
+      setRenamePrompt({ slug, nextTitle, refs });
     },
-    [activeSlug],
+    [performRename],
   );
 
   const handleTogglePin = useCallback(async (slug: string, pinned: boolean) => {
@@ -1110,11 +1291,42 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     return notes.filter((n) => (n.tags ?? []).includes(tagFilter));
   }, [notes, tagFilter]);
 
-  const tagCounts = graph?.tags ?? [];
+  // Stable empty-fallback so memoized children don't see a fresh `[]`
+  // array reference on every parent render before the graph has loaded.
+  const tagCounts = useMemo(() => graph?.tags ?? [], [graph]);
+
+  // Memoized clear so NoteList's `memo` boundary actually holds. An inline
+  // arrow recreated each render defeats it for free.
+  const clearTagFilter = useCallback(() => setTagFilter(null), []);
 
   const mappingEnabled = (config?.mapping?.mode ?? "mapped") === "mapped";
   const mainNoteSet = !!config?.mapping?.main_note;
   const needsMainNote = mappingEnabled && !mainNoteSet;
+
+  // Toolbar callbacks — stabilised so the memoised Toolbar doesn't have to
+  // re-render on every parent tick (selection events, currentBody updates).
+  const tbBranchFromHere = useCallback(() => {
+    if (needsMainNote) { setMainNotePromptOpen(true); return; }
+    setNewPathOpen(true);
+  }, [needsMainNote]);
+  const tbOpenPaths = useCallback(() => {
+    if (needsMainNote) { setMainNotePromptOpen(true); return; }
+    setRailOverlay("paths");
+  }, [needsMainNote]);
+  const tbOpenMap = useCallback(() => {
+    if (needsMainNote) { setMainNotePromptOpen(true); return; }
+    setMapFilter(null);
+    setRailOverlay("map");
+  }, [needsMainNote]);
+  const tbEditCurrentCondition = useCallback(
+    () => setEditConditionFor(currentPath),
+    [currentPath],
+  );
+  const stableCollections = useMemo(
+    () => collectionsView?.collections ?? [],
+    [collectionsView],
+  );
+  const stableRootName = collectionsView?.root ?? "main";
 
   return (
     <div className="h-full flex flex-col bg-bg text-char">
@@ -1191,7 +1403,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                 onTogglePin={handleTogglePin}
                 onDeleteMany={handleDeleteMany}
                 tagFilter={tagFilter}
-                onClearTagFilter={() => setTagFilter(null)}
+                onClearTagFilter={clearTagFilter}
                 encryptionEnabled={encryption.enabled}
                 encryptionUnlocked={encryption.unlocked}
                 onEncryptNote={handleEncryptNoteBySlug}
@@ -1225,11 +1437,19 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               <div className="mt-3 border-t border-bd/20 mx-3" />
               <button
                 onClick={() => setScratchpadOpen(true)}
-                className="mt-2 mx-3 mb-3 w-[calc(100%-1.5rem)] text-left px-3 py-2 text-xs text-t2 hover:bg-s2 hover:text-char rounded transition flex items-center gap-2"
+                className="mt-2 mx-3 w-[calc(100%-1.5rem)] text-left px-3 py-2 text-xs text-t2 hover:bg-s2 hover:text-char rounded transition flex items-center gap-2"
                 title="A place to jot without saving"
               >
                 <ScratchpadIcon />
                 <span>Scratchpad</span>
+              </button>
+              <button
+                onClick={() => setTrashOpen(true)}
+                className="mx-3 mb-3 w-[calc(100%-1.5rem)] text-left px-3 py-2 text-xs text-t2 hover:bg-s2 hover:text-char rounded transition flex items-center gap-2"
+                title="Restore or permanently remove deleted notes"
+              >
+                <DeleteIcon />
+                <span>Trash</span>
               </button>
             </div>
           </aside>
@@ -1258,28 +1478,18 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           }
         >
           <Toolbar
-            collections={collectionsView?.collections ?? []}
-            rootName={collectionsView?.root ?? "main"}
+            collections={stableCollections}
+            rootName={stableRootName}
             currentPath={currentPath}
             checkpointCount={checkpointCount}
             dirty={dirty}
             lastSavedAt={lastSavedAt}
             mappingEnabled={mappingEnabled}
             onSwitchPath={handleSwitchPath}
-            onBranchFromHere={() => {
-              if (needsMainNote) { setMainNotePromptOpen(true); return; }
-              setNewPathOpen(true);
-            }}
-            onOpenPaths={() => {
-              if (needsMainNote) { setMainNotePromptOpen(true); return; }
-              setRailOverlay("paths");
-            }}
-            onOpenMap={() => {
-              if (needsMainNote) { setMainNotePromptOpen(true); return; }
-              setMapFilter(null);
-              setRailOverlay("map");
-            }}
-            onEditCurrentCondition={() => setEditConditionFor(currentPath)}
+            onBranchFromHere={tbBranchFromHere}
+            onOpenPaths={tbOpenPaths}
+            onOpenMap={tbOpenMap}
+            onEditCurrentCondition={tbEditCurrentCondition}
           />
           <div className="flex-1 overflow-hidden flex flex-col relative">
             {activeNote ? (
@@ -1289,6 +1499,28 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                   onUnlock={() => requestUnlock()}
                   onUnlocked={onUnlocked}
                 />
+              ) : !showRawMarkdown ? (
+                // Reading mode: full markdown render via pulldown-cmark on the
+                // backend, themed with `.yarrow-reading` CSS so code blocks,
+                // quotes, tables and headings look like a finished document.
+                <Suspense fallback={<EditorSkeleton />}>
+                  <NoteReader
+                    key={"r:" + activeNote.slug + "@" + currentPath}
+                    note={activeNote}
+                    notes={notes}
+                    pathNotes={pathNotes}
+                    currentPath={currentPath}
+                    currentBody={currentBody}
+                    onNavigate={selectSlug}
+                    onBranchFromWikilink={(slug) => {
+                      const target = notes.find((n) => n.slug === slug);
+                      const hint = target?.title || slug;
+                      setNewPathCondition(`If ${hint.toLowerCase()}…`);
+                      setNewPathOpen(true);
+                    }}
+                    onSwitchToWriting={() => setShowRawMarkdown(true)}
+                  />
+                </Suspense>
               ) : (
                 <Suspense fallback={<EditorSkeleton />}>
                   <NoteEditor
@@ -1299,6 +1531,18 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                     jumpToLine={jumpSignal}
                     mappingEnabled={mappingEnabled}
                     onSave={handleSave}
+                    onTagsChange={async (slug, tags) => {
+                      try {
+                        const updated = await api.setTags(slug, tags);
+                        invalidateNote(slug);
+                        if (slug === activeSlug) setActiveNote(updated);
+                        setNotes(await api.listNotes());
+                        try { setGraph(await api.getGraph()); } catch {}
+                      } catch (e) {
+                        setToast(`Couldn't update tags: ${e}`);
+                      }
+                    }}
+                    tagSuggestions={tagCounts.map((t) => t.tag)}
                     onTitleChange={(title) => handleRenameNote(activeNote.slug, title)}
                     onDirtyChange={setDirty}
                     onNavigate={selectSlug}
@@ -1347,6 +1591,179 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           </div>
         </section>
 
+        {spellMenu && (
+          <L>
+            <SpellMenu
+              {...spellMenu}
+              onClose={() => setSpellMenu(null)}
+              onAddToDictionary={handleAddToDictionary}
+            />
+          </L>
+        )}
+
+        {obsidianImportOpen && (
+          <L>
+            <ObsidianImport
+              open={obsidianImportOpen}
+              onClose={() => setObsidianImportOpen(false)}
+              onChanged={async () => {
+                invalidateAllNotes();
+                setNotes(await api.listNotes());
+                try { setGraph(await api.getGraph()); } catch {}
+                try { setOrphanSet(new Set(await api.orphans())); } catch {}
+              }}
+            />
+          </L>
+        )}
+
+        {renamePrompt && (
+          <div
+            className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+            onClick={() => setRenamePrompt(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden"
+            >
+              <div className="px-5 py-4 border-b border-bd">
+                <div className="font-serif text-xl text-char">Rename note</div>
+                <div className="text-2xs text-t3 mt-1 leading-relaxed">
+                  <span className="text-char">{renamePrompt.refs}</span> other note{renamePrompt.refs === 1 ? "" : "s"}
+                  {" "}link{renamePrompt.refs === 1 ? "s" : ""} to this one with a <code>[[wikilink]]</code>.
+                  Updating them rewrites their bodies — recorded as one checkpoint, so it's easy to roll back from History.
+                </div>
+              </div>
+              <div className="px-5 py-4 text-xs text-t2">
+                Rename to <span className="font-serif text-base text-char">"{renamePrompt.nextTitle}"</span>?
+              </div>
+              <div className="px-5 py-3 border-t border-bd flex justify-end gap-2 flex-wrap">
+                <button
+                  onClick={() => setRenamePrompt(null)}
+                  className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const { slug, nextTitle } = renamePrompt;
+                    setRenamePrompt(null);
+                    void performRename(slug, nextTitle, false);
+                  }}
+                  className="text-xs px-3 py-1.5 rounded bg-s2 text-char hover:bg-s3"
+                >
+                  Rename only this note
+                </button>
+                <button
+                  onClick={() => {
+                    const { slug, nextTitle } = renamePrompt;
+                    setRenamePrompt(null);
+                    void performRename(slug, nextTitle, true);
+                  }}
+                  className="text-xs px-3 py-1.5 rounded bg-yel text-on-yel hover:bg-yel2"
+                >
+                  Rename and update wikilinks
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {findReplaceResult && (
+          <div
+            className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+            onClick={() => setFindReplaceResult(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden"
+            >
+              <div className="px-5 py-5">
+                <div className="font-serif text-xl text-char">Replacements done</div>
+                <div className="text-sm text-t2 mt-2 leading-relaxed">
+                  Replaced <span className="text-char font-medium">{findReplaceResult.total}</span>
+                  {" "}occurrence{findReplaceResult.total === 1 ? "" : "s"} across
+                  {" "}<span className="text-char font-medium">{findReplaceResult.changed}</span>
+                  {" "}note{findReplaceResult.changed === 1 ? "" : "s"}.
+                </div>
+                <div className="text-2xs text-t3 mt-2 italic">
+                  One checkpoint records the whole change — undo via History on any affected note.
+                </div>
+              </div>
+              <div className="px-5 py-3 border-t border-bd flex justify-end">
+                <button
+                  onClick={() => setFindReplaceResult(null)}
+                  className="text-xs px-3 py-1.5 rounded bg-yel text-on-yel hover:bg-yel2"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {decisionMatrixOpen && (
+          <L>
+            <DecisionMatrix
+              open={decisionMatrixOpen}
+              onClose={() => setDecisionMatrixOpen(false)}
+              notes={notes}
+              initialCollections={collectionsView?.collections}
+              currentPathName={currentPath}
+              onOpenNote={(slug) => { setDecisionMatrixOpen(false); selectSlug(slug); }}
+            />
+          </L>
+        )}
+
+        {pathCompareOpen && (
+          <L>
+            <PathCompare
+              open={pathCompareOpen}
+              onClose={() => setPathCompareOpen(false)}
+              paths={(collectionsView?.collections ?? []).map((c) => c.name)}
+              initialLeft={currentPath}
+            />
+          </L>
+        )}
+
+        {findReplaceOpen && (
+          <L>
+            <FindReplace
+              open={findReplaceOpen}
+              onClose={() => setFindReplaceOpen(false)}
+              currentPathName={currentPath}
+              currentPathSlugs={pathNotes[currentPath] ?? null}
+              onChanged={async (report) => {
+                invalidateAllNotes();
+                setNotes(await api.listNotes());
+                try { setGraph(await api.getGraph()); } catch {}
+                if (activeSlug) {
+                  try {
+                    const fresh = await api.readNote(activeSlug);
+                    setActiveNote(fresh);
+                    setCurrentBody(fresh.body);
+                  } catch {}
+                }
+                setFindReplaceResult(report);
+              }}
+            />
+          </L>
+        )}
+
+        {trashOpen && (
+          <L>
+            <Trash
+              open={trashOpen}
+              onClose={() => setTrashOpen(false)}
+              onChanged={async () => {
+                invalidateAllNotes();
+                setNotes(await api.listNotes());
+                try { setGraph(await api.getGraph()); } catch {}
+                try { setOrphanSet(new Set(await api.orphans())); } catch {}
+              }}
+            />
+          </L>
+        )}
+
         {scratchpadOpen && (
           <L>
             <Scratchpad
@@ -1393,6 +1810,22 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             }}
             onToggleScratchpad={() => setScratchpadOpen((o) => !o)}
             onOpenSettings={() => setSettingsOpen({ open: true })}
+            onSetReadingWriting={async (writing) => {
+              // Flush a pending debounced edit before flipping to reading
+              // mode — otherwise the rendered preview reads stale disk
+              // content and the user wonders why their last paragraph
+              // isn't showing up.
+              if (!writing && dirty && activeSlug) {
+                try {
+                  await api.saveNote(activeSlug, currentBody);
+                  invalidateNote(activeSlug);
+                  setDirty(false);
+                } catch (e) {
+                  console.error("flush before reading-mode flip failed", e);
+                }
+              }
+              setShowRawMarkdown(writing);
+            }}
           />
         )}
       </div>
@@ -1635,6 +2068,13 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             onDecryptActiveNote={handleDecryptActiveNote}
             onOpenSecurity={() => setSettingsOpen({ open: true, tab: "security" })}
             onSwitchWorkspace={() => setWorkspaceSwitcherOpen(true)}
+            onOpenNewWindow={() => api.openNewWindow().catch((e) => setToast(`Couldn't open window: ${e}`))}
+            onFindReplace={() => setFindReplaceOpen(true)}
+            onPrintActiveNote={activeSlug ? () => printActiveNote(activeSlug) : undefined}
+            onOpenTrash={() => setTrashOpen(true)}
+            onImportObsidian={() => setObsidianImportOpen(true)}
+            onComparePaths={() => setPathCompareOpen(true)}
+            onOpenDecisionMatrix={() => setDecisionMatrixOpen(true)}
             mappingEnabled={mappingEnabled}
           />
         </L>
@@ -1706,6 +2146,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         <L>
           <PathsPane
             notes={notes}
+            currentPathName={currentPath}
+            onOpenDecisionMatrix={() => setDecisionMatrixOpen(true)}
             onClose={() => setRailOverlay(null)}
             onNavigate={(slug) => { selectSlug(slug); setRailOverlay(null); }}
             onSwitchToRoot={(rootName) => handleSwitchPath(rootName)}
@@ -2078,6 +2520,10 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           />
         </L>
       )}
+
+      <L>
+        <OnboardingHints workspacePath={workspacePath} />
+      </L>
 
     </div>
   );

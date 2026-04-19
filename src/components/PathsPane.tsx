@@ -25,6 +25,14 @@ interface Props {
   /** Jump the workspace back to the root ("main") — surfaces in the
    *  header's Back-to-main button and in PathDetail's promote flow. */
   onSwitchToRoot?: (rootName: string) => void;
+  /** The path the user is actively editing in. Forwarded to ForkingRoad and
+   *  PathDetail so they can show diff-from-current insights ("if you take
+   *  this path you'd lose Rome"). */
+  currentPathName?: string;
+  /** Open the decision-matrix modal — surfaced as a prominent button in the
+   *  PathsPane header so users discover it without learning the palette
+   *  command first. */
+  onOpenDecisionMatrix?: () => void;
 }
 
 export default function PathsPane({
@@ -35,6 +43,8 @@ export default function PathsPane({
   onCollectionsChanged,
   onLinksChanged,
   onSwitchToRoot,
+  currentPathName,
+  onOpenDecisionMatrix,
 }: Props) {
   const [view, setView] = useState<PathCollectionsView | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -58,6 +68,12 @@ export default function PathsPane({
   useEffect(() => { refresh(); }, [refresh]);
 
   const collections = view?.collections ?? [];
+  // Members of the user's currently-active path — passed to PathDetail so it
+  // can compute "what you'd gain / leave behind" without re-fetching.
+  const currentPathMembers = useMemo(() => {
+    if (!currentPathName) return undefined;
+    return collections.find((c) => c.name === currentPathName)?.members;
+  }, [collections, currentPathName]);
   const rootName = view?.root ?? "main";
   const selectedCol = useMemo(
     () => (selected ? collections.find((c) => c.name === selected) : null),
@@ -200,6 +216,8 @@ export default function PathsPane({
         isRoot={selected === rootName}
         isGhost={isGhostPath(selectedCol, rootName)}
         parentName={parentOf(selected) || rootName}
+        currentPathName={currentPathName}
+        currentPathMembers={currentPathMembers}
         onClose={() => setSelected(null)}
         onOpenNote={(slug) => { onNavigate(slug); }}
         onOpenMap={(focusSlug) => {
@@ -254,6 +272,19 @@ export default function PathsPane({
             >
               <NewDirectionIcon />
               <span>New path from {rootName}</span>
+            </button>
+          )}
+          {onOpenDecisionMatrix && !onlyRoot && (
+            <button
+              onClick={onOpenDecisionMatrix}
+              className="text-xs px-3 py-1.5 rounded-md border border-bd text-t2 hover:bg-s2 hover:text-char inline-flex items-center gap-1.5"
+              title="Star must-have notes; see at a glance which path satisfies them"
+            >
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1.5" y="1.5" width="11" height="11" rx="1.5"/>
+                <path d="M1.5 5h11M1.5 9h11M5 1.5v11M9 1.5v11"/>
+              </svg>
+              <span>Decision matrix</span>
             </button>
           )}
           <button
@@ -321,6 +352,14 @@ export default function PathsPane({
               pendingForkParent={newFork?.parent ?? null}
               onCommitPendingFork={commitFork}
               onCancelPendingFork={() => setNewFork(null)}
+              currentPathName={currentPathName}
+              onDropNoteOnPath={async (pathName, slug) => {
+                try {
+                  await api.addNoteToPathCollection(pathName, slug);
+                  await refresh();
+                  onLinksChanged?.();
+                } catch (e) { setErr(String(e)); }
+              }}
             />
           )}
         </div>

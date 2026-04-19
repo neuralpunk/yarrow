@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { NewDirectionIcon, StatusDot } from "../../lib/icons";
 import type { PathCollection } from "../../lib/types";
 import { isGhostPath } from "../../lib/types";
@@ -37,7 +37,7 @@ interface Props {
  * Ambient, not loud — the user shouldn't have to "read" this to know
  * they're on `if-seattle`, just glance.
  */
-export default function Toolbar({
+function ToolbarInner({
   collections,
   rootName,
   currentPath,
@@ -455,3 +455,8 @@ function ConnectionsMapIcon() {
     </svg>
   );
 }
+
+// memo so the path ribbon doesn't re-render every keystroke just because
+// its parent re-rendered (e.g. on selection-change events). All the
+// reference-stable props it actually depends on rarely change.
+export default memo(ToolbarInner);

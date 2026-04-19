@@ -71,7 +71,7 @@ export const UI_FONTS: UiFontChoice[] = [
 
 const UI_FONT_KEY = "yarrow.uiFont";
 const UI_FONT_EVT = "yarrow:uiFont-changed";
-const DEFAULT_UI_FONT: UiFontId = "inter";
+const DEFAULT_UI_FONT: UiFontId = "merriweather";
 
 function readUiFont(): UiFontId {
   try {

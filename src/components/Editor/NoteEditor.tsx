@@ -3,14 +3,22 @@ import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
 import { EditorView, keymap, placeholder, ViewPlugin, ViewUpdate, Decoration, DecorationSet, MatchDecorator, WidgetType } from "@codemirror/view";
 import { defaultKeymap, history as cmHistory, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
+import { languages as cmLanguages } from "@codemirror/language-data";
 import { bracketMatching, indentOnInput, syntaxHighlighting, defaultHighlightStyle, HighlightStyle } from "@codemirror/language";
 import { autocompletion, CompletionContext, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
+import katex from "katex";
+import { isCorrect, loadSpell, suggest as spellSuggest } from "../../lib/spell";
+import WikilinkPreview, {
+  cachePreview as sharedCachePreview,
+  getCachedPreview as sharedGetCachedPreview,
+} from "../WikilinkPreview";
 import type { Note, NoteSummary, Provenance } from "../../lib/types";
 import { api } from "../../lib/tauri";
 import { editorialDate, relativeTime, timeOfDayPhrase } from "../../lib/format";
 import { isDivergent } from "../../lib/forkDetection";
 import ForkSuggestion from "./ForkSuggestion";
+import TagChips from "./TagChips";
 
 interface Props {
   note: Note;
@@ -20,7 +28,10 @@ interface Props {
   askThinkingOnClose: boolean;
   showRawMarkdown?: boolean;
   jumpToLine?: { line: number; nonce: number };
-  onSave: (body: string, thinking?: string) => void;
+  /** Pass the slug back so the parent saves to the right note even if the
+   *  user has already switched to a different one before the debounce
+   *  fires (race that previously produced cross-note content swaps). */
+  onSave: (slug: string, body: string, thinking?: string) => void;
   onTitleChange: (title: string) => void;
   onDirtyChange: (dirty: boolean) => void;
   onNavigate: (slug: string) => void;
@@ -33,6 +44,13 @@ interface Props {
   onBranchFromWikilink?: (slug: string) => void;
   /** When false (basic workspace mode), [[wikilink]] autocomplete is off. */
   mappingEnabled?: boolean;
+  /** Persist a new tag list for the note (slug, tags). Slug is the one
+   *  captured at editor-mount so a save races against a note-switch land
+   *  on the right note (same fix as `onSave`). */
+  onTagsChange?: (slug: string, tags: string[]) => void;
+  /** All tags currently in the workspace, fed into the chip-input
+   *  autocomplete so users converge on consistent vocabulary. */
+  tagSuggestions?: string[];
 }
 
 const highlightStyle = HighlightStyle.define([
@@ -76,17 +94,9 @@ const ATTACH_IMG_RE = /!\[[^\]]*\]\((attachments\/[^)\s]+)\)/;
 // Short-lived cache for wikilink hover previews. Hovering the same link five
 // times in a row should only fetch the target note once; cleared on editor
 // unmount. We cap by count, not bytes — excerpts are always ≤480 chars.
-const PREVIEW_CACHE_MAX = 40;
-const previewCache = new Map<string, { title: string; body: string }>();
-function cachePreview(slug: string, value: { title: string; body: string }) {
-  if (previewCache.has(slug)) previewCache.delete(slug);
-  previewCache.set(slug, value);
-  while (previewCache.size > PREVIEW_CACHE_MAX) {
-    const oldest = previewCache.keys().next().value;
-    if (oldest === undefined) break;
-    previewCache.delete(oldest);
-  }
-}
+// Wikilink hover preview cache + component live in `../WikilinkPreview` so
+// reading mode shares the same surface.
+const cachePreview = sharedCachePreview;
 
 // LRU-ish cache: bounded by entry count so a long session editing a vault with
 // many attachments doesn't hand all its RAM to data-URL strings. JS Maps iterate
@@ -227,6 +237,23 @@ async function attachFilesToEditor(files: File[], view: EditorView, at: number) 
   });
 }
 
+function isLikelyUrl(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed || /\s/.test(trimmed)) return null;
+  if (!/^https?:\/\/\S+$/i.test(trimmed)) return null;
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+function escapeMdLinkText(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/]/g, "\\]");
+}
+
 function arrayBufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   // Chunked to avoid stack blow-ups on large files.
@@ -300,6 +327,222 @@ function hideSyntaxPlugin() {
   );
 }
 
+// ────────────── inline / block math (KaTeX) ──────────────
+// Inline `$x$` and block `$$x$$` are rendered to KaTeX widgets when the cursor
+// is not inside the delimited range. The active range stays raw so editing the
+// LaTeX source is straightforward. Code-fence regions are excluded so prose
+// about math doesn't trigger rendering.
+class MathInlineWidget extends WidgetType {
+  constructor(readonly tex: string) { super(); }
+  eq(other: MathInlineWidget) { return other.tex === this.tex; }
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-yarrow-math-inline";
+    try {
+      katex.render(this.tex, span, { throwOnError: false, displayMode: false });
+    } catch {
+      span.textContent = `$${this.tex}$`;
+      span.classList.add("cm-yarrow-math-error");
+    }
+    return span;
+  }
+  ignoreEvent() { return false; }
+}
+
+class MathBlockWidget extends WidgetType {
+  constructor(readonly tex: string) { super(); }
+  eq(other: MathBlockWidget) { return other.tex === this.tex; }
+  toDOM() {
+    const div = document.createElement("div");
+    div.className = "cm-yarrow-math-block";
+    div.contentEditable = "false";
+    try {
+      katex.render(this.tex, div, { throwOnError: false, displayMode: true });
+    } catch {
+      div.textContent = `$$${this.tex}$$`;
+      div.classList.add("cm-yarrow-math-error");
+    }
+    return div;
+  }
+  ignoreEvent() { return false; }
+}
+
+function mathPlugin() {
+  const INLINE_RE = /(?<!\$)\$([^\s$][^$\n]*?[^\s$]|[^\s$])\$(?!\$)/g;
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) { this.decorations = this.build(view); }
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged || update.selectionSet) {
+          this.decorations = this.build(update.view);
+        }
+      }
+      build(view: EditorView): DecorationSet {
+        const builder = new RangeSetBuilder<Decoration>();
+        const doc = view.state.doc;
+        const sel = view.state.selection.main;
+        // Build a fence mask line-by-line so we skip math-looking text inside
+        // code fences.
+        const fenceMask = new Uint8Array(doc.lines + 1);
+        let inFence = false;
+        for (let n = 1; n <= doc.lines; n++) {
+          const text = doc.line(n).text;
+          if (/^\s*```/.test(text)) {
+            fenceMask[n] = 1;
+            inFence = !inFence;
+          } else {
+            fenceMask[n] = inFence ? 1 : 0;
+          }
+        }
+
+        // ── block math: $$...$$ across lines ──
+        // Scan whole-document so multi-line blocks render even if only the
+        // closing line is in the viewport.
+        const text = doc.toString();
+        const blocks: Array<[number, number, string]> = [];
+        let i = 0;
+        while (i < text.length) {
+          const open = text.indexOf("$$", i);
+          if (open === -1) break;
+          const startLine = doc.lineAt(open).number;
+          if (fenceMask[startLine] === 1) { i = open + 2; continue; }
+          const close = text.indexOf("$$", open + 2);
+          if (close === -1) break;
+          const endLine = doc.lineAt(close).number;
+          if (fenceMask[endLine] === 1) { i = close + 2; continue; }
+          const tex = text.slice(open + 2, close);
+          blocks.push([open, close + 2, tex]);
+          i = close + 2;
+        }
+        for (const [from, to, tex] of blocks) {
+          // If the cursor is anywhere inside the block, leave it raw.
+          const inside = sel.from <= to && sel.to >= from;
+          if (inside) continue;
+          builder.add(from, to, Decoration.replace({
+            widget: new MathBlockWidget(tex),
+            block: true,
+          }));
+        }
+
+        // ── inline math: $...$ on a single line ──
+        // Skip ranges already covered by a block so we don't double-decorate.
+        const blockRanges = blocks.map(([f, t]) => [f, t] as [number, number]);
+        const inBlock = (pos: number) =>
+          blockRanges.some(([f, t]) => pos >= f && pos < t);
+
+        for (const { from, to } of view.visibleRanges) {
+          let pos = from;
+          while (pos <= to) {
+            const line = doc.lineAt(pos);
+            if (fenceMask[line.number] === 0 && !inBlock(line.from)) {
+              INLINE_RE.lastIndex = 0;
+              let m: RegExpExecArray | null;
+              while ((m = INLINE_RE.exec(line.text)) !== null) {
+                const start = line.from + m.index;
+                const end = start + m[0].length;
+                if (sel.from <= end && sel.to >= start) continue;
+                builder.add(start, end, Decoration.replace({
+                  widget: new MathInlineWidget(m[1]),
+                }));
+              }
+            }
+            pos = line.to + 1;
+          }
+        }
+        return builder.finish();
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
+}
+
+// ────────────── spell check ──────────────
+// Underlines misspellings on visible lines. Skips code fences, wikilinks, URLs,
+// and the active line so token edits aren't churned with squiggles. The
+// English dictionary loads asynchronously; until it does, the plugin produces
+// no decorations (and rebuilds once loaded via a no-op state effect).
+const SPELL_WORD_RE = /[A-Za-z][A-Za-z'\-]{2,}/g;
+const SPELL_SKIP_RE = /\[\[[^\]]+\]\]|`[^`]+`|https?:\/\/\S+/g;
+
+function spellPlugin() {
+  let ready = false;
+  loadSpell().then(() => { ready = true; }).catch(() => {});
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) { this.decorations = this.build(view); }
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged || update.selectionSet) {
+          this.decorations = this.build(update.view);
+        } else if (!ready) {
+          // Cheap re-poll: when the dictionary finishes loading mid-session
+          // we want the next viewport/cursor change to pick it up. Nothing
+          // to do here — the next update tick will rebuild.
+        }
+      }
+      build(view: EditorView): DecorationSet {
+        const builder = new RangeSetBuilder<Decoration>();
+        if (!ready) return builder.finish();
+        const doc = view.state.doc;
+        const sel = view.state.selection.main;
+        const activeLine = doc.lineAt(sel.head).number;
+        // Build fence mask once per build.
+        const fenceMask = new Uint8Array(doc.lines + 1);
+        let inFence = false;
+        for (let n = 1; n <= doc.lines; n++) {
+          const text = doc.line(n).text;
+          if (/^\s*```/.test(text)) {
+            fenceMask[n] = 1;
+            inFence = !inFence;
+          } else {
+            fenceMask[n] = inFence ? 1 : 0;
+          }
+        }
+        const ranges: Array<[number, number]> = [];
+        for (const { from, to } of view.visibleRanges) {
+          let pos = from;
+          while (pos <= to) {
+            const line = doc.lineAt(pos);
+            if (line.number !== activeLine && fenceMask[line.number] === 0) {
+              const text = line.text;
+              // Compute skip ranges (inline code, wikilinks, urls) to suppress
+              // false positives in typical markdown content.
+              const skip: Array<[number, number]> = [];
+              SPELL_SKIP_RE.lastIndex = 0;
+              let s: RegExpExecArray | null;
+              while ((s = SPELL_SKIP_RE.exec(text)) !== null) {
+                skip.push([s.index, s.index + s[0].length]);
+              }
+              const inSkip = (i: number) =>
+                skip.some(([a, b]) => i >= a && i < b);
+              SPELL_WORD_RE.lastIndex = 0;
+              let m: RegExpExecArray | null;
+              while ((m = SPELL_WORD_RE.exec(text)) !== null) {
+                if (inSkip(m.index)) continue;
+                const w = m[0];
+                // Skip ALL-CAPS acronyms and words containing digits-in
+                // (handled by regex), and obvious markdown keywords.
+                if (/^[A-Z]{2,}$/.test(w)) continue;
+                if (!isCorrect(w)) {
+                  ranges.push([line.from + m.index, line.from + m.index + w.length]);
+                }
+              }
+            }
+            pos = line.to + 1;
+          }
+        }
+        ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        for (const [a, b] of ranges) {
+          builder.add(a, b, Decoration.mark({ class: "cm-yarrow-misspelled" }));
+        }
+        return builder.finish();
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
+}
+
 function questionPlugin() {
   const matcher = new MatchDecorator({
     regexp: /\?\?[^\n]*/g,
@@ -333,6 +576,8 @@ export default function NoteEditor({
   pathNotes,
   onBranchFromWikilink,
   mappingEnabled = true,
+  onTagsChange,
+  tagSuggestions,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -342,6 +587,15 @@ export default function NoteEditor({
   const hideSyntaxCompartment = useRef(new Compartment());
   const saveTimer = useRef<number | null>(null);
   const lastSavedBody = useRef<string>(note.body);
+  // Slug captured at editor-mount time. Every save passes this back so the
+  // parent writes to the note that *was* on screen, not whatever's active
+  // now. Without it, switching notes mid-debounce caused note A's body to
+  // overwrite note B (the cross-note swap bug).
+  const mountedSlugRef = useRef<string>(note.slug);
+  // Last (words, chars) tuple we dispatched for the status bar. Lets us
+  // suppress the no-op "still 0/0" dispatch on every keystroke while
+  // typing without a selection.
+  const lastSelectionRef = useRef<{ words: number; chars: number }>({ words: 0, chars: 0 });
   // Keep the latest `onSave` reachable from the editor's unmount cleanup.
   // Without this, a path-switch remount would clear the debounced timer
   // without flushing — losing whatever the user typed in the last <debounce.
@@ -358,6 +612,11 @@ export default function NoteEditor({
   const dismissedForkRef = useRef<Set<string>>(new Set());
   const [blame, setBlame] = useState<{ x: number; y: number; p: Provenance } | null>(null);
   const blameTimer = useRef<number | null>(null);
+  // Monotonic counter incremented every time a hover starts, gets cleared,
+  // or the editor unmounts. The provenance Promise checks the epoch hasn't
+  // moved on before calling setBlame, so a stale result can't pop a
+  // tooltip belonging to a previous hover (or a previous note).
+  const blameEpochRef = useRef(0);
   const [justSaved, setJustSaved] = useState(false);
   const justSavedTimer = useRef<number | null>(null);
   const [preview, setPreview] = useState<
@@ -416,6 +675,10 @@ export default function NoteEditor({
 
   useEffect(() => {
     if (!hostRef.current) return;
+    // Re-anchor the captured slug for this mount cycle. The useEffect
+    // re-runs whenever `note.slug` changes (full editor re-init), so this
+    // always reflects the note actually on screen.
+    mountedSlugRef.current = note.slug;
 
     const state = EditorState.create({
       doc: note.body,
@@ -431,7 +694,7 @@ export default function NoteEditor({
         closeBrackets(),
         bracketMatching(),
         indentOnInput(),
-        markdown(),
+        markdown({ codeLanguages: cmLanguages }),
         syntaxHighlighting(highlightStyle),
         syntaxHighlighting(defaultHighlightStyle),
         placeholder("Start writing…"),
@@ -443,6 +706,8 @@ export default function NoteEditor({
         }),
         wikilinkPlugin(),
         questionPlugin(),
+        mathPlugin(),
+        spellPlugin(),
         imagePreviewPlugin(),
         hideSyntaxCompartment.current.of(showRawMarkdown ? [] : hideSyntaxPlugin()),
         EditorView.updateListener.of((update) => {
@@ -459,7 +724,7 @@ export default function NoteEditor({
             if (dirty) {
               saveTimer.current = window.setTimeout(() => {
                 lastSavedBody.current = body;
-                onSave(body);
+                onSave(mountedSlugRef.current, body);
                 onDirtyChange(false);
                 setJustSaved(true);
                 if (justSavedTimer.current) window.clearTimeout(justSavedTimer.current);
@@ -467,21 +732,28 @@ export default function NoteEditor({
               }, debounceMs);
             }
           }
-          // Broadcast selection size for the status bar. Only when the
-          // selection actually changed, to avoid a dispatch on every
-          // keystroke (docChanged already implies the caret moved but the
-          // selection is zero-width).
+          // Broadcast selection size for the status bar. Two-stage filter:
+          // skip if neither selection nor doc changed, and skip if the
+          // emitted (words, chars) tuple is identical to the last one we
+          // sent. The second stage matters: ordinary typing keeps the
+          // selection empty, so without it every keystroke would dispatch
+          // a "0/0" event that re-rendered the AppShell tree.
           if (update.selectionSet || update.docChanged) {
             const sel = update.state.selection.main;
             const selected = sel.empty
               ? ""
               : update.state.sliceDoc(sel.from, sel.to);
+            const chars = selected.length;
             const count = selected
               ? (selected.trim().match(/\S+/g)?.length ?? 0)
               : 0;
-            window.dispatchEvent(new CustomEvent("yarrow:selection-changed", {
-              detail: { words: count, chars: selected.length },
-            }));
+            const last = lastSelectionRef.current;
+            if (last.words !== count || last.chars !== chars) {
+              lastSelectionRef.current = { words: count, chars };
+              window.dispatchEvent(new CustomEvent("yarrow:selection-changed", {
+                detail: { words: count, chars },
+              }));
+            }
           }
         }),
         EditorView.domEventHandlers({
@@ -508,7 +780,36 @@ export default function NoteEditor({
           // still work on the editor's own contents).
           contextmenu: (e, view) => {
             const sel = view.state.selection.main;
-            if (sel.empty) return false;
+            // Empty selection: probe for a misspelled word at the click and
+            // surface spell suggestions. If nothing's misspelled, fall through
+            // to the native menu so Copy/Paste still work.
+            if (sel.empty) {
+              const target = e.target as HTMLElement;
+              if (target.classList.contains("cm-yarrow-misspelled")) {
+                const word = (target.textContent || "").trim();
+                if (word) {
+                  const pos = view.posAtDOM(target);
+                  const line = view.state.doc.lineAt(pos);
+                  const idx = line.text.indexOf(word);
+                  if (idx >= 0) {
+                    const from = line.from + idx;
+                    const to = from + word.length;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const suggestions = spellSuggest(word);
+                    window.dispatchEvent(new CustomEvent("yarrow:editor-spellcheck", {
+                      detail: {
+                        word, suggestions,
+                        x: e.clientX, y: e.clientY,
+                        from, to,
+                      },
+                    }));
+                    return true;
+                  }
+                }
+              }
+              return false;
+            }
             const text = view.state.sliceDoc(sel.from, sel.to);
             if (!text.trim()) return false;
             e.preventDefault();
@@ -528,6 +829,7 @@ export default function NoteEditor({
 
             if (previewTimer.current) window.clearTimeout(previewTimer.current);
             if (blameTimer.current) window.clearTimeout(blameTimer.current);
+            blameEpochRef.current++;
             setBlame(null);
             previewTargetRef.current = target;
 
@@ -549,11 +851,8 @@ export default function NoteEditor({
                 setPreview({ x, y, placeAbove, title: query, body: "", missing: true });
                 return;
               }
-              const cached = previewCache.get(match.slug);
+              const cached = sharedGetCachedPreview(match.slug);
               if (cached) {
-                // Refresh recency without re-fetching.
-                previewCache.delete(match.slug);
-                previewCache.set(match.slug, cached);
                 setPreview({ x, y, placeAbove, ...cached, slug: match.slug });
                 return;
               }
@@ -601,14 +900,28 @@ export default function NoteEditor({
             const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
             if (pos == null) return false;
             const { x, y } = { x: e.clientX, y: e.clientY };
+            // Bump the epoch so any in-flight provenance lookup that hasn't
+            // resolved yet ignores its result. Without this, switching
+            // notes (or just moving the mouse) while a 1.2 s hover-delay
+            // call was in flight could pop a tooltip belonging to the
+            // *previous* hover point — sometimes for a different note's
+            // path entirely.
+            const epoch = ++blameEpochRef.current;
+            const slug = mountedSlugRef.current;
             blameTimer.current = window.setTimeout(() => {
               const line = view.state.doc.lineAt(pos).number;
               api
-                .paragraphProvenance(note.slug, line)
-                .then((p) =>
-                  setBlame({ x: x + 12, y: y + 18, p }),
-                )
-                .catch(() => setBlame(null));
+                .paragraphProvenance(slug, line)
+                .then((p) => {
+                  // Drop the result if a newer hover (or a clear) happened
+                  // between scheduling and resolving.
+                  if (blameEpochRef.current !== epoch) return;
+                  setBlame({ x: x + 12, y: y + 18, p });
+                })
+                .catch(() => {
+                  if (blameEpochRef.current !== epoch) return;
+                  setBlame(null);
+                });
             }, 1200);
             return false;
           },
@@ -643,10 +956,49 @@ export default function NoteEditor({
                 if (f) files.push(f);
               }
             }
-            if (files.length === 0) return false;
-            e.preventDefault();
-            attachFilesToEditor(files, view, view.state.selection.main.head);
-            return true;
+            if (files.length > 0) {
+              e.preventDefault();
+              attachFilesToEditor(files, view, view.state.selection.main.head);
+              return true;
+            }
+            // Smart paste: a clipboard string that's just a URL becomes a
+            // [title](url) markdown link. Title fetch is async — insert the
+            // raw URL first, then replace with the linked form on success.
+            const text = e.clipboardData.getData("text/plain");
+            const url = isLikelyUrl(text);
+            if (url) {
+              e.preventDefault();
+              const sel = view.state.selection.main;
+              // If the user has selected text, treat it as the link label and
+              // skip the network fetch entirely.
+              if (!sel.empty) {
+                const label = view.state.sliceDoc(sel.from, sel.to);
+                view.dispatch({
+                  changes: { from: sel.from, to: sel.to, insert: `[${label}](${url})` },
+                  selection: { anchor: sel.from + `[${label}](${url})`.length },
+                });
+                return true;
+              }
+              const insertAt = sel.head;
+              view.dispatch({
+                changes: { from: insertAt, to: insertAt, insert: url },
+                selection: { anchor: insertAt + url.length },
+              });
+              api.fetchUrlTitle(url).then((title) => {
+                const trimmed = title.trim();
+                if (!trimmed) return;
+                // Re-find the URL in case the doc shifted; only replace when
+                // the original placeholder is still present at this offset.
+                const current = view.state.doc.sliceString(insertAt, insertAt + url.length);
+                if (current !== url) return;
+                const replacement = `[${escapeMdLinkText(trimmed)}](${url})`;
+                view.dispatch({
+                  changes: { from: insertAt, to: insertAt + url.length, insert: replacement },
+                });
+              }).catch(() => { /* leave the raw URL */ });
+              return true;
+            }
+            return false;
           },
         }),
       ],
@@ -673,7 +1025,7 @@ export default function NoteEditor({
         const body = view.state.doc.toString();
         if (body !== lastSavedBody.current) {
           lastSavedBody.current = body;
-          onSaveRef.current(body);
+          onSaveRef.current(mountedSlugRef.current, body);
         }
       } catch {
         // Swallow: we're already tearing down; losing this flush is still
@@ -700,6 +1052,16 @@ export default function NoteEditor({
   useEffect(() => {
     lastSavedBody.current = note.body;
     setTitle(note.frontmatter.title || note.slug);
+    // Drop any stale blame tooltip when the note prop swaps. Belt-and-
+    // braces alongside the per-hover epoch — the parent may keep this
+    // editor instance alive across slug changes if the key prop logic
+    // ever changes.
+    if (blameTimer.current) {
+      window.clearTimeout(blameTimer.current);
+      blameTimer.current = null;
+    }
+    blameEpochRef.current++;
+    setBlame(null);
   }, [note.slug, note.body, note.frontmatter.title]);
 
   // Jump to a specific line
@@ -743,7 +1105,28 @@ export default function NoteEditor({
       try { onBodyChangeRef.current?.(view.state.doc.toString()); } catch {}
     };
     window.addEventListener("yarrow:editor-insert", onInsert as EventListener);
-    return () => window.removeEventListener("yarrow:editor-insert", onInsert as EventListener);
+
+    const onReplaceRange = (ev: Event) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const detail = (ev as CustomEvent<{ from: number; to: number; text: string }>).detail;
+      if (!detail) return;
+      const max = view.state.doc.length;
+      const from = Math.max(0, Math.min(detail.from, max));
+      const to = Math.max(from, Math.min(detail.to, max));
+      view.dispatch({
+        changes: { from, to, insert: detail.text },
+        selection: { anchor: from + detail.text.length },
+      });
+      view.focus();
+      try { onBodyChangeRef.current?.(view.state.doc.toString()); } catch {}
+    };
+    window.addEventListener("yarrow:editor-replace-range", onReplaceRange as EventListener);
+
+    return () => {
+      window.removeEventListener("yarrow:editor-insert", onInsert as EventListener);
+      window.removeEventListener("yarrow:editor-replace-range", onReplaceRange as EventListener);
+    };
   }, []);
 
   const saveNow = () => {
@@ -752,7 +1135,7 @@ export default function NoteEditor({
     const body = viewRef.current.state.doc.toString();
     if (body !== lastSavedBody.current) {
       lastSavedBody.current = body;
-      onSave(body);
+      onSave(mountedSlugRef.current, body);
       onDirtyChange(false);
     }
   };
@@ -817,6 +1200,11 @@ export default function NoteEditor({
           placeholder="Untitled"
           className="w-full font-serif text-[44px] leading-[1.1] text-char bg-transparent outline-none placeholder:text-t3 tracking-[-1px] mb-2"
         />
+        <TagChips
+          initial={note.frontmatter.tags ?? []}
+          suggestions={tagSuggestions}
+          onCommit={(next) => onTagsChange?.(mountedSlugRef.current, next)}
+        />
         <div ref={hostRef} onBlur={saveNow} className="min-h-[50vh] mt-6" />
 
         {note.frontmatter.links.length > 0 && (
@@ -876,150 +1264,3 @@ export default function NoteEditor({
   );
 }
 
-function WikilinkPreview({
-  data,
-  currentPath,
-  pathNotes,
-  onBranchHere,
-  onEnter,
-  onLeave,
-}: {
-  data: {
-    x: number;
-    y: number;
-    placeAbove: boolean;
-    title: string;
-    body: string;
-    slug?: string;
-    missing?: boolean;
-  };
-  currentPath: string;
-  pathNotes?: Record<string, string[]>;
-  onBranchHere?: (slug: string) => void;
-  onEnter?: () => void;
-  onLeave?: () => void;
-}) {
-  const style: React.CSSProperties = data.placeAbove
-    ? { left: data.x, top: data.y, transform: "translateY(-100%)" }
-    : { left: data.x, top: data.y };
-
-  if (data.missing) {
-    return (
-      <div
-        style={style}
-        className="fixed z-40 pointer-events-none w-[300px] bg-bg border border-bd2 rounded-lg shadow-2xl p-3 animate-fadeIn"
-      >
-        <div className="text-2xs uppercase tracking-wider text-t3 font-semibold mb-1">
-          No note yet
-        </div>
-        <div className="font-serif text-base text-char truncate">{data.title}</div>
-        <div className="text-2xs text-t2 mt-1.5 leading-relaxed">
-          Type the note's exact title, or create it first.
-        </div>
-      </div>
-    );
-  }
-
-  const excerpt = excerptForPreview(data.body);
-
-  // Compute path membership for the bottom strip.
-  const membership = (() => {
-    if (!data.slug || !pathNotes) return null;
-    const slug = data.slug;
-    const allBranches = Object.keys(pathNotes);
-    const here: string[] = [];
-    const absent: string[] = [];
-    for (const b of allBranches) {
-      if ((pathNotes[b] || []).includes(slug)) here.push(b);
-      else absent.push(b);
-    }
-    if (allBranches.length === 0) return null;
-    return { here, absent, total: allBranches.length };
-  })();
-
-  return (
-    <div
-      style={style}
-      className="fixed z-40 w-[380px] max-h-[340px] overflow-hidden bg-bg border border-bd2 rounded-lg shadow-2xl animate-fadeIn flex flex-col"
-      onMouseDown={(e) => e.stopPropagation()}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
-    >
-      <div className="px-3.5 pt-3 pb-2 border-b border-bd flex items-center gap-2">
-        <div className="font-serif text-base text-char leading-tight truncate flex-1">
-          {data.title}
-        </div>
-        <span className="text-2xs text-t3 font-mono shrink-0">click to open</span>
-      </div>
-      <div className="px-3.5 py-2.5 text-xs text-char whitespace-pre-wrap leading-relaxed overflow-y-auto flex-1 pointer-events-none">
-        {excerpt || (
-          <span className="italic text-t3">This note is empty.</span>
-        )}
-      </div>
-
-      {membership && (
-        <div className="border-t border-bd px-3.5 py-2 bg-s1/60 text-2xs">
-          <div className="flex items-baseline gap-2">
-            <span className="text-t3 font-mono tracking-wider">APPLIES ON</span>
-            <span className="text-char">
-              {membership.here.length} of {membership.total} path{membership.total === 1 ? "" : "s"}
-            </span>
-          </div>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {membership.here.map((b) => (
-              <span
-                key={b}
-                className={`text-2xs px-1.5 py-0.5 rounded-full font-serif italic truncate max-w-[140px] ${
-                  b === currentPath
-                    ? "bg-yel text-on-yel"
-                    : "bg-yelp text-yeld"
-                }`}
-                title={b === currentPath ? "Current path" : b}
-              >
-                {b}
-              </span>
-            ))}
-            {membership.absent.map((b) => (
-              <span
-                key={b}
-                className="text-2xs px-1.5 py-0.5 rounded-full font-serif italic truncate max-w-[140px] text-t3 border border-dashed border-bd2 line-through decoration-bd2"
-                title={`Not on ${b}`}
-              >
-                {b}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {data.slug && onBranchHere && (
-        <div className="border-t border-bd px-2 py-1.5 bg-bg flex items-center">
-          <button
-            onClick={() => onBranchHere(data.slug!)}
-            className="w-full text-left px-2.5 py-1 text-xs text-t2 hover:text-char hover:bg-s2 rounded flex items-center gap-2"
-            title="Start a new path using this note as the anchor"
-          >
-            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="3" cy="3" r="1.5"/>
-              <circle cx="3" cy="11" r="1.5"/>
-              <circle cx="11" cy="7" r="1.5"/>
-              <path d="M3 4.5v5M4.3 3.7l5.4 2.6"/>
-            </svg>
-            <span>Start a path from this note</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Trim to ~480 chars, stripping wrapping whitespace/headings for the preview. */
-function excerptForPreview(body: string): string {
-  const cleaned = body
-    .split("\n")
-    .filter((l) => !l.trim().startsWith("---"))
-    .join("\n")
-    .trimStart();
-  if (cleaned.length <= 480) return cleaned;
-  return cleaned.slice(0, 480).replace(/\s+\S*$/, "") + "…";
-}

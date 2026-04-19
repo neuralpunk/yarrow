@@ -128,9 +128,9 @@ body {
   background: var(--bg);
   color: var(--char);
   /* The UI font comes from a CSS var so the Settings → Appearance picker
-     can swap it at runtime. Default (inline fallback) is Inter — matches
-     the prior hardcoded value so nothing changes until the user picks. */
-  font-family: var(--ui-font-family, Inter, ui-sans-serif, system-ui, sans-serif);
+     can swap it at runtime. Default fallback is Merriweather — chosen for
+     its editorial weight; matches the v1.1 chrome direction. */
+  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
@@ -149,10 +149,13 @@ body {
   zoom: var(--ui-zoom-inv, 1);
 }
 
-/* Surfaces that shift with the palette get the same gentle transition so
-   the whole chrome moves together, not piecemeal. */
+/* Surfaces that shift with the palette get a gentle transition so the
+   whole chrome moves together, not piecemeal. Tightened from 220 ms →
+   140 ms so hover state changes (note rows, buttons) feel snappy without
+   losing the theme-toggle crossfade — the body's own 220 ms transition
+   already carries that. */
 aside, header, .toolbar, .note-row, [class*="bg-s"], [class*="bg-bg"] {
-  transition: background-color 220ms ease, border-color 220ms ease, color 160ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease, color 100ms ease;
 }
 
 button, input, select, textarea {
@@ -279,13 +282,177 @@ button, input, select, textarea {
   font-size: 12px;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Reading mode — themed render of pulldown-cmark output
+   ───────────────────────────────────────────────────────────── */
+.yarrow-reading {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--char);
+}
+.yarrow-reading h1,
+.yarrow-reading h2,
+.yarrow-reading h3,
+.yarrow-reading h4,
+.yarrow-reading h5,
+.yarrow-reading h6 {
+  font-family: 'Fraunces', Georgia, serif;
+  color: var(--char);
+  margin: 1.6em 0 0.5em;
+  line-height: 1.2;
+}
+.yarrow-reading h1:first-child,
+.yarrow-reading h2:first-child { margin-top: 0; }
+.yarrow-reading h1 { font-size: 30px; letter-spacing: -0.5px; }
+.yarrow-reading h2 {
+  font-size: 24px;
+  border-bottom: 1px solid var(--bd);
+  padding-bottom: 4px;
+}
+.yarrow-reading h3 { font-size: 19px; }
+.yarrow-reading h4 { font-size: 16px; }
+.yarrow-reading p { margin: 0 0 1em; }
+.yarrow-reading a {
+  color: var(--yeld);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--yeld) 40%, transparent);
+}
+.yarrow-reading a:hover { border-bottom-color: var(--yeld); }
+.yarrow-reading a.yarrow-wikilink {
+  background: var(--yelp);
+  color: var(--yeld);
+  padding: 0 4px;
+  border-radius: 3px;
+  border-bottom: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+.yarrow-reading a.yarrow-wikilink:hover {
+  background: var(--yel);
+  color: var(--on-yel);
+}
+.yarrow-reading code {
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--s2);
+  color: var(--char);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--bd);
+}
+.yarrow-reading pre {
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin: 14px 0;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.yarrow-reading pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: var(--char);
+}
+.yarrow-reading blockquote {
+  border-left: 3px solid var(--yel);
+  margin: 14px 0;
+  padding: 4px 16px;
+  color: var(--ch2);
+  background: color-mix(in srgb, var(--yelp) 40%, transparent);
+  border-radius: 0 4px 4px 0;
+  font-style: italic;
+}
+.yarrow-reading blockquote p:last-child { margin-bottom: 0; }
+.yarrow-reading ul, .yarrow-reading ol { padding-left: 28px; margin: 0 0 1em; }
+.yarrow-reading li { margin: 0.25em 0; }
+.yarrow-reading li > ul, .yarrow-reading li > ol { margin: 0.25em 0; }
+.yarrow-reading li input[type="checkbox"] { margin-right: 6px; }
+.yarrow-reading hr {
+  border: none;
+  border-top: 1px solid var(--bd);
+  margin: 28px 0;
+}
+.yarrow-reading table {
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+}
+.yarrow-reading th, .yarrow-reading td {
+  border: 1px solid var(--bd);
+  padding: 6px 12px;
+  text-align: left;
+}
+.yarrow-reading th {
+  background: var(--s1);
+  font-weight: 700;
+  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif);
+}
+.yarrow-reading img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 12px 0;
+}
+.yarrow-reading strong { font-weight: 600; color: var(--char); }
+.yarrow-reading em { font-style: italic; }
+.yarrow-reading del { color: var(--t3); }
+.yarrow-reading sup, .yarrow-reading sub { font-size: 0.75em; }
+
+/* path-hover highlight: when a path card is hovered, rows whose slug is in
+   that path light up; rows outside it dim. The "none" state is the default
+   (no path is being hovered) and gets no special styling. */
+.yarrow-path-hl[data-path-highlight="in"] {
+  background: color-mix(in srgb, var(--yelp) 55%, transparent);
+  border-radius: 6px;
+  transition: background 120ms ease;
+}
+.yarrow-path-hl[data-path-highlight="out"] {
+  opacity: 0.35;
+  transition: opacity 120ms ease;
+}
+
+/* spell check */
+.cm-yarrow-misspelled {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--danger);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* KaTeX math */
+.cm-yarrow-math-inline {
+  display: inline-block;
+  vertical-align: baseline;
+}
+.cm-yarrow-math-inline .katex { font-size: 1em; }
+.cm-yarrow-math-block {
+  display: block;
+  margin: 6px 0;
+  padding: 6px 0;
+  text-align: center;
+}
+.cm-yarrow-math-error {
+  color: var(--danger);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+}
+
 /* autocomplete */
 .cm-tooltip-autocomplete {
   background: var(--bg) !important;
   border: 1px solid var(--bd2) !important;
   border-radius: 8px !important;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif) !important;
   font-size: 14px !important;
   font-weight: 450 !important;
 }

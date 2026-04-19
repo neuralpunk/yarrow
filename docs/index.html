@@ -2,14 +2,14 @@
 <html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Yarrow 1.0 — notes that branch, evolve, and connect</title>
-<meta name="description" content="A local-first desktop note app built around the way thinking actually works. Every idea can branch, evolve, and connect — and nothing you ever write is lost. Version 1.0 out now." />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Yarrow 1.1 — notes that branch, evolve, and connect</title>
+<meta name="description" content="A local-first desktop note app built around the way thinking actually works. Every idea can branch, evolve, and connect — and nothing you ever write is lost. Version 1.1 out now: full markdown reading mode, KaTeX, decision tools for paths, Obsidian import." />
 
 <meta id="meta-theme-color" name="theme-color" content="#F7F5F0" />
 
-<meta property="og:title" content="Yarrow 1.0 — notes that branch, evolve, and connect" />
-<meta property="og:description" content="A local-first desktop notebook for non-linear thinking. Paths, checkpoints, connections — and nothing is ever lost." />
+<meta property="og:title" content="Yarrow 1.1 — notes that branch, evolve, and connect" />
+<meta property="og:description" content="A local-first desktop notebook for non-linear thinking. Paths, checkpoints, connections, decision tools — and nothing is ever lost." />
 <meta property="og:image" content="main-light.png" />
 <meta property="og:type" content="website" />
 
@@ -22,6 +22,18 @@
 
 <link rel="preload" as="image" href="main-light.png" />
 <link rel="preload" as="image" href="main-dark.png" />
+
+<noscript>
+  <style>
+    /* If JS doesn't run, .reveal/.reveal-children would stay invisible
+       because the IntersectionObserver never gets the chance to flip
+       them. Make them visible immediately so the page is still usable. */
+    .reveal, .reveal-children > * {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  </style>
+</noscript>
 
 <script>
   (function () {
@@ -40,7 +52,7 @@
   <div class="masthead-inner">
     <a class="wordmark" href="#top">
       Yarrow
-      <span class="version">v1.0</span>
+      <span class="version">v1.1</span>
     </a>
     <span></span>
     <div class="mast-nav">
@@ -48,6 +60,7 @@
       <a href="#manifesto">Why</a>
       <a href="#whats-new">What's new</a>
       <a href="#features">Features</a>
+      <a href="user-guide.html">User Guide</a>
       <a href="#faq">FAQ</a>
       <span class="sep">·</span>
       <div class="theme-toggle" role="radiogroup" aria-label="Theme">
@@ -60,7 +73,7 @@
       </div>
       <a class="btn-mini" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-        Download 1.0
+        Download 1.1
       </a>
     </div>
   </div>
@@ -72,7 +85,7 @@
     <div class="hero-head">
       <div class="eyebrow">
         <span class="dot"></span>
-        <span>Version 1.0 · out today · free &amp; open source</span>
+        <span>Version 1.1 · out now · free &amp; open source</span>
       </div>
       <h1>Notes that <em>branch</em>, <span class="and">evolve,</span> and connect.</h1>
       <p class="hero-lede">
@@ -83,7 +96,7 @@
       <div class="cta-row">
         <a class="btn primary" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download 1.0
+          Download 1.1
         </a>
         <a class="btn ghost" href="#gallery">
           See it in full <span class="arrow">→</span>
@@ -201,8 +214,8 @@
 <section id="gallery" class="section gallery">
   <div class="page">
     <div class="section-label">01 · A look</div>
-    <h2 class="section-h">Three windows on the same notebook.</h2>
-    <p class="section-lede">
+    <h2 class="section-h reveal">Three windows on the same notebook.</h2>
+    <p class="section-lede reveal">
       The editor is the trunk. <em>Paths</em> are the alternate takes you
       don't have to choose between. The <em>Map</em> is the shape your
       thinking took over time. One workspace, three perspectives.
@@ -370,163 +383,197 @@
   </div>
 </section>
 
-<!-- ═══ what's new in 1.0 ═══ -->
+<!-- ═══ what's new in 1.1 ═══ -->
 <section id="whats-new" class="section whatsnew">
   <div class="page">
     <div class="whatsnew-badge">
       <span class="dot"></span>
-      <span>New in 1.0</span>
+      <span>New in 1.1</span>
     </div>
-    <h2 class="section-h">The release where Yarrow stops being a tech demo, <em>and starts being a notebook.</em></h2>
-    <p class="section-lede">
-      A daily-tool feature set — templates, tags, per-note encryption, a
-      rebuilt Paths model, workspace switching — paired with a full editorial
-      redesign that gives Yarrow the feel of a field notebook instead of a
-      code editor.
+    <h2 class="section-h reveal">A richer page — and Paths that <em>help you decide.</em></h2>
+    <p class="section-lede reveal">
+      1.1 deepens the writing surface (real GitHub-style reading mode, KaTeX
+      math, code-block colors, smart paste, spell-check) and turns the Paths
+      system into a proper decision-support tool: every other path now tells
+      you, at a glance, what you'd gain and what you'd leave behind by taking
+      it. Plus an in-app workspace wizard that imports Obsidian vaults.
     </p>
 
-    <div class="whatsnew-grid">
+    <div class="whatsnew-grid reveal-children">
       <article class="wn-card wide">
         <div class="wn-num">01</div>
-        <h3>A new visual language — <em>Editorial.</em></h3>
+        <h3>GitHub-style <em>reading mode.</em></h3>
         <p>
-          Serif-forward typography on Source Serif 4, a paper-and-plum
-          palette (ink-and-plum in dark), a slim 52px tool-rail, and a path
-          ribbon at the top of every note. Writing in Yarrow should feel like
-          writing in a notebook, not a dev tool.
+          The reading toggle now switches the editor for a fully rendered HTML
+          view via pulldown-cmark — themed code blocks with darker backgrounds,
+          bordered tables, blockquote bars, task lists, KaTeX math. Wikilinks
+          stay clickable and open in-app. Flip back to writing when you want
+          to edit.
         </p>
       </article>
 
       <article class="wn-card wide">
         <div class="wn-num">02</div>
-        <h3>Paths, <em>rebuilt from scratch.</em></h3>
+        <h3>Paths, <em>as a decision tool.</em></h3>
         <p>
-          Paths are now <em>collections of notes</em> — named lenses over a
-          single shared set of files — not git branches. One main per
-          workspace, everything branches from it. Promote any side path to
-          main and its era's peers come with it; the old main moves to the
-          ghost zone, preserved as history.
+          Every path card on the Forking Road graph now shows a
+          <code>+N / −M</code> badge vs. your current path. Click in for the
+          three-state diff: what you'd gain, what's edited differently, what
+          you'd leave behind — optionally clustered by tag. Hover any card
+          and the path's notes light up in the sidebar, the rest dim.
         </p>
       </article>
 
       <article class="wn-card">
         <div class="wn-num">03</div>
-        <h3>Reading ↔ Writing mode.</h3>
+        <h3>Decision matrix.</h3>
         <p>
-          A glasses/pencil toggle flips the editor between rendered prose and
-          raw markdown. Headings, bold, inline code, and <code>[[wikilinks]]</code>
-          collapse on every line you aren't editing.
+          A spreadsheet for path choices: rows are notes, columns are paths,
+          cells are ✓/✗. Star a row as must-have; column headers grow a
+          <code>★ N/M</code> score that turns red if any starred row is
+          missing. The "if I solo Europe, I lose Rome" answer in one glance.
         </p>
       </article>
 
       <article class="wn-card">
         <div class="wn-num">04</div>
-        <h3>Workspace modes.</h3>
+        <h3>Drag-to-add-to-path.</h3>
         <p>
-          Pick <em>branch path mapping</em> (default) for the full
-          graph-and-paths experience, or <em>basic notes</em> for a plain
-          notebook. Every mapped workspace anchors on a designated starting
-          note — the ★ you always see in the sidebar.
+          Drag any note from the sidebar onto a path card on the graph (or
+          onto an open path's "In this path" section) to add it. Cards
+          highlight as drop targets. No menu dive.
         </p>
       </article>
 
-      <article class="wn-card">
+      <article class="wn-card wide">
         <div class="wn-num">05</div>
-        <h3>Templates.</h3>
+        <h3>Workspace wizard <em>+ Obsidian import.</em></h3>
         <p>
-          Six bundled — daily journal, meeting notes, book notes, vacation
-          planner, project brief, morning pages — with placeholder
-          substitution (<code>{{date}}</code>, <code>{{weekday}}</code>,
-          <code>{{cursor}}</code>). New-note modal has a <em>Start from</em>
-          chip row; edit them all in Settings → Templates.
+          Creating a workspace is no longer a bare folder picker. A two-step
+          in-app modal asks what you're starting from (blank notebook or an
+          Obsidian vault), then name / location / mode / starting note — with
+          a live <em>"Will create:"</em> path preview. The Obsidian importer
+          preserves <code>[[wikilinks]]</code>, <code>#tags</code>, and
+          frontmatter; skips <code>.obsidian/</code>; lands as one checkpoint
+          you can roll back.
         </p>
       </article>
 
       <article class="wn-card">
         <div class="wn-num">06</div>
-        <h3>Tags, first-class.</h3>
+        <h3>Inline math (KaTeX).</h3>
         <p>
-          YAML frontmatter tags surface in a collapsible, counted sidebar
-          panel. Click to filter; type <code>#tag</code> in the command
-          palette to jump straight to the filtered view.
+          <code>$x^2$</code> renders inline, <code>$$\int_0^\infty…$$</code>
+          renders centered. Click into the delimiters to edit the LaTeX
+          source; click out to render. Skipped inside code fences.
         </p>
       </article>
 
-      <article class="wn-card wide">
+      <article class="wn-card">
         <div class="wn-num">07</div>
-        <h3>Local encryption — <em>opt-in, per-note.</em></h3>
+        <h3>Code-block syntax highlighting.</h3>
         <p>
-          ChaCha20-Poly1305 with Argon2id key derivation and a 12-word BIP39
-          recovery phrase. Enable in Settings → Security; unlock once per
-          session. Frontmatter stays plaintext so the graph, tags, and
-          backlinks still work. <code>⌘L</code> locks immediately.
-          Everything happens on your machine — no network, no accounts.
+          Fenced <code>```python</code> (and every other language) gets
+          keyword/string/comment colouring while editing, plus themed
+          <code>&lt;pre&gt;</code> styling in reading mode.
         </p>
       </article>
 
-      <article class="wn-card wide">
+      <article class="wn-card">
         <div class="wn-num">08</div>
-        <h3>Switch workspaces without losing your place.</h3>
+        <h3>Smart paste.</h3>
         <p>
-          A sidebar chip with a deterministic color badge per folder, a
-          <code>⌘⇧O</code> popover for recent workspaces, and a full remount
-          on switch — so no state from the previous notebook leaks into the
-          next.
+          Paste a URL → it becomes <code>[&lt;page title&gt;](url)</code> after
+          a background fetch. With a selection, the selection becomes the link
+          label. Tables paste cleanly; nothing else changes.
         </p>
       </article>
 
       <article class="wn-card">
         <div class="wn-num">09</div>
-        <h3>Scratchpad, docked.</h3>
+        <h3>Spell-check, <em>committed.</em></h3>
         <p>
-          A resizable right-side pane (<code>⌘⇧S</code>), not a full-screen
-          sheet. Editor right-click → <em>Send to scratchpad</em>. Keep-as-note
-          from the footer with an optional <em>came-from</em> link to the
-          note you were on.
+          Misspellings underline in wavy red outside code, wikilinks, and URLs.
+          Right-click for suggestions or "Add to dictionary." Custom words
+          live in <code>.yarrow/dictionary.txt</code> — committed, so the team
+          shares vocabulary.
         </p>
       </article>
 
       <article class="wn-card">
         <div class="wn-num">10</div>
-        <h3>Settings, built out.</h3>
+        <h3>Find &amp; replace, undoable.</h3>
         <p>
-          Eight populated tabs — Appearance, Writing, Templates, Sync,
-          Security, Workspace, Shortcuts, About — plus a search box across
-          every row, and a shaped placeholder for <em>Yarrow Sync</em>.
+          <code>⌘⇧F</code> opens a workspace-wide modal with case-insensitive
+          matching, scope (workspace / current path), and live previews. The
+          whole change is one checkpoint — undo from History on any
+          affected note.
         </p>
       </article>
 
-      <article class="wn-card wide">
+      <article class="wn-card">
         <div class="wn-num">11</div>
-        <h3>Performance, <em>made honest.</em></h3>
+        <h3>Trash, with undelete.</h3>
         <p>
-          Initial JS payload dropped from ~985 KB → ~302 KB raw (322 KB → 92
-          KB gzipped) via lazy-loaded overlays and vendor chunk splitting.
-          Hover-prefetch warms the next note into a 24-entry LRU. Reading ↔
-          Writing flips hot-swap via a CodeMirror Compartment — no flicker.
+          Deleting a note now stashes a copy under <code>.yarrow/trash/</code>.
+          The new Trash modal lists removed notes with <em>restore</em> and
+          <em>permanent purge</em> actions. No more "I meant to delete the
+          other one."
         </p>
       </article>
 
-      <article class="wn-card wide">
+      <article class="wn-card">
         <div class="wn-num">12</div>
-        <h3>Quiet quality-of-life.</h3>
+        <h3>Auto-rename wikilinks.</h3>
         <p>
-          Three-state save indicator. Undo-delete toast. Word count +
-          reading-time chip, with a selection count that swaps in live.
-          <em>Copy as markdown</em> and <em>Reveal in file manager</em> on
-          the right-click menu. A "today" chip on anything modified past
-          local midnight. Static-site exports now ship with client-side
-          search.
+          Renaming a note pre-flights how many other notes link to it; if any
+          do, asks: <em>Rename only this note</em> or <em>Rename and update
+          wikilinks.</em> Handles <code>[[Title|alias]]</code> and
+          <code>[[Title#section]]</code> too.
         </p>
       </article>
+
+      <article class="wn-card">
+        <div class="wn-num">13</div>
+        <h3>Print / save as PDF.</h3>
+        <p>
+          <code>⌘P</code> renders the active note via pulldown-cmark with
+          print-friendly styling and opens your OS print dialog. "Save as
+          PDF" works everywhere a print dialog does.
+        </p>
+      </article>
+
+      <article class="wn-card">
+        <div class="wn-num">14</div>
+        <h3>Wikilink hover preview <em>everywhere.</em></h3>
+        <p>
+          The popover that's been in writing mode now appears in reading mode
+          too — same excerpt, same path-membership chips, same
+          <em>"Start a path here"</em> action. Cache is shared across modes.
+        </p>
+      </article>
+
+      <article class="wn-card">
+        <div class="wn-num">15</div>
+        <h3>Multiple windows.</h3>
+        <p>
+          <em>Open new window</em> from the palette spawns a second window
+          onto the same workspace. Window position and size persist across
+          launches via <code>tauri-plugin-window-state</code>.
+        </p>
+      </article>
+
     </div>
 
     <div class="whatsnew-extras">
-      <span>+ History pruning under Settings → Workspace</span>
-      <span>+ Interface font + size picker</span>
-      <span>+ Wider editor on large windows</span>
-      <span>+ 10 MB per-attachment cap</span>
-      <span>+ Checkpoint-bloat guards (no-op saves, oscillation coalescing)</span>
+      <span>+ Path comparison view (palette: Compare two paths)</span>
+      <span>+ Three-state diff in the path detail (added · changed · removed)</span>
+      <span>+ Group diff lists by tag</span>
+      <span>+ Hover-to-highlight path members in the note list</span>
+      <span>+ Default UI font swapped to Merriweather</span>
+      <span>+ Roomier window resize edges (no more pixel-hunting)</span>
+      <span>+ In-app modals replace native browser confirm/alert</span>
+      <span><a href="user-guide.html">New User Guide →</a></span>
       <span><a href="https://github.com/neuralpunk/yarrow/blob/main/CHANGELOG.md" rel="noopener">Full changelog →</a></span>
     </div>
   </div>
@@ -535,12 +582,12 @@
 <!-- ═══ mental model ═══ -->
 <section class="section page">
   <div class="section-label">03 · The mental model</div>
-  <h2 class="section-h">Three ideas, and the rest follows.</h2>
+  <h2 class="section-h reveal">Three ideas, and the rest follows.</h2>
   <p class="section-lede">
     Yarrow's whole vocabulary fits on one line. Once you have these three,
     the rest of the app is just a place to do them.
   </p>
-  <div class="mental-grid">
+  <div class="mental-grid reveal-children">
     <div class="mental-col">
       <div class="n">I.</div>
       <h3>Notes</h3>
@@ -565,9 +612,9 @@
 <!-- ═══ features grid ═══ -->
 <section id="features" class="section features page">
   <div class="section-label">04 · The full feature set</div>
-  <h2 class="section-h">Everything else you get, <em>without asking.</em></h2>
+  <h2 class="section-h reveal">Everything else you get, <em>without asking.</em></h2>
 
-  <div class="feat-grid">
+  <div class="feat-grid reveal-children">
     <div class="feat">
       <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none"><line x1="5.5" y1="7.3" x2="5.5" y2="16.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M 5.5 15.5 C 5.5 11, 11 9.5, 15.7 9.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="5.5" cy="4.5" r="2.5" fill="currentColor"/><circle cx="5.5" cy="19.5" r="2.5" fill="currentColor"/><circle cx="18.5" cy="9.5" r="2.5" fill="currentColor"/></svg></div>
       <h4>Branching paths</h4>
@@ -654,8 +701,8 @@
 <!-- ═══ principles ═══ -->
 <section class="section principles page">
   <div class="section-label">05 · Principles</div>
-  <h2 class="section-h">The rules we wrote down, <em>then didn't break.</em></h2>
-  <ol class="principle-list">
+  <h2 class="section-h reveal">The rules we wrote down, <em>then didn't break.</em></h2>
+  <ol class="principle-list reveal-children">
     <li>
       <div class="n">i.</div>
       <div>
@@ -704,9 +751,9 @@
 <!-- ═══ FAQ ═══ -->
 <section id="faq" class="section page">
   <div class="section-label">06 · FAQ</div>
-  <h2 class="section-h">The things <em>people ask first.</em></h2>
+  <h2 class="section-h reveal">The things <em>people ask first.</em></h2>
 
-  <div class="faq-list">
+  <div class="faq-list reveal-children">
     <details>
       <summary>Do I need to know git to use Yarrow?</summary>
       <p>No. You never see git anywhere. The app uses git-the-library as the storage engine for checkpoints and paths, but the UI has no commits, branches, or HEAD — just your writing, paths, and connections. If you've never touched git in your life, Yarrow will feel like a normal note app that happens to remember everything.</p>
@@ -732,8 +779,12 @@
       <p>Sync, yes — point Yarrow at any git remote (GitHub, Gitea, a bare server), hit one button in the toolbar. Mobile and real-time collaboration are not on the 1.0 roadmap. Yarrow is a single-user, local-first desktop app; we'd rather do one thing well than a lot of things adequately.</p>
     </details>
     <details>
-      <summary>What does 1.0 mean? Is it really stable?</summary>
-      <p>1.0 means we've passed the tech-demo phase. Saves are atomic. Concurrent-save races are resolved. There's still plenty we want to build — but we now stake the Yarrow name on data integrity. Nothing you write will be lost. That's the promise.</p>
+      <summary>What does 1.1 mean? Is it stable?</summary>
+      <p>1.0 was where Yarrow stopped being a tech demo. 1.1 deepens the writing surface (real markdown rendering in reading mode, KaTeX, code highlighting) and turns Paths into a decision tool — plus closes a class of cross-note save races we found after 1.0 shipped. Saves are atomic. The cross-note swap bug is fixed for good. Nothing you write will be lost. That's the promise we stake the Yarrow name on.</p>
+    </details>
+    <details>
+      <summary>I'm coming from Obsidian. Can I bring my vault?</summary>
+      <p>Yes. From the new-workspace wizard pick "Import an Obsidian vault" in step 1, or from any open workspace use the command palette (⌘K) → <em>Import an Obsidian vault…</em> and point at the folder. Yarrow walks every <code>.md</code> file, preserves your <code>[[wikilinks]]</code> and <code>#tags</code>, keeps existing frontmatter, and skips <code>.obsidian/</code>. The whole import is one git checkpoint, so if something looks wrong you can roll the lot back from History.</p>
     </details>
     <details>
       <summary>Is it really free?</summary>
@@ -750,13 +801,13 @@
 <section id="download" class="section download">
   <div class="page">
     <div class="section-label">07 · Download</div>
-    <h2 class="section-h">Yarrow 1.0 — <em>yours, now.</em></h2>
-    <p class="section-lede">
+    <h2 class="section-h reveal">Yarrow 1.1 — <em>yours, now.</em></h2>
+    <p class="section-lede reveal">
       Pick your platform. The whole thing is ~15 MB. No account, no installer
       phoning home, no bundled Chromium.
     </p>
 
-    <div class="platforms">
+    <div class="platforms reveal-children">
       <a class="platform" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
         <div class="platform-icon">
           <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09ZM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z"/></svg>
@@ -820,6 +871,7 @@ npm run tauri dev</code></pre>
     <div class="foot-brand">Yarrow</div>
     <p class="foot-lede">Local-first, git-backed, plain-text notes for non-linear thinking.</p>
     <div class="foot-links">
+      <a href="user-guide.html">User Guide</a>
       <a href="https://github.com/neuralpunk/yarrow" rel="noopener">GitHub</a>
       <a href="https://github.com/neuralpunk/yarrow/releases" rel="noopener">Releases</a>
       <a href="https://github.com/neuralpunk/yarrow/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
@@ -829,6 +881,32 @@ npm run tauri dev</code></pre>
 </footer>
 
 <script>
+  // ── scroll-reveal: drop `.in-view` on .reveal / .reveal-children
+  // when they intersect the viewport. Single observer, one-shot per
+  // element. Falls back to a no-op (CSS `.reveal` defaults are still
+  // visible-after-transition friendly because of the JS-disabled
+  // path below).
+  (function () {
+    if (!('IntersectionObserver' in window) || !document.body) {
+      // Without IO, just reveal everything immediately.
+      document.querySelectorAll('.reveal, .reveal-children').forEach(function (el) {
+        el.classList.add('in-view');
+      });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          e.target.classList.add('in-view');
+          io.unobserve(e.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.08 });
+    document.querySelectorAll('.reveal, .reveal-children').forEach(function (el) {
+      io.observe(el);
+    });
+  })();
+
   // ── theme toggle ─────────────────────────────
   (function () {
     var buttons = document.querySelectorAll('[data-theme-value]');

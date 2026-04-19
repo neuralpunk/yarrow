@@ -22,6 +22,12 @@ import type {
   SearchHit,
   SyncOutcome,
   TemplateInfo,
+  TrashEntry,
+  FindReplaceHit,
+  FindReplaceReport,
+  PathComparison,
+  ObsidianImportReport,
+  SaveOutcome,
   WorkspaceConfig,
 } from "./types";
 
@@ -83,9 +89,20 @@ export const api = {
 
   saveNote: (slug: string, body: string, thinkingNote?: string) =>
     invoke<Note>("cmd_save_note", { slug, body, thinkingNote }),
+  /** Combined save: returns the note plus the workspace summaries, graph,
+   *  and orphans from a single backend pass. Replaces the four IPC
+   *  fan-out the editor used to make after every keystroke pause. */
+  saveNoteFull: (slug: string, body: string, thinkingNote?: string) =>
+    invoke<SaveOutcome>("cmd_save_note_full", { slug, body, thinkingNote }),
   createNote: (title: string) => invoke<Note>("cmd_create_note", { title }),
-  renameNote: (oldSlug: string, newTitle: string) =>
-    invoke<Note>("cmd_rename_note", { oldSlug, newTitle }),
+  renameNote: (oldSlug: string, newTitle: string, rewriteWikilinks: boolean) =>
+    invoke<Note>("cmd_rename_note", { oldSlug, newTitle, rewriteWikilinks }),
+  setTags: (slug: string, tags: string[]) =>
+    invoke<Note>("cmd_set_tags", { slug, tags }),
+  /** Pre-flight: how many notes contain `[[Old Title]]` / `[[old-slug]]` so
+   *  the user can decide whether to opt into the workspace-wide rewrite. */
+  countWikilinkReferences: (slug: string) =>
+    invoke<number>("cmd_count_wikilink_references", { slug }),
   deleteNote: (slug: string) => invoke<void>("cmd_delete_note", { slug }),
   noteAbsolutePath: (slug: string) =>
     invoke<string>("cmd_note_absolute_path", { slug }),
@@ -225,4 +242,56 @@ export const api = {
   finalizeMerge: (thinking?: string) =>
     invoke<void>("cmd_finalize_merge", { thinking }),
   abortMerge: () => invoke<void>("cmd_abort_merge"),
+
+  // smart paste
+  fetchUrlTitle: (url: string) => invoke<string>("cmd_fetch_url_title", { url }),
+
+  // trash
+  listTrash: () => invoke<TrashEntry[]>("cmd_list_trash"),
+  restoreFromTrash: (slug: string) => invoke<string>("cmd_restore_from_trash", { slug }),
+  purgeFromTrash: (slug: string) => invoke<void>("cmd_purge_from_trash", { slug }),
+  emptyTrash: () => invoke<void>("cmd_empty_trash"),
+
+  // print / pdf
+  renderNoteHtml: (slug: string) => invoke<string>("cmd_render_note_html", { slug }),
+  renderNoteBodyHtml: (slug: string) => invoke<string>("cmd_render_note_body_html", { slug }),
+
+  // find & replace
+  findReplacePreview: (
+    pattern: string,
+    regexMode: boolean,
+    caseInsensitive: boolean,
+    scopeSlugs: string[] | null,
+  ) => invoke<FindReplaceHit[]>("cmd_find_replace_preview", {
+    pattern, regexMode, caseInsensitive, scopeSlugs,
+  }),
+  findReplaceApply: (
+    pattern: string,
+    replacement: string,
+    regexMode: boolean,
+    caseInsensitive: boolean,
+    scopeSlugs: string[] | null,
+  ) => invoke<FindReplaceReport>("cmd_find_replace_apply", {
+    pattern, replacement, regexMode, caseInsensitive, scopeSlugs,
+  }),
+
+  // dictionary
+  readDictionary: () => invoke<string[]>("cmd_read_dictionary"),
+  writeDictionary: (words: string[]) => invoke<void>("cmd_write_dictionary", { words }),
+
+  // windows
+  openNewWindow: () => invoke<void>("cmd_open_new_window"),
+
+  // path comparison
+  comparePaths: (left: string, right: string) =>
+    invoke<PathComparison>("cmd_compare_paths", { left, right }),
+
+  // obsidian import
+  importObsidianVault: (source: string) =>
+    invoke<ObsidianImportReport>("cmd_import_obsidian_vault", { source }),
+
+  // new-workspace wizard
+  defaultWorkspacesRoot: () => invoke<string>("cmd_default_workspaces_root"),
+  createWorkspaceDir: (parent: string, name: string) =>
+    invoke<string>("cmd_create_workspace_dir", { parent, name }),
 };

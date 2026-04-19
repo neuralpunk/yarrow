@@ -4,13 +4,16 @@ pub mod commands;
 pub mod crypto;
 pub mod error;
 pub mod export;
+pub mod find_replace;
 pub mod git;
 pub mod graph;
 pub mod notes;
+pub mod obsidian_import;
 pub mod path_collections;
 pub mod path_meta;
 pub mod search;
 pub mod templates;
+pub mod trash;
 pub mod workspace;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -19,6 +22,7 @@ pub fn run() {
         .manage(commands::AppState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             commands::cmd_init_workspace,
             commands::cmd_open_workspace,
@@ -40,9 +44,11 @@ pub fn run() {
             commands::cmd_write_daily_template,
             commands::cmd_read_note,
             commands::cmd_save_note,
+            commands::cmd_save_note_full,
             commands::cmd_create_note,
             commands::cmd_rename_note,
             commands::cmd_set_pinned,
+            commands::cmd_set_tags,
             commands::cmd_delete_note,
             commands::cmd_note_absolute_path,
             commands::cmd_add_link,
@@ -109,6 +115,23 @@ pub fn run() {
             commands::cmd_decrypt_note,
             commands::cmd_prune_history_older_than,
             commands::cmd_prune_empty_checkpoints,
+            commands::cmd_fetch_url_title,
+            commands::cmd_list_trash,
+            commands::cmd_restore_from_trash,
+            commands::cmd_purge_from_trash,
+            commands::cmd_empty_trash,
+            commands::cmd_render_note_html,
+            commands::cmd_render_note_body_html,
+            commands::cmd_find_replace_preview,
+            commands::cmd_find_replace_apply,
+            commands::cmd_read_dictionary,
+            commands::cmd_write_dictionary,
+            commands::cmd_open_new_window,
+            commands::cmd_compare_paths,
+            commands::cmd_import_obsidian_vault,
+            commands::cmd_default_workspaces_root,
+            commands::cmd_create_workspace_dir,
+            commands::cmd_count_wikilink_references,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

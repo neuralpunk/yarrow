@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { NoteSummary, PathCollection } from "../../lib/types";
+import { api } from "../../lib/tauri";
 import { relativeTime } from "../../lib/format";
 
 interface Props {
@@ -9,6 +10,11 @@ interface Props {
   /** Derived: this path is a ghost (not live under the current root). */
   isGhost: boolean;
   parentName: string;
+  /** The path the user is currently working in. When set, PathDetail shows
+   *  an "If you take this path…" diff comparing this path's members to the
+   *  current path: which notes you'd gain, which you'd leave behind. */
+  currentPathName?: string;
+  currentPathMembers?: string[];
   onClose: () => void;
   onOpenNote: (slug: string) => void;
   onOpenMap: (slug?: string) => void;
@@ -36,6 +42,8 @@ export default function PathDetail({
   isRoot,
   isGhost,
   parentName,
+  currentPathName,
+  currentPathMembers,
   onClose,
   onOpenNote,
   onOpenMap,
@@ -51,6 +59,7 @@ export default function PathDetail({
   const [busy, setBusy] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [adding, setAdding] = useState(false);
+  const [dropOver, setDropOver] = useState(false);
 
   const titleFor = useMemo(() => {
     const m = new Map<string, string>();
@@ -59,6 +68,84 @@ export default function PathDetail({
   }, [allNotes]);
 
   const memberSet = useMemo(() => new Set(collection.members), [collection.members]);
+
+  // Membership-only diff is always cheap to derive client-side; we use it as
+  // a baseline so the panel renders instantly even before the backend
+  // comparison comes back.
+  const memberDiff = useMemo(() => {
+    if (!currentPathName || !currentPathMembers || currentPathName === collection.name) return null;
+    const baseline = new Set(currentPathMembers);
+    const candidate = new Set(collection.members);
+    const gained = collection.members
+      .filter((s) => !baseline.has(s))
+      .map((slug) => decorateNote(slug, allNotes, titleFor));
+    const lost = currentPathMembers
+      .filter((s) => !candidate.has(s))
+      .map((slug) => decorateNote(slug, allNotes, titleFor));
+    if (gained.length === 0 && lost.length === 0) return null;
+    return { gained, lost };
+  }, [collection.name, collection.members, currentPathName, currentPathMembers, titleFor, allNotes]);
+
+  // Modified state ("present on both paths but the body differs") needs the
+  // git-aware backend comparison — content can diverge without membership
+  // changing. We fetch it lazily so opening the panel stays snappy.
+  const [modified, setModified] = useState<NoteRow[] | null>(null);
+  useEffect(() => {
+    if (!currentPathName || currentPathName === collection.name) {
+      setModified(null);
+      return;
+    }
+    let alive = true;
+    api.comparePaths(currentPathName, collection.name)
+      .then((cmp) => {
+        if (!alive) return;
+        const rows = cmp.entries
+          .filter((e) => e.status === "modified")
+          .map((e) => decorateNote(e.slug, allNotes, titleFor));
+        setModified(rows);
+      })
+      .catch(() => { if (alive) setModified([]); });
+    return () => { alive = false; };
+  }, [currentPathName, collection.name, allNotes, titleFor]);
+
+  // Group a list of decorated notes by tag for the diff panel — notes with
+  // multiple tags appear under each, untagged ones gather under "untagged".
+  const groupByTag = (rows: NoteRow[]): Array<[string, NoteRow[]]> => {
+    if (rows.length === 0) return [];
+    const buckets = new Map<string, NoteRow[]>();
+    for (const r of rows) {
+      const tags = r.tags.length ? r.tags : ["untagged"];
+      for (const t of tags) {
+        if (!buckets.has(t)) buckets.set(t, []);
+        buckets.get(t)!.push(r);
+      }
+    }
+    return [...buckets.entries()].sort((a, b) => {
+      // Push "untagged" to the bottom; otherwise alphabetical.
+      if (a[0] === "untagged") return 1;
+      if (b[0] === "untagged") return -1;
+      return a[0].localeCompare(b[0]);
+    });
+  };
+
+  const diff = memberDiff || (modified && modified.length > 0
+    ? { gained: [], lost: [] }
+    : null);
+  const [groupTags, setGroupTags] = useState(false);
+
+  // While PathDetail is open, keep the note list highlight in sync with the
+  // selected path so the user can see "this is what's on this path" at a
+  // glance, not only on transient card hover.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("yarrow:path-highlight", {
+      detail: { slugs: collection.members },
+    }));
+    return () => {
+      window.dispatchEvent(new CustomEvent("yarrow:path-highlight", {
+        detail: { slugs: null },
+      }));
+    };
+  }, [collection.members]);
 
   const members = useMemo(() => {
     return collection.members
@@ -149,8 +236,81 @@ export default function PathDetail({
       </header>
 
       <div className="flex-1 overflow-y-auto">
+        {diff && (
+          <section className="px-4 pt-3 pb-3 border-b border-bd/60 bg-bg/40">
+            <div className="flex items-baseline gap-2 mb-2">
+              <div className="text-2xs uppercase tracking-[0.18em] font-mono text-t3">
+                If you take this path
+                <span className="ml-2 normal-case tracking-normal text-t3/80">
+                  vs <span className="text-yeld">{currentPathName}</span>
+                </span>
+              </div>
+              <button
+                onClick={() => setGroupTags((g) => !g)}
+                className="ml-auto text-2xs text-t3 hover:text-char"
+                title="Cluster the lists by their tags"
+              >
+                {groupTags ? "flat list" : "group by tag"}
+              </button>
+            </div>
+
+            <DiffGroup
+              tone="gain"
+              label="you'd gain"
+              rows={memberDiff?.gained ?? []}
+              groupTags={groupTags}
+              groupByTag={groupByTag}
+              onOpenNote={onOpenNote}
+            />
+            <DiffGroup
+              tone="modified"
+              label="present on both, but edited differently"
+              rows={modified ?? []}
+              groupTags={groupTags}
+              groupByTag={groupByTag}
+              onOpenNote={onOpenNote}
+            />
+            <DiffGroup
+              tone="lose"
+              label="you'd leave behind"
+              rows={memberDiff?.lost ?? []}
+              groupTags={groupTags}
+              groupByTag={groupByTag}
+              onOpenNote={onOpenNote}
+              titleSuffix={`Not on ${collection.name} — open to inspect`}
+            />
+
+            {modified === null && (
+              <div className="text-2xs text-t3 italic mt-1">
+                checking for divergent edits…
+              </div>
+            )}
+          </section>
+        )}
+
         {/* ── Members ── */}
-        <section className="pt-3 pb-1">
+        <section
+          className={`pt-3 pb-1 transition ${dropOver ? "bg-yelp/30 outline outline-2 outline-yel/60 outline-offset-[-2px]" : ""}`}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes("application/x-yarrow-note")) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            if (!dropOver) setDropOver(true);
+          }}
+          onDragLeave={(e) => {
+            // Only flip off when the cursor leaves the section, not when it
+            // crosses into a child element.
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+            setDropOver(false);
+          }}
+          onDrop={(e) => {
+            const slug = e.dataTransfer.getData("application/x-yarrow-note");
+            setDropOver(false);
+            if (!slug || memberSet.has(slug)) return;
+            e.preventDefault();
+            void onAddNote(slug);
+          }}
+        >
           <div className="px-4 flex items-baseline gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-yel" />
             <span className="font-serif text-[15px] text-char">In this path</span>
@@ -291,6 +451,94 @@ export default function PathDetail({
       </footer>
     </aside>
   );
+}
+
+interface NoteRow {
+  slug: string;
+  title: string;
+  tags: string[];
+}
+
+const TONE_STYLES = {
+  gain: { count: "text-yeld", glyph: "+", glyphColor: "text-yeld", row: "text-char hover:bg-yelp/40", strike: "" },
+  lose: { count: "text-danger", glyph: "−", glyphColor: "text-danger", row: "text-t2 hover:bg-s2 line-through decoration-danger/40", strike: "no-underline" },
+  modified: { count: "text-amber-700 dark:text-amber-400", glyph: "~", glyphColor: "text-amber-700 dark:text-amber-400", row: "text-char hover:bg-s2", strike: "" },
+} as const;
+
+type Tone = keyof typeof TONE_STYLES;
+
+function DiffGroup({
+  tone, label, rows, groupTags, groupByTag, onOpenNote, titleSuffix,
+}: {
+  tone: Tone;
+  label: string;
+  rows: NoteRow[];
+  groupTags: boolean;
+  groupByTag: (rows: NoteRow[]) => Array<[string, NoteRow[]]>;
+  onOpenNote: (slug: string) => void;
+  titleSuffix?: string;
+}) {
+  if (rows.length === 0) return null;
+  const styles = TONE_STYLES[tone];
+  const sign = tone === "lose" ? "−" : tone === "modified" ? "~" : "+";
+
+  const renderRow = (n: NoteRow) => (
+    <li key={n.slug + ":" + n.title}>
+      <button
+        onClick={() => onOpenNote(n.slug)}
+        className={`w-full text-left text-xs ${styles.row} rounded px-2 py-0.5 truncate flex items-center gap-1.5`}
+        title={titleSuffix}
+      >
+        <span className={`${styles.glyphColor} ${styles.strike}`}>{styles.glyph}</span>
+        <span className={`truncate ${styles.strike}`}>{n.title}</span>
+      </button>
+    </li>
+  );
+
+  return (
+    <div className="mb-2">
+      <div className={`text-2xs font-mono mb-1 ${styles.count}`}>
+        {sign}{rows.length} {label}
+      </div>
+      {groupTags ? (
+        <div className="space-y-1.5">
+          {groupByTag(rows).map(([tag, items]) => (
+            <div key={tag}>
+              <div className="text-2xs text-t3 font-mono px-2">
+                #{tag} <span className="text-t3/70">· {items.length}</span>
+              </div>
+              <ul className="space-y-0.5">
+                {items.slice(0, 5).map(renderRow)}
+                {items.length > 5 && (
+                  <li className="text-2xs text-t3 italic px-2">
+                    … and {items.length - 5} more
+                  </li>
+                )}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <ul className="space-y-0.5">
+          {rows.slice(0, 5).map(renderRow)}
+          {rows.length > 5 && (
+            <li className="text-2xs text-t3 italic px-2">
+              … and {rows.length - 5} more
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function decorateNote(slug: string, allNotes: NoteSummary[], titleFor: Map<string, string>): NoteRow {
+  const found = allNotes.find((n) => n.slug === slug);
+  return {
+    slug,
+    title: titleFor.get(slug) || slug,
+    tags: found?.tags ?? [],
+  };
 }
 
 function MapIcon() {

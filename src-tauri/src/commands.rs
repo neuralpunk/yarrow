@@ -12,13 +12,16 @@ use crate::attachments;
 use crate::crypto::{self, MasterKey};
 use crate::error::{Result, YarrowError};
 use crate::export;
+use crate::find_replace;
 use crate::git;
 use crate::graph;
 use crate::notes;
+use crate::obsidian_import;
 use crate::path_collections;
 use crate::path_meta;
 use crate::search;
 use crate::templates;
+use crate::trash;
 use crate::workspace;
 use zeroize::Zeroizing;
 
@@ -382,6 +385,89 @@ pub fn cmd_save_note(
     })
 }
 
+/// Combined save: writes the note, rebuilds the graph from the same scan,
+/// and returns the workspace summaries, graph, and orphan slugs in one IPC.
+/// Replaces the four-IPC fan-out (`save_note` + `list_notes` + `get_graph`
+/// + `orphans`) the frontend previously made after every keystroke pause.
+#[derive(serde::Serialize)]
+pub struct SaveOutcome {
+    pub note: notes::Note,
+    pub notes: Vec<notes::NoteSummary>,
+    pub graph: graph::Graph,
+    pub orphans: Vec<String>,
+    /// `true` when the body actually changed and a checkpoint was written.
+    /// Frontend uses this to skip its post-save toast / nonce on no-op saves.
+    pub changed: bool,
+}
+
+#[tauri::command]
+pub fn cmd_save_note_full(
+    slug: String,
+    body: String,
+    thinking_note: Option<String>,
+    state: State<AppState>,
+) -> Result<SaveOutcome> {
+    let root = state.require_root()?;
+    let existing = notes::read_with_key(&root, &slug, None).ok();
+    let is_encrypted = existing.as_ref().map(|n| n.encrypted).unwrap_or(false);
+    let key = if is_encrypted {
+        Some(require_key(&state, &root)?)
+    } else {
+        state.touch_activity();
+        None
+    };
+    state.with_repo_locked(|| -> Result<SaveOutcome> {
+        let (note, changed) =
+            notes::write_with_key_status(&root, &slug, &body, None, key.as_ref())?;
+        if !changed {
+            // No checkpoint, no scan, no graph rebuild. The frontend gates
+            // its setState calls on `changed` so a no-op save costs roughly
+            // one disk-stat per second of typing — basically free.
+            return Ok(SaveOutcome {
+                note,
+                notes: Vec::new(),
+                graph: graph::Graph {
+                    notes: Vec::new(),
+                    links: Vec::new(),
+                    last_built: String::new(),
+                    tags: Vec::new(),
+                },
+                orphans: Vec::new(),
+                changed: false,
+            });
+        }
+        let repo = open_repo(&root)?;
+        let title = if note.frontmatter.title.is_empty() {
+            note.slug.clone()
+        } else {
+            note.frontmatter.title.clone()
+        };
+        let mut message = format!("checkpoint: {}", title);
+        if let Some(t) = thinking_note.as_ref().filter(|s| !s.trim().is_empty()) {
+            message.push_str("\n\n");
+            message.push_str(t.trim());
+        }
+        git::checkpoint(&repo, &message)?;
+        // ONE scan of the notes dir powers all three derived views: the
+        // sidebar's `notes` list, the connection `graph`, and the orphan
+        // list. Cuts the per-save file-read count roughly in half on big
+        // workspaces.
+        let scanned = notes::scan(&root)?;
+        let mut summaries: Vec<notes::NoteSummary> =
+            scanned.iter().map(notes::summary_from).collect();
+        summaries.sort_by(|a, b| b.modified.cmp(&a.modified));
+        let g = graph::build_from_scan(&root, &scanned);
+        let orphans = graph::orphan_slugs(&g);
+        Ok(SaveOutcome {
+            note,
+            notes: summaries,
+            graph: g,
+            orphans,
+            changed: true,
+        })
+    })
+}
+
 #[tauri::command]
 pub fn cmd_create_note(title: String, state: State<AppState>) -> Result<notes::Note> {
     let root = state.require_root()?;
@@ -396,14 +482,22 @@ pub fn cmd_create_note(title: String, state: State<AppState>) -> Result<notes::N
 pub fn cmd_rename_note(
     old_slug: String,
     new_title: String,
+    rewrite_wikilinks: bool,
     state: State<AppState>,
 ) -> Result<notes::Note> {
     let root = state.require_root()?;
-    let note = notes::rename(&root, &old_slug, &new_title)?;
+    let note = notes::rename(&root, &old_slug, &new_title, rewrite_wikilinks)?;
     let repo = open_repo(&root)?;
-    git::checkpoint(&repo, &format!("checkpoint: rename to \"{}\"", new_title))?;
+    let suffix = if rewrite_wikilinks { " (wikilinks updated)" } else { "" };
+    git::checkpoint(&repo, &format!("checkpoint: rename to \"{}\"{}", new_title, suffix))?;
     let _ = graph::build(&root);
     Ok(note)
+}
+
+#[tauri::command]
+pub fn cmd_count_wikilink_references(slug: String, state: State<AppState>) -> Result<usize> {
+    let root = state.require_root()?;
+    notes::count_wikilink_refs(&root, &slug)
 }
 
 #[tauri::command]
@@ -425,6 +519,35 @@ pub fn cmd_set_pinned(
     Ok(saved)
 }
 
+/// Replace the note's tag list. Tags are stored in YAML frontmatter; the
+/// editor's tag chip-input calls this to merge user edits in. Empty / blank
+/// tags are filtered out and duplicates collapsed (case-sensitive).
+#[tauri::command]
+pub fn cmd_set_tags(
+    slug: String,
+    tags: Vec<String>,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    let root = state.require_root()?;
+    let mut note = notes::read(&root, &slug)?;
+    let mut cleaned: Vec<String> = tags.into_iter()
+        .map(|t| t.trim().trim_start_matches('#').to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    // Stable de-dup: keep first occurrence, drop later identical entries.
+    let mut seen = std::collections::HashSet::new();
+    cleaned.retain(|t| seen.insert(t.clone()));
+    if note.frontmatter.tags == cleaned {
+        return Ok(note);
+    }
+    note.frontmatter.tags = cleaned;
+    let saved = notes::write(&root, &slug, &note.body, Some(note.frontmatter))?;
+    let repo = open_repo(&root)?;
+    git::checkpoint(&repo, &format!("checkpoint: tag \"{}\"", slug))?;
+    let _ = graph::build(&root);
+    Ok(saved)
+}
+
 #[tauri::command]
 pub fn cmd_note_absolute_path(slug: String, state: State<AppState>) -> Result<String> {
     let root = state.require_root()?;
@@ -437,11 +560,365 @@ pub fn cmd_note_absolute_path(slug: String, state: State<AppState>) -> Result<St
 #[tauri::command]
 pub fn cmd_delete_note(slug: String, state: State<AppState>) -> Result<()> {
     let root = state.require_root()?;
+    // Stash a copy in `.yarrow/trash/` before the destructive notes::delete
+    // strips backlinks and removes the file. Stash is best-effort — if it
+    // fails we still proceed with the delete (so a permission error on the
+    // trash dir doesn't block the user from removing notes).
+    let _ = trash::stash(&root, &slug);
     notes::delete(&root, &slug)?;
     let repo = open_repo(&root)?;
     git::checkpoint(&repo, &format!("checkpoint: delete \"{}\"", slug))?;
     let _ = graph::build(&root);
     Ok(())
+}
+
+// ───────── trash ─────────
+
+#[tauri::command]
+pub fn cmd_list_trash(state: State<AppState>) -> Result<Vec<trash::TrashEntry>> {
+    let root = state.require_root()?;
+    trash::list(&root)
+}
+
+#[tauri::command]
+pub fn cmd_restore_from_trash(slug: String, state: State<AppState>) -> Result<String> {
+    let root = state.require_root()?;
+    let restored_slug = trash::restore(&root, &slug)?;
+    let repo = open_repo(&root)?;
+    git::checkpoint(&repo, &format!("checkpoint: restore \"{}\"", restored_slug))?;
+    let _ = graph::build(&root);
+    Ok(restored_slug)
+}
+
+#[tauri::command]
+pub fn cmd_purge_from_trash(slug: String, state: State<AppState>) -> Result<()> {
+    let root = state.require_root()?;
+    trash::purge(&root, &slug)
+}
+
+#[tauri::command]
+pub fn cmd_empty_trash(state: State<AppState>) -> Result<()> {
+    let root = state.require_root()?;
+    trash::empty(&root)
+}
+
+/// Render only the body of a note to HTML (no `<html>` shell, no styling).
+/// The reading-mode pane wraps this in a themed container so it picks up
+/// the user's font, background, and accent without being constrained by an
+/// inline stylesheet.
+#[tauri::command]
+pub fn cmd_render_note_body_html(slug: String, state: State<AppState>) -> Result<String> {
+    use pulldown_cmark::{html, Options, Parser};
+    let root = state.require_root()?;
+    let session = state.session.lock().unwrap();
+    let note = notes::read_with_key(&root, &slug, session.master_key.as_ref())?;
+    drop(session);
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    options.insert(Options::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(&note.body, options);
+    let mut body = String::new();
+    html::push_html(&mut body, parser);
+    Ok(body)
+}
+
+/// Render a single note as a self-contained HTML document with print-friendly
+/// styling. The frontend writes the result into a hidden iframe and triggers
+/// `window.print()` so the user can save as PDF using their OS print dialog.
+#[tauri::command]
+pub fn cmd_render_note_html(slug: String, state: State<AppState>) -> Result<String> {
+    use pulldown_cmark::{html, Options, Parser};
+    let root = state.require_root()?;
+    let session = state.session.lock().unwrap();
+    let note = notes::read_with_key(&root, &slug, session.master_key.as_ref())?;
+    drop(session);
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_FOOTNOTES);
+    let parser = Parser::new_ext(&note.body, options);
+    let mut body = String::new();
+    html::push_html(&mut body, parser);
+    let title = if note.frontmatter.title.is_empty() {
+        note.slug.clone()
+    } else {
+        note.frontmatter.title.clone()
+    };
+    let escaped_title = html_escape(&title);
+    let doc = format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{title}</title>\
+        <style>{css}</style></head><body><h1>{title}</h1>{body}</body></html>",
+        title = escaped_title,
+        css = PRINT_CSS,
+        body = body,
+    );
+    Ok(doc)
+}
+
+const PRINT_CSS: &str = r#"
+* { box-sizing: border-box; }
+html, body { background: white; color: #1a1a1a; }
+body {
+  font-family: 'Fraunces', 'Georgia', 'Times New Roman', serif;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 56px;
+  line-height: 1.6;
+  font-size: 16px;
+}
+h1 { font-size: 32px; margin: 0 0 24px; line-height: 1.2; }
+h2 { font-size: 24px; margin-top: 32px; }
+h3 { font-size: 19px; margin-top: 24px; }
+p, li { margin: 0 0 12px; }
+code, pre {
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  font-size: 13px;
+}
+pre {
+  background: #f5f4ef;
+  padding: 12px 14px;
+  border-radius: 6px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+code { background: #f5f4ef; padding: 1px 4px; border-radius: 3px; }
+pre code { background: transparent; padding: 0; }
+blockquote {
+  border-left: 3px solid #c9c5b8;
+  margin: 12px 0;
+  padding: 4px 14px;
+  color: #555;
+  font-style: italic;
+}
+table { border-collapse: collapse; margin: 12px 0; }
+th, td { border: 1px solid #d0cdc2; padding: 6px 10px; }
+th { background: #f5f4ef; }
+hr { border: none; border-top: 1px solid #d0cdc2; margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+a { color: #6b5d2f; text-decoration: none; border-bottom: 1px solid #c4b76b; }
+@page { margin: 0.6in; }
+"#;
+
+// ───────── new-workspace helpers ─────────
+
+/// Suggest a default place to put new workspaces — `~/Documents/Yarrow` if
+/// it exists or can be created, falling back to the home directory. Used by
+/// the onboarding wizard so the user doesn't have to think about location
+/// unless they want to.
+#[tauri::command]
+pub fn cmd_default_workspaces_root() -> Result<String> {
+    let candidate = dirs::document_dir()
+        .or_else(dirs::home_dir)
+        .ok_or_else(|| YarrowError::Other("could not determine home directory".into()))?;
+    let yarrow_root = candidate.join("Yarrow");
+    Ok(yarrow_root.to_string_lossy().to_string())
+}
+
+/// Create a directory `parent/name` (and any missing parents). Returns the
+/// absolute path. Errors if a non-empty directory with that name already
+/// exists — the wizard surfaces this so the user picks a different name
+/// rather than us silently merging into an existing vault.
+#[tauri::command]
+pub fn cmd_create_workspace_dir(parent: String, name: String) -> Result<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(YarrowError::Invalid("workspace name is required".into()));
+    }
+    // Reject path-traversal payloads outright. A name of "." or ".." would
+    // otherwise resolve to the parent directory itself (or its parent),
+    // potentially treating an unrelated folder as a Yarrow workspace.
+    // Same reason `/`, `\`, etc. are blocked: we want exactly one new
+    // child directory, no escape into the surrounding filesystem.
+    if trimmed == "." || trimmed == ".." {
+        return Err(YarrowError::Invalid(
+            "workspace name can't be \".\" or \"..\" — pick a real name".into(),
+        ));
+    }
+    if trimmed.chars().any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')) {
+        return Err(YarrowError::Invalid(
+            "workspace name can't contain slashes or special filesystem characters".into(),
+        ));
+    }
+    if trimmed.contains('\0') {
+        return Err(YarrowError::Invalid(
+            "workspace name can't contain a NUL byte".into(),
+        ));
+    }
+    let parent_path = std::path::PathBuf::from(&parent);
+    if !parent_path.is_dir() {
+        return Err(YarrowError::Invalid(format!(
+            "“{}” doesn't look like a real folder — pick a different location",
+            parent_path.display(),
+        )));
+    }
+    let target = parent_path.join(trimmed);
+    if target.exists() {
+        let non_empty = std::fs::read_dir(&target)
+            .map(|mut it| it.next().is_some())
+            .unwrap_or(false);
+        if non_empty {
+            return Err(YarrowError::Invalid(format!(
+                "“{trimmed}” already exists at that location and isn't empty. Pick a different name."
+            )));
+        }
+    }
+    std::fs::create_dir_all(&target)?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+// ───────── obsidian import ─────────
+
+#[tauri::command]
+pub fn cmd_import_obsidian_vault(
+    source: String,
+    state: State<AppState>,
+) -> Result<obsidian_import::ImportReport> {
+    let root = state.require_root()?;
+    let report = obsidian_import::import_vault(&root, std::path::Path::new(&source))?;
+    if report.imported > 0 {
+        let repo = open_repo(&root)?;
+        git::checkpoint(
+            &repo,
+            &format!(
+                "checkpoint: imported {} note{} from Obsidian",
+                report.imported,
+                if report.imported == 1 { "" } else { "s" },
+            ),
+        )?;
+        let _ = graph::build(&root);
+    }
+    Ok(report)
+}
+
+// ───────── path comparison ─────────
+
+#[tauri::command]
+pub fn cmd_compare_paths(
+    left: String,
+    right: String,
+    state: State<AppState>,
+) -> Result<git::PathComparison> {
+    let root = state.require_root()?;
+    let repo = open_repo(&root)?;
+    git::compare_paths(&repo, &left, &right)
+}
+
+// ───────── multiple windows ─────────
+
+/// Spawn an additional Tauri window pointing at the same frontend, so the
+/// user can view two notes (or a note + the path graph) at once. Workspace
+/// state lives in `AppState`, which all windows share, so the new window
+/// boots into the same workspace without re-running the Onboarding picker.
+#[tauri::command]
+pub fn cmd_open_new_window(app: tauri::AppHandle) -> Result<()> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+    // Unique label per spawn — Tauri requires labels to be unique across the
+    // app's window registry. A timestamp-derived label avoids collisions
+    // across sessions and is short enough to be readable in logs.
+    let label = format!(
+        "win-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+    WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
+        .title("Yarrow")
+        .inner_size(1400.0, 900.0)
+        .min_inner_size(820.0, 560.0)
+        .resizable(true)
+        .maximizable(true)
+        .build()
+        .map_err(|e| YarrowError::Other(format!("could not open new window: {e}")))?;
+    Ok(())
+}
+
+// ───────── spell-check user dictionary ─────────
+
+const DICTIONARY_FILE: &str = ".yarrow/dictionary.txt";
+
+#[tauri::command]
+pub fn cmd_read_dictionary(state: State<AppState>) -> Result<Vec<String>> {
+    let root = state.require_root()?;
+    let path = root.join(DICTIONARY_FILE);
+    if !path.exists() { return Ok(vec![]); }
+    let raw = std::fs::read_to_string(&path)?;
+    Ok(raw.lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !s.starts_with('#'))
+        .collect())
+}
+
+#[tauri::command]
+pub fn cmd_write_dictionary(words: Vec<String>, state: State<AppState>) -> Result<()> {
+    let root = state.require_root()?;
+    let path = root.join(DICTIONARY_FILE);
+    if let Some(parent) = path.parent() { std::fs::create_dir_all(parent)?; }
+    let mut sorted: Vec<String> = words.into_iter()
+        .map(|w| w.trim().to_string())
+        .filter(|w| !w.is_empty())
+        .collect();
+    sorted.sort();
+    sorted.dedup();
+    let body = format!(
+        "# Yarrow workspace dictionary — words to consider correctly spelled.\n# One word per line. Committed so the team shares the same vocabulary.\n{}\n",
+        sorted.join("\n"),
+    );
+    std::fs::write(&path, body)?;
+    Ok(())
+}
+
+// ───────── find & replace ─────────
+
+#[tauri::command]
+pub fn cmd_find_replace_preview(
+    pattern: String,
+    regex_mode: bool,
+    case_insensitive: bool,
+    scope_slugs: Option<Vec<String>>,
+    state: State<AppState>,
+) -> Result<Vec<find_replace::PreviewHit>> {
+    let root = state.require_root()?;
+    find_replace::preview(&root, &pattern, regex_mode, case_insensitive, scope_slugs)
+}
+
+#[tauri::command]
+pub fn cmd_find_replace_apply(
+    pattern: String,
+    replacement: String,
+    regex_mode: bool,
+    case_insensitive: bool,
+    scope_slugs: Option<Vec<String>>,
+    state: State<AppState>,
+) -> Result<find_replace::ApplyReport> {
+    let root = state.require_root()?;
+    let report = find_replace::apply(
+        &root, &pattern, &replacement, regex_mode, case_insensitive, scope_slugs,
+    )?;
+    if report.notes_changed > 0 {
+        let repo = open_repo(&root)?;
+        let summary = if report.notes_changed == 1 { "note" } else { "notes" };
+        git::checkpoint(
+            &repo,
+            &format!(
+                "checkpoint: find/replace — {} replacement{} across {} {summary}",
+                report.total_replacements,
+                if report.total_replacements == 1 { "" } else { "s" },
+                report.notes_changed,
+            ),
+        )?;
+        let _ = graph::build(&root);
+    }
+    Ok(report)
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 // ───────── encryption ─────────
@@ -1449,4 +1926,119 @@ pub fn cmd_abort_merge(state: State<AppState>) -> Result<()> {
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
     git::abort_merge(&repo)
+}
+
+/// Fetch a URL and extract its `<title>` text. Used by smart paste so a pasted
+/// URL becomes a `[title](url)` markdown link. Best-effort: returns empty
+/// string on failure so the caller can fall back to the raw URL.
+///
+/// Hardened against accidental SSRF / scheme misuse:
+///   * accepts only `http://` and `https://`
+///   * refuses obvious internal targets (loopback, link-local, private
+///     IPv4 ranges, the cloud metadata IP) so a user pasting a URL —
+///     or a future code path — can't make Yarrow probe the user's
+///     intranet on their behalf
+///   * caps response body size and overall request time
+#[tauri::command]
+pub fn cmd_fetch_url_title(url: String) -> Result<String> {
+    use std::time::Duration;
+    let parsed = url::Url::parse(&url)
+        .map_err(|_| YarrowError::Invalid("not a valid URL".into()))?;
+    let scheme = parsed.scheme().to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return Err(YarrowError::Invalid(format!(
+            "only http(s) URLs are supported, not {scheme}:"
+        )));
+    }
+    if let Some(host) = parsed.host_str() {
+        if is_private_or_loopback(host) {
+            // Silently succeed with an empty title — smart-paste will leave
+            // the raw URL in place. We don't tell the caller why; an error
+            // toast for every internal-network paste would be noisy and the
+            // user typed the URL themselves anyway.
+            return Ok(String::new());
+        }
+    }
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(6))
+        .user_agent("Yarrow/1.1 (+title-fetch)")
+        .redirects(5)
+        .build();
+    let resp = agent
+        .get(&url)
+        .call()
+        .map_err(|e| YarrowError::Other(format!("fetch failed: {e}")))?;
+    let mut body = String::new();
+    use std::io::Read;
+    resp.into_reader()
+        .take(512 * 1024)
+        .read_to_string(&mut body)
+        .map_err(|e| YarrowError::Other(format!("read failed: {e}")))?;
+    let title = extract_html_title(&body).unwrap_or_default();
+    Ok(title)
+}
+
+/// Reject hosts that point at the local machine, link-local addresses,
+/// RFC 1918 private IPv4 ranges, and the well-known cloud metadata IP.
+/// Best-effort: hostnames that DNS-resolve to private addresses sneak
+/// through (we'd need to resolve and re-check post-DNS), but the common
+/// "I pasted a URL with the IP in it" case is covered. For a desktop
+/// notes app this is the right tradeoff between safety and friction.
+fn is_private_or_loopback(host: &str) -> bool {
+    use std::net::IpAddr;
+    // Strip surrounding brackets if it's a literal IPv6 host.
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    if bare.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    if let Ok(ip) = bare.parse::<IpAddr>() {
+        match ip {
+            IpAddr::V4(v4) => {
+                if v4.is_loopback() || v4.is_link_local() || v4.is_private() {
+                    return true;
+                }
+                let octets = v4.octets();
+                // 169.254.169.254 is the cloud-metadata service IP.
+                if octets == [169, 254, 169, 254] {
+                    return true;
+                }
+                // 0.0.0.0/8 is "this network" (also unroutable).
+                if octets[0] == 0 {
+                    return true;
+                }
+            }
+            IpAddr::V6(v6) => {
+                if v6.is_loopback() || v6.is_unspecified() {
+                    return true;
+                }
+                let segs = v6.segments();
+                // fe80::/10 link-local
+                if (segs[0] & 0xffc0) == 0xfe80 {
+                    return true;
+                }
+                // fc00::/7 unique local
+                if (segs[0] & 0xfe00) == 0xfc00 {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn extract_html_title(html: &str) -> Option<String> {
+    let lower = html.to_ascii_lowercase();
+    let start = lower.find("<title")?;
+    let after_open = html[start..].find('>')? + start + 1;
+    let end_rel = lower[after_open..].find("</title>")?;
+    let raw = &html[after_open..after_open + end_rel];
+    let decoded = raw
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ");
+    let cleaned = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
+    if cleaned.is_empty() { None } else { Some(cleaned) }
 }

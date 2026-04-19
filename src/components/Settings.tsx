@@ -1927,7 +1927,7 @@ function AboutPane() {
           </svg>
         </button>
         <div className="text-2xs text-t3 font-mono mt-2">
-          version 1.0.0 · local-first · plain markdown
+          version 1.1.0 · local-first · plain markdown
         </div>
       </div>
     </Section>

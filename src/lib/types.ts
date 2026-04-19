@@ -221,6 +221,67 @@ export interface TemplateInfo {
   is_daily: boolean;
 }
 
+export interface TrashEntry {
+  slug: string;
+  title: string;
+  /** ISO-8601 timestamp from the backend. */
+  deleted_at: string;
+}
+
+export interface FindReplaceHit {
+  slug: string;
+  title: string;
+  matches: number;
+  /** Up to three `[lineNumber, lineText]` previews. */
+  samples: Array<[number, string]>;
+}
+
+export interface FindReplaceReport {
+  notes_changed: number;
+  total_replacements: number;
+}
+
+export type PathDiffStatus = "added" | "removed" | "modified" | "same";
+
+export interface PathDiffEntry {
+  slug: string;
+  status: PathDiffStatus;
+  left_excerpt: string | null;
+  right_excerpt: string | null;
+  left_lines: number;
+  right_lines: number;
+}
+
+export interface PathCompareSummary {
+  added: number;
+  removed: number;
+  modified: number;
+  same: number;
+}
+
+export interface PathComparison {
+  left: string;
+  right: string;
+  entries: PathDiffEntry[];
+  summary: PathCompareSummary;
+}
+
+export interface SaveOutcome {
+  note: Note;
+  notes: NoteSummary[];
+  graph: Graph;
+  orphans: string[];
+  changed: boolean;
+}
+
+export interface ObsidianImportReport {
+  imported: number;
+  skipped: number;
+  /** Tuples of `[original_relative_path, slug_assigned]` for files that
+   *  collided with existing notes and were renamed. */
+  renamed: Array<[string, string]>;
+}
+
 export const LINK_TYPE_LABELS: Record<LinkType, string> = {
   "supports": "supports",
   "challenges": "challenges",

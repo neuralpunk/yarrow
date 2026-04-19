@@ -14,6 +14,14 @@ interface Props {
   pendingForkParent: string | null;
   onCommitPendingFork: (condition: string) => void;
   onCancelPendingFork: () => void;
+  /** The path the user is actively editing in. Used as the comparison
+   *  baseline so each card can show a "+N / −M" diff: how many notes
+   *  you'd gain and how many you'd lose by switching to that path. */
+  currentPathName?: string;
+  /** Drop target: when the user drags a note from the sidebar onto a path
+   *  card we add that slug to the path. Resolves once the membership change
+   *  is persisted so the graph re-renders with the new count. */
+  onDropNoteOnPath?: (pathName: string, slug: string) => Promise<void> | void;
 }
 
 interface Node {
@@ -45,6 +53,22 @@ const GHOST_COL_W = 360;
  * children branch off of their parent. Selecting a node highlights its
  * whole subtree and surfaces its members via the detail panel.
  */
+/** Compute "{gained, lost}" between two path-member arrays. Used by both the
+ *  card badges and the PathDetail diff panel so the maths stays in one place. */
+export function pathDiffCounts(
+  baseline: string[] | undefined,
+  candidate: string[] | undefined,
+): { gained: number; lost: number } {
+  if (!baseline || !candidate) return { gained: 0, lost: 0 };
+  const b = new Set(baseline);
+  const c = new Set(candidate);
+  let gained = 0;
+  let lost = 0;
+  for (const s of c) if (!b.has(s)) gained++;
+  for (const s of b) if (!c.has(s)) lost++;
+  return { gained, lost };
+}
+
 function ForkingRoadInner({
   collections,
   rootName,
@@ -56,8 +80,44 @@ function ForkingRoadInner({
   pendingForkParent,
   onCommitPendingFork,
   onCancelPendingFork,
+  currentPathName,
+  onDropNoteOnPath,
 }: Props) {
   const [hovered, setHovered] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // Window-relative anchor for the hover preview popover. We capture the
+  // hovered card's bounding rect so the popover can sit just to its right
+  // (or left, near the right edge of the screen) — visible even though
+  // PathsPane is fullscreen and the sidebar's note list is hidden behind.
+  const [hoverAnchor, setHoverAnchor] = useState<DOMRect | null>(null);
+
+  // Members of the user's currently-active path — the baseline every other
+  // path is diffed against. Memoized once per render so card-level badges
+  // don't re-walk the collection list.
+  const baselineMembers = useMemo(() => {
+    if (!currentPathName) return undefined;
+    return collections.find((c) => c.name === currentPathName)?.members;
+  }, [collections, currentPathName]);
+
+  // Broadcast which path is being hovered so the note list (and anything
+  // else that wants ambient feedback) can highlight the path's slugs in
+  // place. While the path-detail panel is open we sit out — PathDetail
+  // dispatches its own steady-state highlight for the selected path, and
+  // letting hovers fight that produces a flickery list.
+  useEffect(() => {
+    if (selectedPath) return;
+    const slugs = hovered
+      ? collections.find((c) => c.name === hovered)?.members ?? null
+      : null;
+    window.dispatchEvent(new CustomEvent("yarrow:path-highlight", {
+      detail: { slugs },
+    }));
+    return () => {
+      window.dispatchEvent(new CustomEvent("yarrow:path-highlight", {
+        detail: { slugs: null },
+      }));
+    };
+  }, [hovered, collections, selectedPath]);
 
   const titleFor = useMemo(() => {
     const m = new Map<string, string>();
@@ -579,11 +639,38 @@ function ForkingRoadInner({
                 style={{ transition: "opacity 140ms" }}
               >
                 <g
-                  onMouseEnter={() => setHovered(n.coll.name)}
-                  onMouseLeave={() => setHovered((h) => (h === n.coll.name ? null : h))}
+                  onMouseEnter={(e) => {
+                    setHovered(n.coll.name);
+                    // Capture the card group's bounding rect for the hover
+                    // popover — `getBoundingClientRect` works on SVG nodes.
+                    const r = (e.currentTarget as SVGGElement).getBoundingClientRect();
+                    setHoverAnchor(r);
+                  }}
+                  onMouseLeave={() => {
+                    setHovered((h) => (h === n.coll.name ? null : h));
+                    setHoverAnchor(null);
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelect(n.coll.name === selectedPath ? null : n.coll.name);
+                  }}
+                  onDragOver={(e) => {
+                    if (!onDropNoteOnPath) return;
+                    if (!e.dataTransfer.types.includes("application/x-yarrow-note")) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                    if (dropTarget !== n.coll.name) setDropTarget(n.coll.name);
+                  }}
+                  onDragLeave={() => {
+                    if (dropTarget === n.coll.name) setDropTarget(null);
+                  }}
+                  onDrop={(e) => {
+                    if (!onDropNoteOnPath) return;
+                    const slug = e.dataTransfer.getData("application/x-yarrow-note");
+                    setDropTarget(null);
+                    if (!slug) return;
+                    e.preventDefault();
+                    void onDropNoteOnPath(n.coll.name, slug);
                   }}
                   style={{ cursor: "pointer" }}
                 >
@@ -604,7 +691,14 @@ function ForkingRoadInner({
                     mainNoteTitle={mainNoteTitle}
                     isRoot={isRoot}
                     isSelected={isSelected}
+                    isCurrent={n.coll.name === currentPathName}
+                    isDropTarget={dropTarget === n.coll.name}
                     memberCount={n.coll.members.length}
+                    diffFromCurrent={
+                      currentPathName && n.coll.name !== currentPathName
+                        ? pathDiffCounts(baselineMembers, n.coll.members)
+                        : undefined
+                    }
                     createdAt={n.coll.created_at}
                     x={n.x + 22}
                     y={n.y - 40}
@@ -647,6 +741,90 @@ function ForkingRoadInner({
           )}
         </svg>
       </div>
+
+      {hovered && hoverAnchor && !selectedPath && (() => {
+        // Suppress the hover popover entirely while the path-detail panel
+        // is open. The detail panel already owns the "what's in this path"
+        // story; layering a transient popover on top of it just adds noise
+        // and can occlude the panel's content.
+        const coll = collections.find((c) => c.name === hovered);
+        if (!coll) return null;
+        const baseline = baselineMembers
+          ? new Set(baselineMembers)
+          : null;
+        const candidate = new Set(coll.members);
+        const gained = baseline
+          ? coll.members.filter((s) => !baseline.has(s))
+          : [];
+        const lost = baselineMembers
+          ? baselineMembers.filter((s) => !candidate.has(s))
+          : [];
+        const W = 280;
+        // Default: place to the right of the card. If that would overflow,
+        // fall back to placing on the left.
+        const right = hoverAnchor.right + 12 + W <= window.innerWidth;
+        const left = right
+          ? hoverAnchor.right + 12
+          : Math.max(8, hoverAnchor.left - W - 12);
+        const top = Math.max(
+          8,
+          Math.min(
+            window.innerHeight - 8 - 280,
+            hoverAnchor.top + hoverAnchor.height / 2 - 100,
+          ),
+        );
+        const isCurrent = hovered === currentPathName;
+        return (
+          <div
+            // pointer-events-none so the popover never steals the hover
+            // away from its anchor card; it's purely informational.
+            className="fixed z-50 pointer-events-none w-[280px] bg-bg border border-bd2 rounded-lg shadow-2xl p-3 animate-fadeIn"
+            style={{ left, top }}
+          >
+            <div className="text-2xs font-mono uppercase tracking-wider text-t3 mb-1">
+              {isCurrent ? "current path" : "path preview"}
+            </div>
+            <div className="font-serif text-base text-char truncate" title={coll.name}>
+              {coll.name}
+            </div>
+            {coll.condition && (
+              <div className="text-2xs text-yeld italic mt-0.5 truncate" title={coll.condition}>
+                "{coll.condition}"
+              </div>
+            )}
+            <div className="text-2xs text-t3 mt-1">
+              {coll.members.length} note{coll.members.length === 1 ? "" : "s"}
+            </div>
+
+            {!isCurrent && currentPathName && (gained.length > 0 || lost.length > 0) && (
+              <div className="mt-2 pt-2 border-t border-bd flex items-center gap-3 text-2xs font-mono">
+                {gained.length > 0 && <span className="text-yeld">+{gained.length} gained</span>}
+                {lost.length > 0 && <span className="text-danger">−{lost.length} lost</span>}
+              </div>
+            )}
+
+            <div className="mt-2 pt-2 border-t border-bd">
+              <div className="text-2xs font-mono uppercase tracking-wider text-t3 mb-1">
+                In this path
+              </div>
+              <ul className="text-xs text-char space-y-0.5 max-h-40 overflow-hidden">
+                {coll.members.slice(0, 7).map((slug) => (
+                  <li key={slug} className="truncate">
+                    {coll.main_note === slug && <span className="text-yeld mr-1">★</span>}
+                    {titleFor.get(slug) ?? slug}
+                  </li>
+                ))}
+                {coll.members.length > 7 && (
+                  <li className="text-2xs italic text-t3">
+                    … and {coll.members.length - 7} more
+                  </li>
+                )}
+              </ul>
+            </div>
+            <div className="mt-2 text-2xs italic text-t3">click for full detail</div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -710,7 +888,10 @@ function DestinationCard({
   mainNoteTitle,
   isRoot,
   isSelected,
+  isCurrent,
+  isDropTarget,
   memberCount,
+  diffFromCurrent,
   createdAt,
   x,
   y,
@@ -721,20 +902,30 @@ function DestinationCard({
   mainNoteTitle: string | null;
   isRoot: boolean;
   isSelected: boolean;
+  isCurrent: boolean;
+  isDropTarget?: boolean;
   memberCount: number;
+  /** "+gained −lost" relative to the user's current path. Omitted for the
+   *  current path itself (the diff would always be zero) and when there's
+   *  no active path context. */
+  diffFromCurrent?: { gained: number; lost: number };
   createdAt: number;
   x: number;
   y: number;
   width: number;
 }) {
   const h = 84;
-  const stroke = isRoot
+  const stroke = isDropTarget
     ? "var(--yel)"
-    : isSelected
-      ? "var(--yel2)"
-      : "var(--bd)";
-  const sw = isRoot ? 2 : isSelected ? 1.6 : 1;
-  const bg = isSelected ? "var(--yelp)" : "var(--bg-soft)";
+    : isRoot
+      ? "var(--yel)"
+      : isSelected
+        ? "var(--yel2)"
+        : "var(--bd)";
+  const sw = isDropTarget ? 2.5 : isRoot ? 2 : isSelected ? 1.6 : 1;
+  const bg = isDropTarget
+    ? "var(--yelp)"
+    : isSelected ? "var(--yelp)" : "var(--bg-soft)";
   return (
     <g>
       <rect x={x} y={y} width={width} height={h} rx={8} fill={bg} stroke={stroke} strokeWidth={sw} />
@@ -764,6 +955,56 @@ function DestinationCard({
         >
           MAIN
         </text>
+      )}
+      {isCurrent && (
+        <text
+          x={x + width - 14}
+          y={y + h - 10}
+          textAnchor="end"
+          className="mono"
+          style={{ fontSize: 9, fill: "var(--yeld)", letterSpacing: "0.18em" }}
+        >
+          YOU ARE HERE
+        </text>
+      )}
+      {diffFromCurrent && !isCurrent && (diffFromCurrent.gained > 0 || diffFromCurrent.lost > 0) && (
+        <g>
+          <title>
+            {`If you switch to "${name}" from your current path: ` +
+              `${diffFromCurrent.gained} note${diffFromCurrent.gained === 1 ? "" : "s"} added, ` +
+              `${diffFromCurrent.lost} removed.`}
+          </title>
+          <rect
+            x={x + width - 78}
+            y={y + h - 22}
+            width={64}
+            height={16}
+            rx={8}
+            fill="var(--bg)"
+            stroke="var(--bd)"
+          />
+          {diffFromCurrent.gained > 0 && (
+            <text
+              x={x + width - 70}
+              y={y + h - 10}
+              className="mono"
+              style={{ fontSize: 10, fill: "var(--yeld)", fontWeight: 600 }}
+            >
+              +{diffFromCurrent.gained}
+            </text>
+          )}
+          {diffFromCurrent.lost > 0 && (
+            <text
+              x={x + width - 18}
+              y={y + h - 10}
+              textAnchor="end"
+              className="mono"
+              style={{ fontSize: 10, fill: "var(--danger)", fontWeight: 600 }}
+            >
+              −{diffFromCurrent.lost}
+            </text>
+          )}
+        </g>
       )}
     </g>
   );

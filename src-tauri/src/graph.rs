@@ -39,29 +39,35 @@ pub struct Graph {
 }
 
 pub fn build(root: &Path) -> Result<Graph> {
+    let scanned = notes::scan(root)?;
+    Ok(build_from_scan(root, &scanned))
+}
+
+/// Build a Graph from an already-scanned note set. Used by the new combined
+/// "list + graph" command path so a single save no longer walks the notes
+/// directory twice.
+pub fn build_from_scan(root: &Path, scanned: &[notes::ScannedNote]) -> Graph {
     use std::collections::BTreeMap;
-    let summaries = notes::list(root)?;
-    let mut nodes = Vec::with_capacity(summaries.len());
+    let mut nodes = Vec::with_capacity(scanned.len());
     let mut edges = Vec::new();
     let mut tag_counts: BTreeMap<String, usize> = BTreeMap::new();
 
-    for s in &summaries {
-        let n = notes::read(root, &s.slug)?;
-        for t in &n.frontmatter.tags {
+    for n in scanned {
+        for t in &n.fm.tags {
             let t = t.trim();
             if t.is_empty() { continue; }
             *tag_counts.entry(t.to_string()).or_insert(0) += 1;
         }
         nodes.push(GraphNode {
             slug: n.slug.clone(),
-            title: if n.frontmatter.title.is_empty() {
+            title: if n.fm.title.is_empty() {
                 n.slug.clone()
             } else {
-                n.frontmatter.title.clone()
+                n.fm.title.clone()
             },
-            tags: n.frontmatter.tags.clone(),
+            tags: n.fm.tags.clone(),
         });
-        for l in &n.frontmatter.links {
+        for l in &n.fm.links {
             edges.push(GraphEdge {
                 from: n.slug.clone(),
                 to: l.target.clone(),
@@ -83,8 +89,8 @@ pub fn build(root: &Path) -> Result<Graph> {
         last_built: Utc::now().to_rfc3339(),
         tags,
     };
-    write_cache(root, &graph)?;
-    Ok(graph)
+    let _ = write_cache(root, &graph);
+    graph
 }
 
 fn write_cache(root: &Path, graph: &Graph) -> Result<()> {
@@ -93,6 +99,14 @@ fn write_cache(root: &Path, graph: &Graph) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let raw = serde_json::to_string_pretty(graph)?;
+    // Skip the disk write if the cached payload is identical — saves an
+    // fs::write per save in the common case of edits that don't touch
+    // links or tags. Compare byte-for-byte against the existing file.
+    if let Ok(existing) = std::fs::read(&path) {
+        if existing == raw.as_bytes() {
+            return Ok(());
+        }
+    }
     std::fs::write(path, raw)?;
     Ok(())
 }

@@ -50,6 +50,13 @@ interface Props {
   onDecryptActiveNote?: () => void;
   onOpenSecurity?: () => void;
   onSwitchWorkspace?: () => void;
+  onOpenNewWindow?: () => void;
+  onFindReplace?: () => void;
+  onPrintActiveNote?: () => void;
+  onOpenTrash?: () => void;
+  onImportObsidian?: () => void;
+  onComparePaths?: () => void;
+  onOpenDecisionMatrix?: () => void;
   /** When false, path + connect commands are filtered out of the palette. */
   mappingEnabled?: boolean;
 }
@@ -191,6 +198,69 @@ export default function CommandPalette(props: Props) {
             sublabel: "jump to another workspace or start a new one",
             hint: SK.switchWorkspace,
             run: () => { onClose(); props.onSwitchWorkspace!(); },
+          }]
+        : []),
+      ...(props.onOpenNewWindow
+        ? [{
+            kind: "command" as const,
+            key: "new-window",
+            label: "Open new window",
+            sublabel: "second view onto the same workspace",
+            run: () => { onClose(); props.onOpenNewWindow!(); },
+          }]
+        : []),
+      ...(props.onFindReplace
+        ? [{
+            kind: "command" as const,
+            key: "find-replace",
+            label: "Find & replace…",
+            sublabel: "workspace-wide, with one-checkpoint undo",
+            run: () => { onClose(); props.onFindReplace!(); },
+          }]
+        : []),
+      ...(props.onPrintActiveNote
+        ? [{
+            kind: "command" as const,
+            key: "print",
+            label: "Print or save as PDF",
+            sublabel: "render the current note for printing",
+            run: () => { onClose(); props.onPrintActiveNote!(); },
+          }]
+        : []),
+      ...(props.onOpenTrash
+        ? [{
+            kind: "command" as const,
+            key: "trash",
+            label: "Open trash",
+            sublabel: "restore or permanently remove deleted notes",
+            run: () => { onClose(); props.onOpenTrash!(); },
+          }]
+        : []),
+      ...(props.onImportObsidian
+        ? [{
+            kind: "command" as const,
+            key: "import-obsidian",
+            label: "Import an Obsidian vault…",
+            sublabel: "copy notes into this workspace as a single checkpoint",
+            run: () => { onClose(); props.onImportObsidian!(); },
+          }]
+        : []),
+      ...(props.onComparePaths
+        ? [{
+            kind: "command" as const,
+            key: "compare-paths",
+            label: "Compare two paths…",
+            sublabel: "side-by-side diff of any two directions",
+            run: () => { onClose(); props.onComparePaths!(); },
+          }]
+        : []),
+      ...(props.onOpenDecisionMatrix
+        ? [{
+            kind: "command" as const,
+            key: "decision-matrix",
+            label: "Decision matrix…",
+            sublabel: "star must-have notes; see which path satisfies them",
+            run: () => { onClose(); props.onOpenDecisionMatrix!(); },
           }]
         : []),
     ];

@@ -26,6 +26,7 @@ of paths to arrange your notes by, and connections you can draw between ideas.
 - [First run](#first-run)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Paths](#paths)
+- [Importing from Obsidian](#importing-from-obsidian)
 - [Sync](#sync)
 - [Encryption](#encryption)
 - [Principles](#principles)
@@ -63,9 +64,19 @@ linear outline. Features:
 - **Full history** — scrub any note back to any past version
 - **Git-anywhere sync** — point it at GitHub, Gitea, or any bare server
 - **Editorial type** — body renders in Source Serif 4 at a reading size; UI chrome stays in Inter; metadata in JetBrains Mono
-- **Reading mode ↔ Writing mode** — toggle from the right rail (or Settings → Writing) to flip between fully rendered markdown (`##` headings, `**bold**`, `[[wikilinks]]` all collapsed inline) and raw markdown for structural edits
+- **Reading mode ↔ Writing mode** — toggle from the right rail (or Settings → Writing) to flip between a fully-rendered HTML view (themed code blocks, bordered tables, blockquote bars, KaTeX math, clickable wikilinks) and raw markdown for structural edits
+- **Inline math (KaTeX)** — `$x^2$` renders inline, `$$\int_0^\infty…$$` renders centered; click into the delimiters to edit the LaTeX
+- **Code-block syntax highlighting** — fenced ```` ```python ```` (and every other language) get keyword/string/comment colouring while editing, plus themed `<pre>` styling in reading mode
+- **Smart paste** — paste a URL and Yarrow auto-fetches the page title, replacing the URL with `[<title>](url)`; with text selected, the selection becomes the link label
+- **Spell-check with workspace dictionary** — wavy red underlines on misspellings outside code/wikilinks/URLs, right-click for suggestions and "Add to dictionary" — words live in committed `.yarrow/dictionary.txt` so the team shares vocabulary
+- **Workspace-wide find & replace** (`⌘⇧F` / `Ctrl+Shift+F`) — regex toggle, scope (workspace / current path), live previews, undoable as one checkpoint
+- **Trash** — deleted notes stash into `.yarrow/trash/` with restore + permanent-purge from a sidebar modal
+- **Auto-rename wikilink updates** — renaming a note offers to rewrite every `[[Old Title]]` and `![[Old Title]]` (incl. `[[Old|alias]]` and `[[Old#section]]`) across the workspace as one checkpoint
+- **Print / save as PDF** (`⌘P` / `Ctrl+P`) — pulldown-cmark renders the active note with print-friendly styling; save via your OS print dialog
+- **Multiple windows** — *Open new window* in the palette spawns a second window onto the same workspace; positions/sizes persist across launches
+- **Obsidian vault import** — start a new workspace from an existing Obsidian vault (preserves wikilinks, tags, frontmatter; skips `.obsidian/`)
 - **Themes** — paper & plum (light), ink & plum (dark), and auto
-- **Native-feeling window chrome** — custom titlebar shows app name, version, and workspace
+- **Path decision tools** — every other path shows a `+N / −M` badge on its card vs. your current path; the path detail panel lists what you'd gain, what you'd leave behind, and what's edited differently (with optional grouping by tag); the **Decision matrix** lets you star must-have notes and read off which path satisfies them; hovering a path card highlights its members in the note list; drag any sidebar note onto a path card to add it
 - **Plain markdown forever** — no proprietary format, no lock-in
 
 Roughly ~15 MB binary. No bundled Chromium. No account required. No telemetry.
@@ -82,6 +93,9 @@ your-workspace/
 │   ├── path-collections.toml    # your paths — a tree of note collections
 │   ├── credentials.toml         # sync tokens (per-machine, gitignored)
 │   ├── security.toml            # wrapped encryption keys (shared — opaque)
+│   ├── dictionary.txt           # workspace spell-check vocabulary (committed)
+│   ├── trash/                   # soft-deleted notes (gitignored)
+│   ├── session.json             # last-active note per window (gitignored)
 │   ├── scratchpad.md            # throwaway jotting (gitignored)
 │   ├── templates/
 │   │   ├── daily.md             # rendered into new journal entries
@@ -284,9 +298,21 @@ typed connections, and a second path.
 
 On first launch, Yarrow asks you to **create** or **open** a workspace.
 
-- **Create:** pick an empty folder. Yarrow initializes a git repo there,
-  writes `.yarrow/config.toml`, drops a seed note, and opens the editor.
-- **Open:** pick a folder that already has a `.yarrow/config.toml` inside.
+- **Create** opens a two-step in-app wizard:
+  1. Pick what you're starting from — a blank notebook, or an existing
+     Obsidian vault (file picker for the vault folder).
+  2. Name the workspace, pick where it lives (defaults to
+     `~/Documents/Yarrow/<name>`, editable, with a Browse button), choose
+     **Branch path mapping** (recommended — paths, links, the map) or
+     **Basic notes**, and for blank-mapped workspaces give the starting
+     note a name. A live "Will create:" preview shows the absolute path
+     forming as you type.
+
+  Yarrow creates the folder, initializes a git repo, writes
+  `.yarrow/config.toml`, and (for Obsidian imports) copies your `.md`
+  files in as a single checkpoint.
+
+- **Open** picks a folder that already has a `.yarrow/config.toml` inside.
 
 Your workspace is just a git repo. You can back it up by copying the folder,
 push it to a remote you own, or open the `.md` files in any other editor —
@@ -307,6 +333,8 @@ Yarrow will happily re-index on the next launch.
 | `⌘←` / `Ctrl+←` | Previous journal entry (while a daily note is open) |
 | `⌘→` / `Ctrl+→` | Next journal entry (while a daily note is open) |
 | `⌘⇧Space` / `Ctrl+Shift+Space` | Quick capture → scratchpad |
+| `⌘⇧F` / `Ctrl+Shift+F` | Workspace-wide find &amp; replace |
+| `⌘P` / `Ctrl+P` | Print or save the active note as PDF |
 | `⌘\` / `Ctrl+\` | Toggle focus mode |
 | `⌘L` / `Ctrl+L` | Lock encrypted notes (only when encryption is enabled) |
 | `⌘,` / `Ctrl+,` | Open Settings |
@@ -357,6 +385,52 @@ children reattach to the deleted path's parent.
 
 `.yarrow/path-collections.toml` is the whole story — readable, committable,
 editable by hand. If something looks wrong, open it.
+
+### Decision tools
+
+Every path is a question. Yarrow gives you four ways to answer *"so what
+does taking this one actually mean?"* — without writing a single side
+document.
+
+- **Card badges.** Each path card on the Forking Road graph shows a
+  `+N / −M` badge relative to the path you're currently on. Hover the
+  badge for a tooltip; the card you're on is labeled `YOU ARE HERE`.
+- **"If you take this path…"** panel in the path detail. Three groups:
+  `+` you'd gain, `~` present on both but with edited content, `−` you'd
+  leave behind. Toggle "group by tag" to cluster the lists under their
+  tags ("you'd lose 3 #museum notes").
+- **Decision matrix** — open from the command palette. Rows are notes,
+  columns are paths, cells are ✓/✗. Click a row's ☆ to star it as a
+  must-have; column headers grow a `★ N/M` score that turns red if any
+  starred row is missing. Filter by tag chip, by text, or to "only ★
+  rows" once you've decided what matters. Stars persist per-workspace.
+- **Hover-to-highlight** — pointing at a path card lights up its slugs
+  in the note list and dims the rest. Opening a path keeps the highlight
+  on while the detail panel is open. The two views read as one.
+- **Drag-to-add** — drag any note from the sidebar onto a path card on
+  the graph (or onto the "In this path" section of an open path) to add
+  it. Useful for quickly assembling a path without opening the picker.
+
+## Importing from Obsidian
+
+Yarrow can read an Obsidian vault directly. Two ways in:
+
+- **From the new-workspace wizard** — when creating a workspace, pick
+  "Import an Obsidian vault" in step 1. The wizard pre-fills the new
+  workspace name from the vault folder, and the import runs as part of
+  workspace creation.
+- **Into an existing workspace** — `⌘K` → *Import an Obsidian vault…*,
+  pick the vault folder.
+
+What's preserved: every `.md` file, your `[[wikilinks]]`, your `#tags`,
+existing YAML frontmatter (`title`, `created`, `modified`, `tags`).
+
+What's skipped: `.obsidian/` config, `.trash/`, anything else under a
+dotfile directory.
+
+The whole import is one git checkpoint, so if something looks wrong you
+can scrub back through History on any imported note. Slug collisions
+auto-suffix (`-2`, `-3`, …) and the wizard surfaces the rename list.
 
 ## Sync
 
@@ -423,5 +497,4 @@ gone. There is no backdoor — that's the point.
 
 ## License
 
-To be announced alongside the first public release. See
-[CHANGELOG.md](CHANGELOG.md) for release history.
+[MIT](LICENSE)

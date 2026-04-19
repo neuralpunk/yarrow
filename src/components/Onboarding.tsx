@@ -1,42 +1,26 @@
 import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/tauri";
-import type { RecentWorkspace, WorkspaceMode } from "../lib/types";
+import type { RecentWorkspace } from "../lib/types";
 import { relativeTime } from "../lib/format";
 import Logo from "./Logo";
 import { XIcon } from "../lib/icons";
 import { SK } from "../lib/platform";
+import NewWorkspaceWizard from "./NewWorkspaceWizard";
 
 interface Props {
   onReady: (path: string) => void;
 }
 
-type CreateStep =
-  | { kind: "picking" }
-  | { kind: "mode"; path: string }
-  | { kind: "starting-note"; path: string; mode: WorkspaceMode };
-
 export default function Onboarding({ onReady }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentWorkspace[]>([]);
-  const [step, setStep] = useState<CreateStep>({ kind: "picking" });
-  const [startingTitle, setStartingTitle] = useState("");
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   useEffect(() => {
     api.listRecentWorkspaces().then(setRecent).catch(() => setRecent([]));
   }, []);
-
-  const pickCreate = async () => {
-    setError(null);
-    try {
-      const selected = await openDialog({ directory: true, multiple: false });
-      if (!selected || Array.isArray(selected)) return;
-      setStep({ kind: "mode", path: selected });
-    } catch (e) {
-      setError(String(e));
-    }
-  };
 
   const pickOpen = async () => {
     setError(null);
@@ -49,32 +33,6 @@ export default function Onboarding({ onReady }: Props) {
     } catch (e) {
       setError(String(e));
     } finally {
-      setBusy(false);
-    }
-  };
-
-  const chooseMode = (mode: WorkspaceMode) => {
-    if (step.kind !== "mode") return;
-    if (mode === "basic") {
-      finalizeCreate(step.path, "basic", undefined);
-    } else {
-      setStartingTitle("");
-      setStep({ kind: "starting-note", path: step.path, mode });
-    }
-  };
-
-  const finalizeCreate = async (
-    path: string,
-    mode: WorkspaceMode,
-    title: string | undefined,
-  ) => {
-    setError(null);
-    setBusy(true);
-    try {
-      await api.initWorkspace(path, undefined, mode, title?.trim() || undefined);
-      onReady(path);
-    } catch (e) {
-      setError(String(e));
       setBusy(false);
     }
   };
@@ -100,39 +58,18 @@ export default function Onboarding({ onReady }: Props) {
     setRecent(await api.listRecentWorkspaces());
   };
 
-  if (step.kind === "mode") {
-    return (
-      <ModeChooser
-        path={step.path}
-        busy={busy}
-        error={error}
-        onBack={() => { setStep({ kind: "picking" }); setError(null); }}
-        onPick={chooseMode}
-      />
-    );
-  }
-
-  if (step.kind === "starting-note") {
-    return (
-      <StartingNoteStep
-        path={step.path}
-        busy={busy}
-        error={error}
-        title={startingTitle}
-        onTitleChange={setStartingTitle}
-        onBack={() => setStep({ kind: "mode", path: step.path })}
-        onConfirm={() => finalizeCreate(step.path, "mapped", startingTitle)}
-      />
-    );
-  }
-
+  // `items-center` on a flex parent that overflows pushes the child's top
+  // off the scrollable region (you can't scroll up to reach it). Wrap with
+  // an outer scroll container and an inner `min-h-full` flex so the content
+  // stays vertically centered when short and scrolls naturally when long.
   return (
-    <div className="h-full flex items-center justify-center bg-bg overflow-auto">
-      <div className="max-w-lg w-full px-8 py-10">
+    <div className="h-full overflow-auto bg-bg">
+      <div className="min-h-full flex items-center justify-center py-10">
+      <div className="max-w-lg w-full px-8">
         <div className="flex items-center gap-3 mb-1">
           <Logo size={38} />
           <h1 className="font-serif text-5xl text-char leading-none">Yarrow</h1>
-          <span className="ml-auto text-2xs text-t3 font-mono self-end pb-2">v1.0.0</span>
+          <span className="ml-auto text-2xs text-t3 font-mono self-end pb-2">v1.1.0</span>
         </div>
         <p className="text-t2 text-base mb-8 leading-relaxed">
           Notes that branch, evolve, and connect. Nothing is ever lost — every
@@ -188,12 +125,12 @@ export default function Onboarding({ onReady }: Props) {
         <div className="space-y-2">
           <button
             disabled={busy}
-            onClick={pickCreate}
+            onClick={() => { setError(null); setWizardOpen(true); }}
             className="w-full px-5 py-3 rounded-lg bg-yel text-on-yel font-medium hover:bg-yel2 transition disabled:opacity-50 text-left group"
           >
-            <div className="text-sm font-serif">Start a new workspace</div>
+            <div className="text-sm font-serif">Create a new workspace</div>
             <div className="text-xs opacity-80 mt-0.5">
-              Pick an empty folder — Yarrow keeps your notes there as plain markdown.
+              Start blank, or import an Obsidian vault. We'll guide you through it.
             </div>
           </button>
 
@@ -234,136 +171,14 @@ export default function Onboarding({ onReady }: Props) {
           Tip: press {SK.palette} inside Yarrow to jump anywhere; {SK.quickSwitch} for a quick note switcher.
         </p>
       </div>
-    </div>
-  );
-}
 
-function ModeChooser({
-  path,
-  busy,
-  error,
-  onBack,
-  onPick,
-}: {
-  path: string;
-  busy: boolean;
-  error: string | null;
-  onBack: () => void;
-  onPick: (mode: WorkspaceMode) => void;
-}) {
-  return (
-    <div className="h-full flex items-center justify-center bg-bg overflow-auto">
-      <div className="max-w-xl w-full px-8 py-10">
-        <div className="flex items-center gap-3 mb-1">
-          <Logo size={30} />
-          <h1 className="font-serif text-3xl text-char leading-none">How will you use this workspace?</h1>
-        </div>
-        <p className="text-2xs text-t3 font-mono mt-2 mb-6 truncate">{path}</p>
-
-        <div className="space-y-2">
-          <button
-            disabled={busy}
-            onClick={() => onPick("mapped")}
-            className="w-full px-5 py-4 rounded-lg bg-yel text-on-yel font-medium hover:bg-yel2 transition disabled:opacity-50 text-left"
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-serif">Branch path mapping</span>
-              <span className="text-[10px] font-mono uppercase tracking-wider bg-on-yel/20 px-1.5 py-0.5 rounded">Recommended</span>
-            </div>
-            <div className="text-xs opacity-85 leading-relaxed">
-              Notes connect to each other. Pick a starting note, then explore parallel
-              directions — your thinking becomes a map you can walk backwards.
-            </div>
-          </button>
-
-          <button
-            disabled={busy}
-            onClick={() => onPick("basic")}
-            className="w-full px-5 py-4 rounded-lg bg-s2 text-char hover:bg-s3 transition disabled:opacity-50 text-left"
-          >
-            <div className="text-sm font-serif mb-1">Basic notes</div>
-            <div className="text-xs text-t2 leading-relaxed">
-              A plain place to jot things down. No links, no map, no paths — just notes.
-              Good for grocery lists, quick captures, or anything that doesn't need structure.
-            </div>
-          </button>
-        </div>
-
-        {error && <p className="mt-4 text-sm text-danger">{error}</p>}
-
-        <button
-          onClick={onBack}
-          disabled={busy}
-          className="mt-6 text-xs text-t3 hover:text-char"
-        >
-          ← Back
-        </button>
+      <NewWorkspaceWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onReady={(p) => { setWizardOpen(false); onReady(p); }}
+      />
       </div>
     </div>
   );
 }
 
-function StartingNoteStep({
-  path,
-  busy,
-  error,
-  title,
-  onTitleChange,
-  onBack,
-  onConfirm,
-}: {
-  path: string;
-  busy: boolean;
-  error: string | null;
-  title: string;
-  onTitleChange: (v: string) => void;
-  onBack: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="h-full flex items-center justify-center bg-bg overflow-auto">
-      <div className="max-w-xl w-full px-8 py-10">
-        <div className="flex items-center gap-3 mb-1">
-          <Logo size={30} />
-          <h1 className="font-serif text-3xl text-char leading-none">Where do you begin?</h1>
-        </div>
-        <p className="text-2xs text-t3 font-mono mt-2 mb-4 truncate">{path}</p>
-        <p className="text-sm text-t2 leading-relaxed mb-5">
-          Every map has a starting point. Name the first note — the one everything
-          else will branch from. You can change it later in Settings.
-        </p>
-
-        <input
-          autoFocus
-          type="text"
-          value={title}
-          placeholder="e.g. Garden plan, Europe trip, Q3 goals…"
-          onChange={(e) => onTitleChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && title.trim()) onConfirm();
-          }}
-          className="w-full px-4 py-3 rounded-lg bg-s1 border border-bd focus:border-yel focus:outline-none text-char font-serif text-lg"
-        />
-
-        <div className="mt-5 flex items-center gap-3">
-          <button
-            disabled={busy || !title.trim()}
-            onClick={onConfirm}
-            className="px-5 py-2.5 rounded-lg bg-yel text-on-yel font-medium hover:bg-yel2 transition disabled:opacity-50"
-          >
-            Create workspace
-          </button>
-          <button
-            onClick={onBack}
-            disabled={busy}
-            className="text-xs text-t3 hover:text-char"
-          >
-            ← Back
-          </button>
-        </div>
-
-        {error && <p className="mt-4 text-sm text-danger">{error}</p>}
-      </div>
-    </div>
-  );
-}

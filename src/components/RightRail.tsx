@@ -18,6 +18,13 @@ interface Props {
   onOpen: (k: RailOverlay) => void;
   onToggleScratchpad: () => void;
   onOpenSettings: () => void;
+  /** Optional intercept for the reading/writing flip. When the parent
+   *  supplies this, we hand the desired next state over (true = writing
+   *  mode visible / raw markdown) and let the parent persist it after any
+   *  side-effects — e.g. flushing the editor's debounced save before a
+   *  switch to reading mode, so the rendered preview never shows stale
+   *  disk content. */
+  onSetReadingWriting?: (writing: boolean) => void;
 }
 
 function RightRailInner({
@@ -27,14 +34,20 @@ function RightRailInner({
   onOpen,
   onToggleScratchpad,
   onOpenSettings,
+  onSetReadingWriting,
 }: Props) {
   const [showRaw, setShowRaw] = useShowRawMarkdown();
   const writing = showRaw; // raw markdown visible = writing mode
+  const flip = () => {
+    const next = !writing;
+    if (onSetReadingWriting) onSetReadingWriting(next);
+    else setShowRaw(next);
+  };
   return (
     <aside className="w-[52px] shrink-0 border-l border-bd bg-s1 flex flex-col items-center py-4 gap-1.5">
       <RailButton
         active={writing}
-        onClick={() => setShowRaw(!showRaw)}
+        onClick={flip}
         label={writing ? "Writing mode · click for reading" : "Reading mode · click for writing"}
       >
         {writing ? <PencilIcon /> : <GlassesIcon />}
