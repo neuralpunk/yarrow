@@ -1,6 +1,6 @@
 [package]
 name = "yarrow"
-version = "1.1.0"
+version = "2.0.0"
 description = "Yarrow — git-backed note-taking for non-linear thinking"
 authors = ["Yarrow"]
 edition = "2021"
@@ -40,6 +40,11 @@ ureq = { version = "2", features = ["tls"] }
 url = "2"
 walkdir = "2"
 regex = "1"
+# Embedded SQLite with FTS5 for the search cache in `search_index.rs`.
+# `bundled` pins the C library so we don't depend on the host's libsqlite3,
+# and FTS5 is compiled in by default since SQLite 3.9. The DB is
+# write-and-forget — notes stay the source of truth.
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [profile.release]
 lto = true

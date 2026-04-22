@@ -70,7 +70,7 @@ src/
     NoteList.tsx                     — notes + orphan subpanel + decay styling
     PathGraph.tsx                    — real branching SVG tree with fork connectors
   components/Editor/
-    NoteEditor.tsx                   — CodeMirror 6, [[wikilink]] autocomplete, ?? markers, debounced save, hover blame, jump-to-line
+    NoteEditor.tsx                   — CodeMirror 6, ?? markers, debounced save, hover blame, jump-to-line; wikilinks are inserted via right-click → Insert wikilink…
     Toolbar.tsx                      — path pill, new direction / connect / history / find / theme / focus / sync
     HistorySlider.tsx                — checkpoint scrubber + restore
     ForkSuggestion.tsx               — non-intrusive inline prompt when a paragraph looks divergent
@@ -98,7 +98,7 @@ State is centralized in `AppShell.tsx` — no context or external store. When ad
 
 ## v1 vs later
 
-Spec §9 is the authoritative scope. Implemented to v1+: workspaces, auto-checkpointing, paths (real branching graph), merge with conflict resolution UI, typed connections with reciprocal backlinks, force-directed graph, sync, history slider, `[[wikilink]]` autocomplete, focus mode, scratchpad, `??` markers with side panel, smart fork detection (heuristic), blame hover tooltip, orphan panel, decay indicator, command palette with full-text search, animated fork moment, dark mode. Still explicitly deferred per spec §9: mobile app, export to static site, AI/semantic features, team/shared vaults.
+Spec §9 is the authoritative scope. Implemented to v1+: workspaces, auto-checkpointing, paths (real branching graph), merge with conflict resolution UI, typed connections with reciprocal backlinks, force-directed graph, sync, history slider, `[[wikilink]]` insertion via right-click picker (with optional `![[embed]]` inline transclusion), focus mode, scratchpad, `??` markers with side panel, smart fork detection (heuristic), blame hover tooltip, orphan panel, decay indicator, command palette with full-text search, animated fork moment, dark mode. Still explicitly deferred per spec §9: mobile app, export to static site, AI/semantic features, team/shared vaults.
 
 ## Keyboard shortcuts
 

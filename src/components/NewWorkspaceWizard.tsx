@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/tauri";
 import type { WorkspaceMode } from "../lib/types";
-import Logo from "./Logo";
+import { YarrowMark } from "./YarrowMark";
 
 interface Props {
   open: boolean;
@@ -14,18 +14,55 @@ interface Props {
 
 type Step = "shape" | "details";
 
-/** What kind of starting content the user wants in the new workspace. */
+/** What kind of starting content the user wants in the new workspace.
+ *  The four import origins all share the same "pick a folder, run a
+ *  parser" shape — the only difference is which backend command fires. */
+type ImportSource = "obsidian" | "bear" | "logseq" | "notion";
+
 type Origin =
   | { kind: "empty" }
-  | { kind: "obsidian"; vaultPath: string | null };
+  | { kind: "import"; source: ImportSource; vaultPath: string | null };
+
+const IMPORT_SOURCES: Array<{
+  id: ImportSource;
+  label: string;
+  tagline: string;
+  pickHelp: string;
+}> = [
+  {
+    id: "obsidian",
+    label: "Obsidian",
+    tagline: "a folder of .md files, often with a hidden .obsidian/ sibling",
+    pickHelp: "Pick the folder that IS your vault.",
+  },
+  {
+    id: "bear",
+    label: "Bear",
+    tagline: "an exported folder of .md files — no frontmatter, tags live inline",
+    pickHelp: "Pick the folder Bear's Markdown export created.",
+  },
+  {
+    id: "logseq",
+    label: "Logseq",
+    tagline: "a graph folder containing pages/ and journals/ subfolders",
+    pickHelp: "Pick the top-level graph folder (with pages/).",
+  },
+  {
+    id: "notion",
+    label: "Notion",
+    tagline: "the extracted Markdown & CSV export — Notion IDs get stripped",
+    pickHelp: "Pick the folder you extracted from Notion's export zip.",
+  },
+];
 
 /** Default workspace name suggestion — keep it human, not "untitled". */
 const DEFAULT_NAME = "My Yarrow";
 
 /** Multi-step in-app modal for creating a new workspace. Replaces the bare
  *  OS folder picker with a guided flow: pick what you're starting from
- *  (empty notebook or an Obsidian vault), name it, choose where it lives,
- *  pick the mode, and (for mapped workspaces) name a starting note. */
+ *  (empty notebook or an import from Obsidian / Bear / Logseq / Notion),
+ *  name it, choose where it lives, pick the mode, and (for mapped
+ *  workspaces) name a starting note. */
 export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
   const [step, setStep] = useState<Step>("shape");
   const [origin, setOrigin] = useState<Origin>({ kind: "empty" });
@@ -73,14 +110,29 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
     }
   };
 
-  const pickObsidianVault = async () => {
+  /** Stage a source for import without opening the OS picker yet —
+   *  gives the user a chance to read the source's tagline and pick-help
+   *  before they're yanked into the native folder dialog. The actual
+   *  OS picker fires only when they click "Browse for folder…". */
+  const selectImportSource = (source: ImportSource) => {
+    setError(null);
+    // Preserve any previously-picked path if the user re-selects the
+    // same source (avoids erasing their folder choice on accidental
+    // click), but clear it when switching sources since the path is
+    // source-specific.
+    setOrigin((prev) => {
+      if (prev.kind === "import" && prev.source === source) return prev;
+      return { kind: "import", source, vaultPath: null };
+    });
+  };
+
+  const pickImportFolder = async () => {
+    if (origin.kind !== "import") return;
     setError(null);
     try {
       const sel = await openDialog({ directory: true, multiple: false });
       if (typeof sel === "string") {
-        setOrigin({ kind: "obsidian", vaultPath: sel });
-        // Pre-fill the workspace name from the vault folder so the user
-        // doesn't have to retype it.
+        setOrigin({ kind: "import", source: origin.source, vaultPath: sel });
         const leaf = sel.split(/[\\/]/).filter(Boolean).pop();
         if (leaf) setName(leaf);
       }
@@ -90,8 +142,8 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
   };
 
   const goToDetails = () => {
-    if (origin.kind === "obsidian" && !origin.vaultPath) {
-      setError("Pick the Obsidian vault folder to continue.");
+    if (origin.kind === "import" && !origin.vaultPath) {
+      setError("Pick the source folder to continue.");
       return;
     }
     setError(null);
@@ -115,17 +167,26 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
         path,
         undefined,
         mode,
-        // For Obsidian imports, leave the seed note empty — the imported
+        // When importing, leave the seed note empty — the imported
         // notes themselves are the starting material; an extra "Welcome"
         // note would just be noise.
-        origin.kind === "obsidian"
+        origin.kind === "import"
           ? undefined
           : (mode === "mapped" ? (startingTitle.trim() || undefined) : undefined),
       );
-      if (origin.kind === "obsidian" && origin.vaultPath) {
-        setProgress("Importing your Obsidian vault…");
-        const report = await api.importObsidianVault(origin.vaultPath);
-        setProgress(`Imported ${report.imported} note${report.imported === 1 ? "" : "s"}.`);
+      if (origin.kind === "import" && origin.vaultPath) {
+        const sourceMeta = IMPORT_SOURCES.find((s) => s.id === origin.source)!;
+        setProgress(`Importing your ${sourceMeta.label} vault…`);
+        const report = await (origin.source === "obsidian"
+          ? api.importObsidianVault(origin.vaultPath)
+          : origin.source === "bear"
+            ? api.importBearVault(origin.vaultPath)
+            : origin.source === "logseq"
+              ? api.importLogseqVault(origin.vaultPath)
+              : api.importNotionVault(origin.vaultPath));
+        setProgress(
+          `Imported ${report.imported} note${report.imported === 1 ? "" : "s"} from ${sourceMeta.label}.`,
+        );
       }
       onReady(path);
     } catch (e) {
@@ -146,7 +207,7 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
         className="w-full max-w-xl bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden"
       >
         <div className="px-6 py-5 border-b border-bd flex items-center gap-3">
-          <Logo size={28} />
+          <YarrowMark size={28} />
           <div>
             <div className="font-serif text-2xl text-char leading-tight">Create a workspace</div>
             <div className="text-2xs text-t3 mt-0.5">
@@ -177,33 +238,80 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
               </div>
             </button>
 
-            <button
-              disabled={busy}
-              onClick={pickObsidianVault}
-              className={`w-full text-left rounded-lg border px-4 py-3 transition ${
-                origin.kind === "obsidian"
+            <div
+              className={`rounded-lg border px-4 py-3 transition ${
+                origin.kind === "import"
                   ? "border-yel bg-yelp/40"
-                  : "border-bd hover:border-bd2 hover:bg-s1"
+                  : "border-bd"
               }`}
             >
               <div className="flex items-baseline gap-2">
-                <div className="font-serif text-base text-char">Import an Obsidian vault</div>
+                <div className="font-serif text-base text-char">Import from another app</div>
                 <span className="text-[10px] font-mono uppercase tracking-wider text-t3">
-                  {origin.kind === "obsidian" && origin.vaultPath ? "vault selected" : "click to choose folder"}
+                  {origin.kind === "import" && origin.vaultPath
+                    ? `${origin.source} folder selected`
+                    : "pick a source"}
                 </span>
               </div>
               <div className="text-xs text-t2 mt-0.5">
-                Copy your <code>.md</code> files in. <code>[[Wikilinks]]</code> and <code>#tags</code> are preserved;
-                <code> .obsidian/</code> config is skipped.
+                Copy your notes in. <code>[[Wikilinks]]</code> and <code>#tags</code>{" "}
+                are preserved; per-app config folders are skipped.
               </div>
-              {origin.kind === "obsidian" && origin.vaultPath && (
-                <div className="text-2xs text-t3 font-mono mt-1.5 break-all">{origin.vaultPath}</div>
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                {IMPORT_SOURCES.map((s) => {
+                  const active =
+                    origin.kind === "import" && origin.source === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      disabled={busy}
+                      onClick={() => selectImportSource(s.id)}
+                      className={`px-2 py-1.5 text-xs rounded border transition ${
+                        active
+                          ? "bg-char text-bg border-char"
+                          : "bg-bg text-t2 border-bd hover:bg-s2 hover:text-char"
+                      }`}
+                      title={s.tagline}
+                    >
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {origin.kind === "import" && (
+                <div className="mt-3 rounded-md bg-bg border border-bd px-3 py-2.5 space-y-2">
+                  <div className="text-2xs font-serif italic text-t3 leading-relaxed">
+                    {IMPORT_SOURCES.find((s) => s.id === origin.source)!.tagline}
+                  </div>
+                  <div className="text-xs text-char leading-relaxed">
+                    {IMPORT_SOURCES.find((s) => s.id === origin.source)!.pickHelp}
+                  </div>
+                  {origin.vaultPath && (
+                    <div className="text-2xs text-t3 font-mono break-all bg-s1 rounded px-2 py-1">
+                      {origin.vaultPath}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <button
+                      onClick={pickImportFolder}
+                      disabled={busy}
+                      className="text-xs px-3 py-1.5 rounded bg-char text-bg hover:bg-yeld transition disabled:opacity-50"
+                    >
+                      {origin.vaultPath ? "Pick a different folder…" : "Browse for folder…"}
+                    </button>
+                    {origin.vaultPath && (
+                      <span className="text-2xs text-t3 italic">
+                        folder selected — you can also re-pick
+                      </span>
+                    )}
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
 
             <div className="pt-2 text-2xs text-t3 leading-relaxed">
-              More importers coming in future versions. If you've got notes in another
-              tool, plain markdown drops in fine — point Yarrow at the folder later.
+              Already have plain markdown? It drops in fine — point Yarrow at that
+              folder after creating the workspace.
             </div>
 
             {error && <div className="text-xs text-danger mt-2">{error}</div>}
@@ -307,9 +415,14 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
               </div>
             )}
 
-            {origin.kind === "obsidian" && (
+            {origin.kind === "import" && (
               <div className="text-2xs text-t2 bg-yelp/30 border border-yel/30 rounded px-3 py-2">
-                Importing from <span className="font-mono break-all">{origin.vaultPath}</span>.
+                Importing from{" "}
+                <span className="font-serif italic text-char">
+                  {IMPORT_SOURCES.find((s) => s.id === origin.source)!.label}
+                </span>
+                :{" "}
+                <span className="font-mono break-all">{origin.vaultPath}</span>.
                 A single checkpoint will record the import so you can roll back if it doesn't look right.
               </div>
             )}

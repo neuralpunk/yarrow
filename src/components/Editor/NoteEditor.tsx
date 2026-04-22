@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
-import { EditorView, keymap, placeholder, ViewPlugin, ViewUpdate, Decoration, DecorationSet, MatchDecorator, WidgetType } from "@codemirror/view";
+import type { Extension } from "@codemirror/state";
+import { EditorView, keymap, placeholder, tooltips, ViewPlugin, ViewUpdate, Decoration, DecorationSet, MatchDecorator } from "@codemirror/view";
 import { defaultKeymap, history as cmHistory, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { languages as cmLanguages } from "@codemirror/language-data";
 import { bracketMatching, indentOnInput, syntaxHighlighting, defaultHighlightStyle, HighlightStyle } from "@codemirror/language";
-import { autocompletion, CompletionContext, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import { autocompletion, closeBrackets, closeBracketsKeymap, type CompletionSource } from "@codemirror/autocomplete";
 import { tags } from "@lezer/highlight";
-import katex from "katex";
-import { isCorrect, loadSpell, suggest as spellSuggest } from "../../lib/spell";
 import WikilinkPreview, {
   cachePreview as sharedCachePreview,
   getCachedPreview as sharedGetCachedPreview,
@@ -17,6 +15,20 @@ import type { Note, NoteSummary, Provenance } from "../../lib/types";
 import { api } from "../../lib/tauri";
 import { editorialDate, relativeTime, timeOfDayPhrase } from "../../lib/format";
 import { isDivergent } from "../../lib/forkDetection";
+import {
+  useExtraCodeHighlight,
+  useExtraImagePreview,
+  useExtraMath,
+  useExtraSpell,
+} from "../../lib/extraPrefs";
+import {
+  usePathTintedCaret,
+  useTypewriterMode,
+} from "../../lib/editorPrefs";
+import { colorForPath } from "../../lib/pathAwareness";
+import AnnotationsGutter from "./AnnotationsGutter";
+import type { Annotation } from "../../lib/types";
+import calloutsPlugin from "./extensions/callouts";
 import ForkSuggestion from "./ForkSuggestion";
 import TagChips from "./TagChips";
 
@@ -30,9 +42,17 @@ interface Props {
   jumpToLine?: { line: number; nonce: number };
   /** Pass the slug back so the parent saves to the right note even if the
    *  user has already switched to a different one before the debounce
-   *  fires (race that previously produced cross-note content swaps). */
-  onSave: (slug: string, body: string, thinking?: string) => void;
+   *  fires (race that previously produced cross-note content swaps).
+   *  Also pass the path the editor was mounted on — otherwise a flush
+   *  triggered by a path switch routes to the *new* path and cross-
+   *  contaminates content between main and an override. */
+  onSave: (slug: string, body: string, thinking?: string, path?: string) => void;
   onTitleChange: (title: string) => void;
+  /** Bump to tell the editor to re-sync its displayed title to the
+   *  canonical frontmatter value — used when the parent rejects a rename
+   *  (user cancelled the "update wikilinks?" prompt) so the input field
+   *  doesn't sit on a title the file never actually took. */
+  titleRevertNonce?: number;
   onDirtyChange: (dirty: boolean) => void;
   onNavigate: (slug: string) => void;
   onBodyChange?: (body: string) => void;
@@ -42,7 +62,9 @@ interface Props {
   /** "Start a path here" CTA fired from the wikilink hover popover. The
    *  slug is what the user hovered on. */
   onBranchFromWikilink?: (slug: string) => void;
-  /** When false (basic workspace mode), [[wikilink]] autocomplete is off. */
+  /** When false (basic workspace mode), the "Insert wikilink" context-menu
+   *  option and fork suggestions are suppressed — the editor is a plain
+   *  markdown surface without note-to-note linking affordances. */
   mappingEnabled?: boolean;
   /** Persist a new tag list for the note (slug, tags). Slug is the one
    *  captured at editor-mount so a save races against a note-switch land
@@ -51,6 +73,14 @@ interface Props {
   /** All tags currently in the workspace, fed into the chip-input
    *  autocomplete so users converge on consistent vocabulary. */
   tagSuggestions?: string[];
+  /** User-assigned accent colours per path (hex, from `PathCollection.color`).
+   *  Feeds the path-tinted caret accessibility feature. Undefined/unset ≡
+   *  fall back to the hue derived from the path name. */
+  pathColorOverrides?: Record<string, string>;
+  /** Persist the updated annotations array on the note. Null `at`/`anchor`
+   *  means "no change" — the editor hands the whole array back to the
+   *  shell, which writes it to frontmatter via `cmd_save_note_full`. */
+  onAnnotationsChange?: (slug: string, annotations: Annotation[]) => void;
 }
 
 const highlightStyle = HighlightStyle.define([
@@ -62,6 +92,135 @@ const highlightStyle = HighlightStyle.define([
   { tag: tags.link, color: "var(--yeld)" },
   { tag: tags.url, color: "var(--yeld)" },
 ]);
+
+// ────────────── pipe-table navigation ──────────────
+// A row is a line whose first non-whitespace character is `|`. Tab inside
+// such a row jumps the cursor to the start of the next cell; Shift-Tab
+// steps back. When Tab lands past the last cell of the last table row,
+// we append a fresh empty row so the user can keep filling the table
+// without reaching for the mouse.
+
+function isTableRow(text: string): boolean {
+  return /^\s*\|/.test(text);
+}
+
+/** Positions of every `|` in `line` — the cell boundaries we navigate
+ *  between. Returned as absolute document offsets (line.from + index). */
+function pipePositions(line: { from: number; text: string }): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < line.text.length; i++) {
+    if (line.text[i] === "|") out.push(line.from + i);
+  }
+  return out;
+}
+
+/** Where the next cell's content starts — the offset right after a pipe,
+ *  skipping one leading space if the author put one there. */
+function cellStartAfter(line: { from: number; text: string }, pipeAbs: number): number {
+  const rel = pipeAbs - line.from + 1;
+  if (line.text[rel] === " ") return pipeAbs + 2;
+  return pipeAbs + 1;
+}
+
+function tableTab(view: EditorView): boolean {
+  const { state } = view;
+  const sel = state.selection.main;
+  if (!sel.empty) return false;
+  const line = state.doc.lineAt(sel.head);
+  if (!isTableRow(line.text)) return false;
+  const pipes = pipePositions(line);
+  // Next pipe strictly after the cursor — that boundary opens the next
+  // cell. If we're past the last one, advance to the next row (or append
+  // one when we're already on the final row of the table).
+  const nextPipe = pipes.find((p) => p > sel.head);
+  if (nextPipe !== undefined) {
+    const target = cellStartAfter(line, nextPipe);
+    view.dispatch({
+      selection: { anchor: Math.min(target, line.to) },
+      scrollIntoView: true,
+    });
+    return true;
+  }
+  // Past the last cell of this row. If the next line is also a row,
+  // land in its first cell; otherwise append a blank row sized to this
+  // row's column count.
+  if (line.number < state.doc.lines) {
+    const next = state.doc.line(line.number + 1);
+    if (isTableRow(next.text)) {
+      const nextPipes = pipePositions(next);
+      if (nextPipes.length > 0) {
+        view.dispatch({
+          selection: { anchor: cellStartAfter(next, nextPipes[0]) },
+          scrollIntoView: true,
+        });
+        return true;
+      }
+    }
+  }
+  // Build a blank row matching this row's column count.
+  const cols = Math.max(1, pipes.length - 1);
+  const blank = "|" + " | ".repeat(cols).replace(/\s$/, " ") + "|";
+  const insert = "\n" + blank;
+  view.dispatch({
+    changes: { from: line.to, to: line.to, insert },
+    selection: { anchor: line.to + 2 + (blank.indexOf("|") + 2) },
+    scrollIntoView: true,
+    userEvent: "input.type",
+  });
+  // Anchor the cursor to the start of the new row's first cell.
+  const newLineStart = line.to + 1;
+  const newPipes: number[] = [];
+  for (let i = 0; i < blank.length; i++) {
+    if (blank[i] === "|") newPipes.push(newLineStart + i);
+  }
+  if (newPipes.length > 0) {
+    view.dispatch({
+      selection: { anchor: newPipes[0] + 2 },
+    });
+  }
+  return true;
+}
+
+function tableShiftTab(view: EditorView): boolean {
+  const { state } = view;
+  const sel = state.selection.main;
+  if (!sel.empty) return false;
+  const line = state.doc.lineAt(sel.head);
+  if (!isTableRow(line.text)) return false;
+  const pipes = pipePositions(line);
+  // Previous pipe strictly before the cursor opens the current cell.
+  // Jumping to the cell *before* that means the second-prior pipe.
+  const priorIdx = (() => {
+    for (let i = pipes.length - 1; i >= 0; i--) {
+      if (pipes[i] < sel.head) return i;
+    }
+    return -1;
+  })();
+  if (priorIdx >= 1) {
+    view.dispatch({
+      selection: { anchor: cellStartAfter(line, pipes[priorIdx - 1]) },
+      scrollIntoView: true,
+    });
+    return true;
+  }
+  // At the first cell — step back into the previous row's last cell.
+  if (line.number > 1) {
+    const prev = state.doc.line(line.number - 1);
+    if (isTableRow(prev.text)) {
+      const prevPipes = pipePositions(prev);
+      if (prevPipes.length >= 2) {
+        view.dispatch({
+          selection: { anchor: cellStartAfter(prev, prevPipes[prevPipes.length - 2]) },
+          scrollIntoView: true,
+        });
+        return true;
+      }
+    }
+  }
+  // No earlier cell — fall through so Shift-Tab still outdents when the
+  // user is at the very start of a table.
+  return false;
+}
 
 function wikilinkPlugin() {
   const matcher = new MatchDecorator({
@@ -85,12 +244,6 @@ function wikilinkPlugin() {
   );
 }
 
-// ────────────── inline image preview ──────────────
-// Matches `![alt](attachments/xxx.ext)` and renders the image beneath the line.
-// The widget loads bytes via `api.readAttachment` → data URL, caching by relpath
-// so scrolling doesn't refetch.
-const ATTACH_IMG_RE = /!\[[^\]]*\]\((attachments\/[^)\s]+)\)/;
-
 // Short-lived cache for wikilink hover previews. Hovering the same link five
 // times in a row should only fetch the target note once; cleared on editor
 // unmount. We cap by count, not bytes — excerpts are always ≤480 chars.
@@ -98,111 +251,8 @@ const ATTACH_IMG_RE = /!\[[^\]]*\]\((attachments\/[^)\s]+)\)/;
 // reading mode shares the same surface.
 const cachePreview = sharedCachePreview;
 
-// LRU-ish cache: bounded by entry count so a long session editing a vault with
-// many attachments doesn't hand all its RAM to data-URL strings. JS Maps iterate
-// in insertion order, so deleting the first key approximates "evict oldest".
-const IMAGE_CACHE_MAX = 50;
-const imageCache = new Map<string, string>();
-function cacheImage(relpath: string, url: string) {
-  if (imageCache.has(relpath)) imageCache.delete(relpath);
-  imageCache.set(relpath, url);
-  while (imageCache.size > IMAGE_CACHE_MAX) {
-    const oldest = imageCache.keys().next().value;
-    if (oldest === undefined) break;
-    imageCache.delete(oldest);
-  }
-}
-function getCachedImage(relpath: string): string | undefined {
-  const hit = imageCache.get(relpath);
-  if (hit !== undefined) {
-    // Refresh recency on hit.
-    imageCache.delete(relpath);
-    imageCache.set(relpath, hit);
-  }
-  return hit;
-}
-
-class ImageWidget extends WidgetType {
-  constructor(readonly relpath: string) { super(); }
-  eq(other: ImageWidget) { return other.relpath === this.relpath; }
-  toDOM() {
-    const wrap = document.createElement("div");
-    wrap.className = "cm-yarrow-img";
-    wrap.contentEditable = "false";
-    const img = document.createElement("img");
-    img.alt = "";
-    wrap.appendChild(img);
-    const cached = getCachedImage(this.relpath);
-    if (cached) {
-      img.src = cached;
-    } else {
-      api.readAttachment(this.relpath).then((d) => {
-        const url = `data:${d.mime};base64,${d.base64}`;
-        cacheImage(this.relpath, url);
-        img.src = url;
-      }).catch(() => {
-        wrap.classList.add("cm-yarrow-img-missing");
-        wrap.textContent = `Missing: ${this.relpath}`;
-      });
-    }
-    return wrap;
-  }
-  ignoreEvent() { return false; }
-}
-
-function imagePreviewPlugin() {
-  return ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
-      constructor(view: EditorView) { this.decorations = this.build(view); }
-      update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged) {
-          this.decorations = this.build(update.view);
-        }
-      }
-      build(view: EditorView): DecorationSet {
-        const builder = new RangeSetBuilder<Decoration>();
-        const doc = view.state.doc;
-        // Pre-scan line-by-line from the top of the document to know which
-        // lines live inside fenced ``` code blocks. For any realistic note
-        // size this is cheap (a few kB of text) and saves us from widgetising
-        // image references that appear as documentation inside a code fence.
-        const fenceMask = new Uint8Array(doc.lines + 1);
-        let inFence = false;
-        for (let n = 1; n <= doc.lines; n++) {
-          const text = doc.line(n).text;
-          if (/^\s*```/.test(text)) {
-            // The fence line itself is "in-fence" so its `![…](…)` (rare but
-            // possible if malformed) doesn't render a widget.
-            fenceMask[n] = 1;
-            inFence = !inFence;
-          } else {
-            fenceMask[n] = inFence ? 1 : 0;
-          }
-        }
-        for (const { from, to } of view.visibleRanges) {
-          let pos = from;
-          while (pos <= to) {
-            const line = doc.lineAt(pos);
-            if (fenceMask[line.number] === 0) {
-              const m = ATTACH_IMG_RE.exec(line.text);
-              if (m) {
-                builder.add(line.to, line.to, Decoration.widget({
-                  widget: new ImageWidget(m[1]),
-                  side: 1,
-                  block: true,
-                }));
-              }
-            }
-            pos = line.to + 1;
-          }
-        }
-        return builder.finish();
-      }
-    },
-    { decorations: (v) => v.decorations },
-  );
-}
+// Image preview / math / spell plugins live in `./extensions/*` now so
+// they can be dynamic-imported based on the Writing extras toggles.
 
 async function attachFilesToEditor(files: File[], view: EditorView, at: number) {
   const fragments: string[] = [];
@@ -327,221 +377,9 @@ function hideSyntaxPlugin() {
   );
 }
 
-// ────────────── inline / block math (KaTeX) ──────────────
-// Inline `$x$` and block `$$x$$` are rendered to KaTeX widgets when the cursor
-// is not inside the delimited range. The active range stays raw so editing the
-// LaTeX source is straightforward. Code-fence regions are excluded so prose
-// about math doesn't trigger rendering.
-class MathInlineWidget extends WidgetType {
-  constructor(readonly tex: string) { super(); }
-  eq(other: MathInlineWidget) { return other.tex === this.tex; }
-  toDOM() {
-    const span = document.createElement("span");
-    span.className = "cm-yarrow-math-inline";
-    try {
-      katex.render(this.tex, span, { throwOnError: false, displayMode: false });
-    } catch {
-      span.textContent = `$${this.tex}$`;
-      span.classList.add("cm-yarrow-math-error");
-    }
-    return span;
-  }
-  ignoreEvent() { return false; }
-}
-
-class MathBlockWidget extends WidgetType {
-  constructor(readonly tex: string) { super(); }
-  eq(other: MathBlockWidget) { return other.tex === this.tex; }
-  toDOM() {
-    const div = document.createElement("div");
-    div.className = "cm-yarrow-math-block";
-    div.contentEditable = "false";
-    try {
-      katex.render(this.tex, div, { throwOnError: false, displayMode: true });
-    } catch {
-      div.textContent = `$$${this.tex}$$`;
-      div.classList.add("cm-yarrow-math-error");
-    }
-    return div;
-  }
-  ignoreEvent() { return false; }
-}
-
-function mathPlugin() {
-  const INLINE_RE = /(?<!\$)\$([^\s$][^$\n]*?[^\s$]|[^\s$])\$(?!\$)/g;
-  return ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
-      constructor(view: EditorView) { this.decorations = this.build(view); }
-      update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged || update.selectionSet) {
-          this.decorations = this.build(update.view);
-        }
-      }
-      build(view: EditorView): DecorationSet {
-        const builder = new RangeSetBuilder<Decoration>();
-        const doc = view.state.doc;
-        const sel = view.state.selection.main;
-        // Build a fence mask line-by-line so we skip math-looking text inside
-        // code fences.
-        const fenceMask = new Uint8Array(doc.lines + 1);
-        let inFence = false;
-        for (let n = 1; n <= doc.lines; n++) {
-          const text = doc.line(n).text;
-          if (/^\s*```/.test(text)) {
-            fenceMask[n] = 1;
-            inFence = !inFence;
-          } else {
-            fenceMask[n] = inFence ? 1 : 0;
-          }
-        }
-
-        // ── block math: $$...$$ across lines ──
-        // Scan whole-document so multi-line blocks render even if only the
-        // closing line is in the viewport.
-        const text = doc.toString();
-        const blocks: Array<[number, number, string]> = [];
-        let i = 0;
-        while (i < text.length) {
-          const open = text.indexOf("$$", i);
-          if (open === -1) break;
-          const startLine = doc.lineAt(open).number;
-          if (fenceMask[startLine] === 1) { i = open + 2; continue; }
-          const close = text.indexOf("$$", open + 2);
-          if (close === -1) break;
-          const endLine = doc.lineAt(close).number;
-          if (fenceMask[endLine] === 1) { i = close + 2; continue; }
-          const tex = text.slice(open + 2, close);
-          blocks.push([open, close + 2, tex]);
-          i = close + 2;
-        }
-        for (const [from, to, tex] of blocks) {
-          // If the cursor is anywhere inside the block, leave it raw.
-          const inside = sel.from <= to && sel.to >= from;
-          if (inside) continue;
-          builder.add(from, to, Decoration.replace({
-            widget: new MathBlockWidget(tex),
-            block: true,
-          }));
-        }
-
-        // ── inline math: $...$ on a single line ──
-        // Skip ranges already covered by a block so we don't double-decorate.
-        const blockRanges = blocks.map(([f, t]) => [f, t] as [number, number]);
-        const inBlock = (pos: number) =>
-          blockRanges.some(([f, t]) => pos >= f && pos < t);
-
-        for (const { from, to } of view.visibleRanges) {
-          let pos = from;
-          while (pos <= to) {
-            const line = doc.lineAt(pos);
-            if (fenceMask[line.number] === 0 && !inBlock(line.from)) {
-              INLINE_RE.lastIndex = 0;
-              let m: RegExpExecArray | null;
-              while ((m = INLINE_RE.exec(line.text)) !== null) {
-                const start = line.from + m.index;
-                const end = start + m[0].length;
-                if (sel.from <= end && sel.to >= start) continue;
-                builder.add(start, end, Decoration.replace({
-                  widget: new MathInlineWidget(m[1]),
-                }));
-              }
-            }
-            pos = line.to + 1;
-          }
-        }
-        return builder.finish();
-      }
-    },
-    { decorations: (v) => v.decorations },
-  );
-}
-
-// ────────────── spell check ──────────────
-// Underlines misspellings on visible lines. Skips code fences, wikilinks, URLs,
-// and the active line so token edits aren't churned with squiggles. The
-// English dictionary loads asynchronously; until it does, the plugin produces
-// no decorations (and rebuilds once loaded via a no-op state effect).
-const SPELL_WORD_RE = /[A-Za-z][A-Za-z'\-]{2,}/g;
-const SPELL_SKIP_RE = /\[\[[^\]]+\]\]|`[^`]+`|https?:\/\/\S+/g;
-
-function spellPlugin() {
-  let ready = false;
-  loadSpell().then(() => { ready = true; }).catch(() => {});
-  return ViewPlugin.fromClass(
-    class {
-      decorations: DecorationSet;
-      constructor(view: EditorView) { this.decorations = this.build(view); }
-      update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged || update.selectionSet) {
-          this.decorations = this.build(update.view);
-        } else if (!ready) {
-          // Cheap re-poll: when the dictionary finishes loading mid-session
-          // we want the next viewport/cursor change to pick it up. Nothing
-          // to do here — the next update tick will rebuild.
-        }
-      }
-      build(view: EditorView): DecorationSet {
-        const builder = new RangeSetBuilder<Decoration>();
-        if (!ready) return builder.finish();
-        const doc = view.state.doc;
-        const sel = view.state.selection.main;
-        const activeLine = doc.lineAt(sel.head).number;
-        // Build fence mask once per build.
-        const fenceMask = new Uint8Array(doc.lines + 1);
-        let inFence = false;
-        for (let n = 1; n <= doc.lines; n++) {
-          const text = doc.line(n).text;
-          if (/^\s*```/.test(text)) {
-            fenceMask[n] = 1;
-            inFence = !inFence;
-          } else {
-            fenceMask[n] = inFence ? 1 : 0;
-          }
-        }
-        const ranges: Array<[number, number]> = [];
-        for (const { from, to } of view.visibleRanges) {
-          let pos = from;
-          while (pos <= to) {
-            const line = doc.lineAt(pos);
-            if (line.number !== activeLine && fenceMask[line.number] === 0) {
-              const text = line.text;
-              // Compute skip ranges (inline code, wikilinks, urls) to suppress
-              // false positives in typical markdown content.
-              const skip: Array<[number, number]> = [];
-              SPELL_SKIP_RE.lastIndex = 0;
-              let s: RegExpExecArray | null;
-              while ((s = SPELL_SKIP_RE.exec(text)) !== null) {
-                skip.push([s.index, s.index + s[0].length]);
-              }
-              const inSkip = (i: number) =>
-                skip.some(([a, b]) => i >= a && i < b);
-              SPELL_WORD_RE.lastIndex = 0;
-              let m: RegExpExecArray | null;
-              while ((m = SPELL_WORD_RE.exec(text)) !== null) {
-                if (inSkip(m.index)) continue;
-                const w = m[0];
-                // Skip ALL-CAPS acronyms and words containing digits-in
-                // (handled by regex), and obvious markdown keywords.
-                if (/^[A-Z]{2,}$/.test(w)) continue;
-                if (!isCorrect(w)) {
-                  ranges.push([line.from + m.index, line.from + m.index + w.length]);
-                }
-              }
-            }
-            pos = line.to + 1;
-          }
-        }
-        ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-        for (const [a, b] of ranges) {
-          builder.add(a, b, Decoration.mark({ class: "cm-yarrow-misspelled" }));
-        }
-        return builder.finish();
-      }
-    },
-    { decorations: (v) => v.decorations },
-  );
-}
+// Math / spell / image-preview / code-highlight plugins live under
+// `./extensions/*` and are dynamic-imported in the mount effect when the
+// corresponding Writing Extra is on.
 
 function questionPlugin() {
   const matcher = new MatchDecorator({
@@ -569,6 +407,7 @@ export default function NoteEditor({
   jumpToLine,
   onSave,
   onTitleChange,
+  titleRevertNonce,
   onDirtyChange,
   onNavigate,
   onBodyChange,
@@ -578,9 +417,36 @@ export default function NoteEditor({
   mappingEnabled = true,
   onTagsChange,
   tagSuggestions,
+  pathColorOverrides,
+  onAnnotationsChange,
 }: Props) {
+  // Writing-extras toggles. Each flips dynamic loading of a heavier
+  // extension on/off; the editor re-mounts whenever one changes (via the
+  // useEffect deps below) so the new extensions set takes effect without
+  // a page reload.
+  const [codeHighlightOn] = useExtraCodeHighlight();
+  const [mathOn] = useExtraMath();
+  const [spellOn] = useExtraSpell();
+  const [imagePreviewOn] = useExtraImagePreview();
+  // 2.0 posture toggles. Neither remounts the editor — they flip classes
+  // on existing DOM and rely on a live-reconfigurable plugin compartment
+  // to update behaviour on the fly. Typewriter mode adds an update
+  // listener that pins the active line to the viewport centre.
+  const [typewriterOn] = useTypewriterMode();
+  const [caretTintOn] = usePathTintedCaret();
+
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // Fresh-notes pointer for the wikilink completion source. Captured at
+  // mount time via closure, read at completion time — so a note added
+  // after mount appears in the `[[` dropdown without a full remount.
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+  // Populated by the spell extension when it's enabled; consumed by the
+  // contextmenu handler to surface suggestions for misspelled words. Null
+  // means the spell extra is off (no underlines exist either, so the
+  // handler's misspelled-class branch never fires).
+  const spellSuggestRef = useRef<((word: string) => string[]) | null>(null);
   // Compartment so flipping reading ↔ writing mode reconfigures a single
   // extension without tearing down the whole editor (which would lose
   // scroll position, undo history, and introduce a visible flicker).
@@ -592,6 +458,12 @@ export default function NoteEditor({
   // now. Without it, switching notes mid-debounce caused note A's body to
   // overwrite note B (the cross-note swap bug).
   const mountedSlugRef = useRef<string>(note.slug);
+  // Same idea for the active path. The <NoteEditor> `key` includes
+  // currentPath, so a path switch unmounts this instance and the cleanup
+  // below may flush a pending debounce. Without capturing the path at
+  // mount time, that flush would route through `handleSave` with the
+  // *new* currentPath — writing what-if edits onto main (and vice versa).
+  const mountedPathRef = useRef<string>(currentPath);
   // Last (words, chars) tuple we dispatched for the status bar. Lets us
   // suppress the no-op "still 0/0" dispatch on every keystroke while
   // typing without a selection.
@@ -608,6 +480,13 @@ export default function NoteEditor({
   const onBodyChangeRef = useRef(onBodyChange);
   onBodyChangeRef.current = onBodyChange;
   const [title, setTitle] = useState(note.frontmatter.title || note.slug);
+  // When the parent tells us a rename was rejected/cancelled, pull the
+  // displayed title back to the canonical frontmatter value. Without this,
+  // the input field would sit on a name the file never actually took.
+  useEffect(() => {
+    if (titleRevertNonce == null) return;
+    setTitle(note.frontmatter.title || note.slug);
+  }, [titleRevertNonce, note.frontmatter.title, note.slug]);
   const [showForkSuggestion, setShowForkSuggestion] = useState(false);
   const dismissedForkRef = useRef<Set<string>>(new Set());
   const [blame, setBlame] = useState<{ x: number; y: number; p: Provenance } | null>(null);
@@ -641,29 +520,6 @@ export default function NoteEditor({
     [notes],
   );
 
-  const completionSource = useMemo(() => {
-    return (ctx: CompletionContext) => {
-      if (!mappingEnabled) return null;
-      const before = ctx.matchBefore(/\[\[[^\]\n]*/);
-      if (!before || (before.from === before.to && !ctx.explicit)) return null;
-      const query = before.text.slice(2).toLowerCase();
-      const options = notes
-        .filter((n) => n.slug !== note.slug)
-        .filter((n) =>
-          !query ||
-          n.title.toLowerCase().includes(query) ||
-          n.slug.toLowerCase().includes(query),
-        )
-        .slice(0, 20)
-        .map((n) => ({
-          label: n.title || n.slug,
-          apply: `[[${n.title || n.slug}]]`,
-          detail: n.slug,
-        }));
-      return { from: before.from, options };
-    };
-  }, [notes, note.slug, mappingEnabled]);
-
   const scanDivergent = useCallback((body: string) => {
     const paragraphs = body.split(/\n{2,}/);
     const last = paragraphs[paragraphs.length - 1] ?? "";
@@ -679,37 +535,127 @@ export default function NoteEditor({
     // re-runs whenever `note.slug` changes (full editor re-init), so this
     // always reflects the note actually on screen.
     mountedSlugRef.current = note.slug;
+    mountedPathRef.current = currentPath;
 
-    const state = EditorState.create({
-      doc: note.body,
-      extensions: [
-        cmHistory(),
-        keymap.of([
-          ...closeBracketsKeymap,
-          ...defaultKeymap,
-          ...historyKeymap,
-          ...completionKeymap,
-          indentWithTab,
-        ]),
-        closeBrackets(),
-        bracketMatching(),
-        indentOnInput(),
-        markdown({ codeLanguages: cmLanguages }),
-        syntaxHighlighting(highlightStyle),
-        syntaxHighlighting(defaultHighlightStyle),
-        placeholder("Start writing…"),
-        EditorView.lineWrapping,
-        autocompletion({
-          override: [completionSource],
-          defaultKeymap: true,
-          icons: false,
+    // Async scaffolding: each enabled Writing Extra dynamically imports
+    // its module, which splits that module into its own chunk. Off
+    // toggles skip the import entirely — the chunk never loads, its
+    // code never parses, RAM stays lean. When one flips on, the effect
+    // re-runs (thanks to the deps array below) and pulls the chunk in.
+    let cancelled = false;
+    let view: EditorView | null = null;
+
+    const mount = async () => {
+      // Diagnostic: leave a breadcrumb in the console so enabling an
+      // extra and not seeing the effect is debuggable without needing a
+      // custom debug build. Only one line per mount, gated on prefs.
+      console.info(
+        "[yarrow] editor mount — extras:",
+        JSON.stringify({
+          codeHighlight: codeHighlightOn,
+          math: mathOn,
+          spell: spellOn,
+          imagePreview: imagePreviewOn,
         }),
-        wikilinkPlugin(),
-        questionPlugin(),
-        mathPlugin(),
-        spellPlugin(),
-        imagePreviewPlugin(),
-        hideSyntaxCompartment.current.of(showRawMarkdown ? [] : hideSyntaxPlugin()),
+      );
+      // Markdown base: when code-highlight extra is on we feed the full
+      // language-data pack in; otherwise plain markdown suffices.
+      let markdownExtension: Extension;
+      if (codeHighlightOn) {
+        const { codeHighlightedMarkdown } = await import("./extensions/codeHighlight");
+        if (cancelled) return;
+        markdownExtension = await codeHighlightedMarkdown();
+        console.info("[yarrow] code highlighting loaded");
+      } else {
+        markdownExtension = markdown();
+      }
+
+      const extraExtensions: Extension[] = [];
+      if (mathOn) {
+        const { loadMathExtension } = await import("./extensions/math");
+        if (cancelled) return;
+        extraExtensions.push(await loadMathExtension());
+        console.info("[yarrow] math extension loaded");
+      }
+      if (spellOn) {
+        const { loadSpellExtension } = await import("./extensions/spell");
+        if (cancelled) return;
+        const { extension, suggest } = await loadSpellExtension();
+        spellSuggestRef.current = suggest;
+        extraExtensions.push(extension);
+        console.info("[yarrow] spell extension loaded");
+      } else {
+        spellSuggestRef.current = null;
+      }
+      if (imagePreviewOn) {
+        const { imagePreviewPlugin } = await import("./extensions/imagePreview");
+        if (cancelled) return;
+        extraExtensions.push(imagePreviewPlugin());
+        console.info("[yarrow] image preview extension loaded");
+      }
+      // Build the autocomplete stack. Both the slash menu and the
+      // wikilink `[[` dropdown feed a single `autocompletion(...)` so
+      // their tooltips share config and can't conflict. The tooltip is
+      // parented to `document.body` with `position: "fixed"` so nested
+      // `overflow-hidden` ancestors in the AppShell layout can't clip
+      // it — the 1.2-era bug that manifested as "nothing happens when
+      // I type /" on WebKit/Wayland (webkit2gtk on Linux) was exactly
+      // this: the popup rendered inside an invisible scroll region.
+      const completionSources: CompletionSource[] = [];
+
+      // Wikilink completion is always on when note-to-note mapping is
+      // enabled (i.e. not in basic/plain-markdown workspace mode).
+      if (mappingEnabled) {
+        const wl = await import("./extensions/wikilinkAutocomplete");
+        if (cancelled) return;
+        completionSources.push(wl.wikilinkSource(() => notesRef.current));
+        extraExtensions.push(wl.wikilinkInputHandler);
+        console.info("[yarrow] wikilink autocomplete loaded");
+      }
+
+      if (completionSources.length > 0) {
+        extraExtensions.push(
+          autocompletion({
+            override: completionSources,
+            defaultKeymap: true,
+            icons: false,
+            activateOnTyping: true,
+          }),
+          tooltips({ parent: document.body, position: "fixed" }),
+        );
+      }
+
+      if (cancelled || !hostRef.current) return;
+
+      const state = EditorState.create({
+        doc: note.body,
+        extensions: [
+          cmHistory(),
+          keymap.of([
+            ...closeBracketsKeymap,
+            ...defaultKeymap,
+            ...historyKeymap,
+            // Table-aware Tab/Shift-Tab: inside a pipe-table row, jump to
+            // the next/previous cell; when Tab lands past the last cell
+            // of the last row, insert a fresh row. Listed before
+            // `indentWithTab` so the table behavior wins when applicable;
+            // everywhere else it falls through to normal indent.
+            { key: "Tab", run: tableTab, shift: tableShiftTab },
+            indentWithTab,
+          ]),
+          closeBrackets(),
+          bracketMatching(),
+          indentOnInput(),
+          markdownExtension,
+          syntaxHighlighting(highlightStyle),
+          syntaxHighlighting(defaultHighlightStyle),
+          placeholder("Start writing…"),
+          EditorView.lineWrapping,
+          wikilinkPlugin(),
+          questionPlugin(),
+          calloutsPlugin(),
+          ...extraExtensions,
+          hideSyntaxCompartment.current.of(showRawMarkdown ? [] : hideSyntaxPlugin()),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const body = update.state.doc.toString();
@@ -724,7 +670,7 @@ export default function NoteEditor({
             if (dirty) {
               saveTimer.current = window.setTimeout(() => {
                 lastSavedBody.current = body;
-                onSave(mountedSlugRef.current, body);
+                onSave(mountedSlugRef.current, body, undefined, mountedPathRef.current);
                 onDirtyChange(false);
                 setJustSaved(true);
                 if (justSavedTimer.current) window.clearTimeout(justSavedTimer.current);
@@ -772,17 +718,14 @@ export default function NoteEditor({
             }
             return false;
           },
-          // Right-click with a non-empty selection surfaces a small context
-          // menu with "Send to scratchpad" as the primary action. The
-          // menu is rendered by AppShell so it can live-update and call
-          // through to `api.appendScratchpad` without NoteEditor knowing.
-          // Without a selection we let the native menu through (Copy/Paste
-          // still work on the editor's own contents).
+          // Right-click surfaces our context menu. With a selection, the
+          // menu hosts selection-level actions (scratchpad, copy, start a
+          // path from this). Without one, it still offers "Insert
+          // wikilink…" so users can pick a target note without having to
+          // know its exact name. Spellcheck click on a misspelled word
+          // takes precedence and shows the suggestions popover instead.
           contextmenu: (e, view) => {
             const sel = view.state.selection.main;
-            // Empty selection: probe for a misspelled word at the click and
-            // surface spell suggestions. If nothing's misspelled, fall through
-            // to the native menu so Copy/Paste still work.
             if (sel.empty) {
               const target = e.target as HTMLElement;
               if (target.classList.contains("cm-yarrow-misspelled")) {
@@ -796,7 +739,12 @@ export default function NoteEditor({
                     const to = from + word.length;
                     e.preventDefault();
                     e.stopPropagation();
-                    const suggestions = spellSuggest(word);
+                    // Guard: the class `.cm-yarrow-misspelled` only
+                    // exists when the spell extra is on, which also sets
+                    // the ref. Fall back defensively just in case.
+                    const suggestions = spellSuggestRef.current
+                      ? spellSuggestRef.current(word)
+                      : [];
                     window.dispatchEvent(new CustomEvent("yarrow:editor-spellcheck", {
                       detail: {
                         word, suggestions,
@@ -808,14 +756,23 @@ export default function NoteEditor({
                   }
                 }
               }
-              return false;
+              // Empty selection, not on a misspelled word — show the
+              // no-selection variant of the menu (wikilink-only).
+              e.preventDefault();
+              e.stopPropagation();
+              window.dispatchEvent(new CustomEvent("yarrow:editor-contextmenu", {
+                detail: { text: "", x: e.clientX, y: e.clientY },
+              }));
+              return true;
             }
             const text = view.state.sliceDoc(sel.from, sel.to);
-            if (!text.trim()) return false;
             e.preventDefault();
             e.stopPropagation();
+            // Whitespace-only selections behave as "no selection" so the
+            // user still gets a menu — just the insert variant instead
+            // of the transform variant.
             window.dispatchEvent(new CustomEvent("yarrow:editor-contextmenu", {
-              detail: { text, x: e.clientX, y: e.clientY },
+              detail: { text: text.trim() ? text : "", x: e.clientX, y: e.clientY },
             }));
             return true;
           },
@@ -1004,38 +961,52 @@ export default function NoteEditor({
       ],
     });
 
-    const view = new EditorView({ state, parent: hostRef.current });
-    viewRef.current = view;
+      view = new EditorView({ state, parent: hostRef.current });
+      viewRef.current = view;
+    };
+
+    mount().catch((err) => {
+      // A dynamic import can fail (offline, corrupt chunk). Log and leave
+      // the editor pane empty — the user will see the "Start writing…"
+      // placeholder; toggling the extra off in Settings is the escape
+      // hatch.
+      console.error("editor mount failed", err);
+    });
 
     return () => {
+      cancelled = true;
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
       if (blameTimer.current) window.clearTimeout(blameTimer.current);
       if (justSavedTimer.current) window.clearTimeout(justSavedTimer.current);
       if (previewTimer.current) window.clearTimeout(previewTimer.current);
       if (bodyBroadcastTimer.current) {
         window.clearTimeout(bodyBroadcastTimer.current);
-        // Flush latest body so the consuming shell is in sync on unmount.
-        try { onBodyChangeRef.current?.(view.state.doc.toString()); } catch {}
+        if (view) {
+          // Flush latest body so the consuming shell is in sync on unmount.
+          try { onBodyChangeRef.current?.(view.state.doc.toString()); } catch {}
+        }
       }
       // Flush any pending edits before the editor goes away. This covers
-      // path switches, restores, and workspace close — all of which remount
-      // the editor and would otherwise drop whatever was typed in the last
-      // debounce window.
-      try {
-        const body = view.state.doc.toString();
-        if (body !== lastSavedBody.current) {
-          lastSavedBody.current = body;
-          onSaveRef.current(mountedSlugRef.current, body);
+      // path switches, restores, and workspace close — all of which
+      // remount the editor and would otherwise drop whatever was typed
+      // in the last debounce window.
+      if (view) {
+        try {
+          const body = view.state.doc.toString();
+          if (body !== lastSavedBody.current) {
+            lastSavedBody.current = body;
+            onSaveRef.current(mountedSlugRef.current, body, undefined, mountedPathRef.current);
+          }
+        } catch {
+          // Swallow: we're already tearing down; losing this flush is
+          // still better than an unhandled exception during unmount.
         }
-      } catch {
-        // Swallow: we're already tearing down; losing this flush is still
-        // better than an unhandled exception during unmount.
+        view.destroy();
       }
-      view.destroy();
       viewRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note.slug, currentPath]);
+  }, [note.slug, currentPath, codeHighlightOn, mathOn, spellOn, imagePreviewOn, mappingEnabled]);
 
   // Live-reconfigure the hide-syntax plugin when the mode toggles. Far cheaper
   // than a full editor teardown/remount.
@@ -1050,7 +1021,6 @@ export default function NoteEditor({
   }, [showRawMarkdown]);
 
   useEffect(() => {
-    lastSavedBody.current = note.body;
     setTitle(note.frontmatter.title || note.slug);
     // Drop any stale blame tooltip when the note prop swaps. Belt-and-
     // braces alongside the per-hover epoch — the parent may keep this
@@ -1063,6 +1033,26 @@ export default function NoteEditor({
     blameEpochRef.current++;
     setBlame(null);
   }, [note.slug, note.body, note.frontmatter.title]);
+
+  // Late note.body sync. Path switches remount this component with whatever
+  // activeNote was at click time — AppShell's re-fetch for the new path
+  // resolves a tick later and updates note.body. That prop change doesn't
+  // re-mount (key hasn't changed), so without this the view would show the
+  // previous path's content indefinitely. We only replace the doc when the
+  // view matches the last-saved body: if the user has unflushed edits, the
+  // debounced save (or the onBlur flush) will persist them to the captured
+  // mount path first.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const current = view.state.doc.toString();
+    if (current === note.body) return;
+    if (current !== lastSavedBody.current) return;
+    view.dispatch({
+      changes: { from: 0, to: current.length, insert: note.body },
+    });
+    lastSavedBody.current = note.body;
+  }, [note.body]);
 
   // Jump to a specific line
   useEffect(() => {
@@ -1123,9 +1113,65 @@ export default function NoteEditor({
     };
     window.addEventListener("yarrow:editor-replace-range", onReplaceRange as EventListener);
 
+    // Raw inline insertion at the current cursor — used by the
+    // right-click radial menu (wikilink, wrap-with-bold, snippets) and
+    // the right-click Insert-wikilink modal. Unlike
+    // `yarrow:editor-insert` (which wraps the payload in its own
+    // paragraph), this drops the text in exactly as-is so `[[Note]]`
+    // lands mid-sentence.
+    //
+    // `caretOffset` (optional): where to place the cursor relative to
+    //   the start of the inserted text. Defaults to end-of-text. Used
+    //   for block snippets like code fences where the caret should
+    //   land inside the block, not after the closing fence.
+    // `atLineStart` (optional): if true, snap insertion to the start
+    //   of the current line; if the line already has content, insert
+    //   a leading newline. Used for line-prefix snippets like `# `
+    //   and `- [ ] ` so they don't land mid-sentence.
+    const onInsertRaw = (ev: Event) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const detail = (ev as CustomEvent<{
+        text: string;
+        caretOffset?: number;
+        atLineStart?: boolean;
+      }>).detail;
+      const text = detail?.text ?? "";
+      if (!text) return;
+      const sel = view.state.selection.main;
+      let from = sel.from;
+      let to = sel.to;
+      let leadingNewline = "";
+      if (detail?.atLineStart) {
+        const line = view.state.doc.lineAt(sel.head);
+        if (line.text.trim().length === 0) {
+          from = line.from;
+          to = line.to;
+        } else {
+          from = line.to;
+          to = line.to;
+          leadingNewline = "\n";
+        }
+      }
+      const insert = leadingNewline + text;
+      const caret =
+        from +
+        leadingNewline.length +
+        (detail?.caretOffset ?? text.length);
+      view.dispatch({
+        changes: { from, to, insert },
+        selection: { anchor: caret },
+        scrollIntoView: true,
+      });
+      view.focus();
+      try { onBodyChangeRef.current?.(view.state.doc.toString()); } catch {}
+    };
+    window.addEventListener("yarrow:editor-insert-raw", onInsertRaw as EventListener);
+
     return () => {
       window.removeEventListener("yarrow:editor-insert", onInsert as EventListener);
       window.removeEventListener("yarrow:editor-replace-range", onReplaceRange as EventListener);
+      window.removeEventListener("yarrow:editor-insert-raw", onInsertRaw as EventListener);
     };
   }, []);
 
@@ -1135,7 +1181,7 @@ export default function NoteEditor({
     const body = viewRef.current.state.doc.toString();
     if (body !== lastSavedBody.current) {
       lastSavedBody.current = body;
-      onSave(mountedSlugRef.current, body);
+      onSave(mountedSlugRef.current, body, undefined, mountedPathRef.current);
       onDirtyChange(false);
     }
   };
@@ -1173,8 +1219,106 @@ export default function NoteEditor({
     return m;
   }, [notes]);
 
+  // ── 2.0 path-tinted caret ──
+  // Compute the current path's colour, then apply it to the editor-host
+  // wrapper (which is always mounted — unlike CodeMirror's own
+  // `.cm-editor` node, which is created asynchronously inside the mount
+  // effect and so isn't reliably present when this effect runs). The
+  // CSS in `index.css` matches `.yarrow-caret-tinted .cm-cursor` etc.,
+  // so the class on the parent is enough to propagate the colour once
+  // CM lands.
+  const pathColor = useMemo(
+    () => colorForPath(currentPath || "main", { overrides: pathColorOverrides }),
+    [currentPath, pathColorOverrides],
+  );
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    host.style.setProperty("--caret-path-color", pathColor);
+    if (caretTintOn) host.classList.add("yarrow-caret-tinted");
+    else host.classList.remove("yarrow-caret-tinted");
+  }, [pathColor, caretTintOn]);
+
+  // ── 2.0 typewriter mode ──
+  // Keep the active line pinned at the vertical middle of the scroll
+  // container. We listen on CodeMirror selection updates and dispatch
+  // an effect that computes the offset between the caret's DOM rect
+  // and the centre of the scroll viewport, then scrolls by the
+  // difference. This is cheaper and more reliable than a ViewPlugin
+  // since the caret position is known after every dispatch.
+  useEffect(() => {
+    if (!typewriterOn) return;
+    const view = viewRef.current;
+    if (!view) return;
+    // Find the nearest scroll ancestor — the overflow-y-auto div that
+    // wraps the editor in NoteEditor's return (see <div className="note-enter …">).
+    let scroller: HTMLElement | null = hostRef.current;
+    while (scroller && scroller.parentElement) {
+      const ov = getComputedStyle(scroller).overflowY;
+      if (ov === "auto" || ov === "scroll") break;
+      scroller = scroller.parentElement;
+    }
+    if (!scroller) return;
+    const centre = () => {
+      const v = viewRef.current;
+      if (!v) return;
+      const pos = v.state.selection.main.head;
+      const coords = v.coordsAtPos(pos);
+      if (!coords) return;
+      const rect = scroller.getBoundingClientRect();
+      const caretY = (coords.top + coords.bottom) / 2;
+      const targetY = rect.top + rect.height / 2;
+      const delta = caretY - targetY;
+      if (Math.abs(delta) < 2) return;
+      scroller.scrollBy({ top: delta, behavior: "auto" });
+    };
+    // One centre on activation — gets the line roughly in place even
+    // before the user types anything.
+    window.setTimeout(centre, 40);
+    const onChange = () => {
+      // Defer so CM has finished rendering the new selection/doc before
+      // we read layout.
+      window.requestAnimationFrame(centre);
+    };
+    window.addEventListener("yarrow:selection-changed", onChange);
+    // Also re-centre when the user clicks to reposition the caret.
+    const host = hostRef.current;
+    host?.addEventListener("click", onChange);
+    host?.addEventListener("keyup", onChange);
+    return () => {
+      window.removeEventListener("yarrow:selection-changed", onChange);
+      host?.removeEventListener("click", onChange);
+      host?.removeEventListener("keyup", onChange);
+    };
+  }, [typewriterOn, note.slug]);
+
+  const annotations = note.frontmatter.annotations ?? [];
+  const hasAnnotations = annotations.length > 0;
+
   return (
-    <div className="note-enter relative flex-1 overflow-y-auto px-12 py-12 2xl:px-24">
+    <div
+      className={`note-enter relative flex-1 overflow-y-auto px-12 py-12 2xl:px-24${typewriterOn ? " yarrow-typewriter" : ""}`}
+      onContextMenu={(e) => {
+        // Right-click inside CodeMirror is already handled by its own
+        // `domEventHandlers.contextmenu` (spellcheck suggestions or a
+        // selection-aware radial). We only fire when the click landed
+        // on one of the dead zones around the editor: the outer page
+        // padding, the metadata strip, the tag-chip row, the gap
+        // between the chips and CM, and the "connects to" footer.
+        // Keep native menus on real text inputs (the title field and
+        // the tag-chip input) so users can still paste / spellcheck
+        // into those.
+        const t = e.target as HTMLElement;
+        if (t.closest("input, textarea, [contenteditable='true']")) return;
+        if (t.closest(".cm-editor")) return;
+        e.preventDefault();
+        window.dispatchEvent(
+          new CustomEvent("yarrow:editor-contextmenu", {
+            detail: { text: "", x: e.clientX, y: e.clientY },
+          }),
+        );
+      }}
+    >
       <div className="w-full max-w-[680px] xl:max-w-[820px] 2xl:max-w-[960px] mx-auto">
         <div
           className={`font-serif italic text-xs text-t3 mb-5 inline-block px-1 py-0.5 rounded transition-colors ${
@@ -1205,7 +1349,21 @@ export default function NoteEditor({
           suggestions={tagSuggestions}
           onCommit={(next) => onTagsChange?.(mountedSlugRef.current, next)}
         />
-        <div ref={hostRef} onBlur={saveNow} className="min-h-[50vh] mt-6" />
+        {onAnnotationsChange ? (
+          <div className={hasAnnotations ? "yarrow-annotations-layout mt-6" : "mt-6"}>
+            <div ref={hostRef} onBlur={saveNow} className="min-h-[50vh]" />
+            {hasAnnotations && (
+              <aside className="yarrow-annotations-gutter">
+                <AnnotationsGutter
+                  annotations={annotations}
+                  onChange={(next) => onAnnotationsChange(mountedSlugRef.current, next)}
+                />
+              </aside>
+            )}
+          </div>
+        ) : (
+          <div ref={hostRef} onBlur={saveNow} className="min-h-[50vh] mt-6" />
+        )}
 
         {note.frontmatter.links.length > 0 && (
           <div className="mt-14 pt-7 border-t border-bd flex items-baseline gap-3 flex-wrap">

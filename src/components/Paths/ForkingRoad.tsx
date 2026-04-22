@@ -35,7 +35,7 @@ interface Node {
   x: number;
 }
 
-const ROW_H = 120;
+const ROW_H_BASE = 120;
 const COL_W = 300;
 const PAD_L = 90;
 const PAD_R = 320;
@@ -83,6 +83,25 @@ function ForkingRoadInner({
   currentPathName,
   onDropNoteOnPath,
 }: Props) {
+  // Display mode: "ink" renders tapered filled ribbons + the full
+  // DestinationCard (default — rich, editorial). "ribbon" switches to
+  // thin gradient strokes between parent and child colours with compact
+  // pill nodes — denser, more typographic. Legacy "blueprint" / "pill"
+  // localStorage values migrate forward to "ribbon".
+  const [displayMode, setDisplayMode] = useState<"ink" | "ribbon">(() => {
+    try {
+      const v = localStorage.getItem("yarrow.forkingRoadMode");
+      if (v === "ribbon" || v === "blueprint" || v === "pill") return "ribbon";
+      return "ink";
+    } catch { return "ink"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("yarrow.forkingRoadMode", displayMode); } catch {}
+  }, [displayMode]);
+
+  // Ribbon mode uses compact pill nodes so the row step can tighten up.
+  const ROW_H = displayMode === "ribbon" ? 72 : ROW_H_BASE;
+
   const [hovered, setHovered] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   // Window-relative anchor for the hover preview popover. We capture the
@@ -130,7 +149,7 @@ function ForkingRoadInner({
   // attach to the root as a safety net.
   const { flat, maxDepth, rootNode } = useMemo(() => {
     const map = new Map<string, Node>();
-    const live = collections.filter((c) => !isGhostPath(c, rootName));
+    const live = collections.filter((c) => !isGhostPath(c, rootName, collections));
     for (const c of live) {
       map.set(c.name, {
         coll: c,
@@ -180,7 +199,7 @@ function ForkingRoadInner({
   const ghostGens = useMemo(() => {
     const groups = new Map<string, PathCollection[]>();
     for (const c of collections) {
-      if (!isGhostPath(c, rootName)) continue;
+      if (!isGhostPath(c, rootName, collections)) continue;
       // Era key: the permanent trunk, unless this path *is* an era trunk
       // itself (parent == "") — then it anchors its own era under its name.
       const era = c.parent || c.name;
@@ -320,12 +339,34 @@ function ForkingRoadInner({
     return 2 + Math.min(8, Math.sqrt(count) * 2);
   };
   const colorFor = (n: Node): string => {
+    // User-assigned accent wins over the derived hash hue. `null` / missing
+    // falls through to the hash path — but softened (less saturation, higher
+    // lightness) so derived colors sit quietly next to the palette tokens
+    // instead of shouting over them.
+    if (n.coll.color) return n.coll.color;
     if (n.coll.name === rootName) return "var(--yel)";
     let h = 0;
     for (let i = 0; i < n.coll.name.length; i++) h = (h * 31 + n.coll.name.charCodeAt(i)) >>> 0;
-    const hue = 260 + (h % 100);
-    return `hsl(${hue} 48% 48%)`;
+    // Narrow hue window sweeps plum → dusty-rose, avoiding the cold blue-green
+    // zone that used to clash with the warm paper background.
+    const hue = 280 + (h % 70);
+    return `hsl(${hue} 26% 62%)`;
   };
+
+  // Tapered ribbon path: wide at the parent, narrowing toward the child. We
+  // build it from two cubic beziers stitched at the endpoints so the curve
+  // stays smooth and the fill reads as a single stroke of ink.
+  const ribbonPath = (x1: number, y1: number, x2: number, y2: number, w1: number, w2: number): string => {
+    const mx = (x1 + x2) / 2;
+    return [
+      `M ${x1} ${y1 - w1 / 2}`,
+      `C ${mx} ${y1 - w1 / 2}, ${mx} ${y2 - w2 / 2}, ${x2} ${y2 - w2 / 2}`,
+      `L ${x2} ${y2 + w2 / 2}`,
+      `C ${mx} ${y2 + w2 / 2}, ${mx} ${y1 + w1 / 2}, ${x1} ${y1 + w1 / 2}`,
+      "Z",
+    ].join(" ");
+  };
+
 
   // pan + zoom ─────────────────────────────────
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -439,6 +480,20 @@ function ForkingRoadInner({
       onClick={onCanvasClick}
     >
       <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-s1/95 border border-bd rounded-md shadow-sm px-1 py-1 backdrop-blur" data-road-interactive>
+        {/* Display-mode segmented control: ink = default tapered filled
+            ribbons + cards, ribbon = thin gradient strokes + pill nodes. */}
+        <div className="flex items-center border border-bd rounded overflow-hidden mr-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); setDisplayMode("ink"); }}
+            className={`px-2 h-6 text-2xs ${displayMode === "ink" ? "bg-yelp text-yeld" : "text-t2 hover:text-char hover:bg-s2"}`}
+            title="Tapered ink — full cards, filled ribbon connectors"
+          >ink</button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setDisplayMode("ribbon"); }}
+            className={`px-2 h-6 text-2xs ${displayMode === "ribbon" ? "bg-yelp text-yeld" : "text-t2 hover:text-char hover:bg-s2"}`}
+            title="Gradient ribbon — thin strokes that blend parent colour into child, compact pill nodes"
+          >ribbon</button>
+        </div>
         <button
           onClick={(e) => { e.stopPropagation(); setZoom((z) => Math.min(2.5, z * 1.15)); }}
           className="w-7 h-7 text-t2 hover:text-char hover:bg-s2 rounded flex items-center justify-center"
@@ -588,27 +643,64 @@ function ForkingRoadInner({
             </g>
           )}
 
-          {/* fork curves */}
+          {/* fork connectors — filled tapered ribbons (ink) or thin
+              gradient strokes that blend parent→child colour (ribbon). */}
           {flat.map((n) => {
             if (!n.parent) return null;
             const p = n.parent;
-            const stroke = colorFor(n);
-            const sw = strokeFor(n);
+            const color = colorFor(n);
+            const parentColor = colorFor(p);
             const x1 = p.x + 14;
             const y1 = p.y;
             const x2 = n.x - 14;
             const y2 = n.y;
             const cx = (x1 + x2) / 2;
-            const d = `M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
+            const cubic = `M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
+            const gradId = `edge-grad-${n.coll.name.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
             return (
               <g key={`edge-${n.coll.name}`} opacity={dimFor(n.coll.name)}>
-                <path
-                  d={d}
-                  stroke={stroke}
-                  strokeWidth={sw}
-                  fill="none"
-                  strokeLinecap="round"
-                />
+                {displayMode === "ink" ? (
+                  (() => {
+                    // Ink: a filled ribbon that narrows from parent to child.
+                    // Parent width is proportional to the parent's own member
+                    // count so a thick trunk tapers into a thinner branch —
+                    // the taper direction encodes flow without arrows.
+                    const w1 = strokeFor(p);
+                    const w2 = Math.max(2, strokeFor(n) * 0.7);
+                    return (
+                      <path
+                        d={ribbonPath(x1, y1, x2, y2, w1, w2)}
+                        fill={color}
+                        fillOpacity={0.55}
+                        stroke={color}
+                        strokeOpacity={0.9}
+                        strokeWidth={0.6}
+                      />
+                    );
+                  })()
+                ) : (
+                  // Gradient ribbon: a single cubic stroked with a linear
+                  // gradient from the parent's path colour into the
+                  // child's. Colour continuity does the "inherits from"
+                  // job without arrowheads — read left→right, you see the
+                  // parent bleed into the branch it fathered.
+                  <>
+                    <defs>
+                      <linearGradient id={gradId} x1={x1} y1={y1} x2={x2} y2={y2} gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stopColor={parentColor} />
+                        <stop offset="100%" stopColor={color} />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d={cubic}
+                      stroke={`url(#${gradId})`}
+                      strokeOpacity={0.9}
+                      strokeWidth={2}
+                      fill="none"
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
                 {!n.coll.condition && (
                   <Signpost
                     condition={n.coll.condition}
@@ -627,7 +719,14 @@ function ForkingRoadInner({
             const isRoot = n.coll.name === rootName;
             const isSelected = selectedPath === n.coll.name;
             const color = colorFor(n);
-            const bx = n.x + 22 + CARD_W + 18;
+            // "+" button sits just past the node's trailing edge. Distance
+            // depends on the rendered node: ink mode uses the 260-wide
+            // card; ribbon mode uses a compact pill (~160-180px typical),
+            // so we park it closer to avoid the "floating off in empty
+            // space" feel.
+            const bx = displayMode === "ink"
+              ? n.x + 22 + CARD_W + 10
+              : n.x + 178;
             const mainNoteTitle =
               n.coll.main_note ? (titleFor.get(n.coll.main_note) || n.coll.main_note) : null;
 
@@ -674,36 +773,57 @@ function ForkingRoadInner({
                   }}
                   style={{ cursor: "pointer" }}
                 >
-                  <circle
-                    cx={n.x}
-                    cy={n.y}
-                    r={isRoot || isSelected ? 10 : 7}
-                    fill={isRoot ? "var(--yel)" : "var(--bg)"}
-                    stroke={color}
-                    strokeWidth={isRoot || isSelected ? 3 : 2}
-                  />
-                  {isRoot && (
-                    <circle cx={n.x} cy={n.y} r={16} fill="none" stroke="var(--yel)" strokeOpacity={0.28} strokeWidth={2} />
+                  {/* Marker circle lives on the ribbon endpoint in ink mode;
+                      ribbon mode hides it because the pill is the node. */}
+                  {displayMode === "ink" && (
+                    <>
+                      <circle
+                        cx={n.x}
+                        cy={n.y}
+                        r={isRoot || isSelected ? 10 : 7}
+                        fill={isRoot ? "var(--yel)" : "var(--bg)"}
+                        stroke={color}
+                        strokeWidth={isRoot || isSelected ? 3 : 2}
+                      />
+                      {isRoot && (
+                        <circle cx={n.x} cy={n.y} r={16} fill="none" stroke="var(--yel)" strokeOpacity={0.28} strokeWidth={2} />
+                      )}
+                    </>
                   )}
-                  <DestinationCard
-                    name={n.coll.name}
-                    condition={n.coll.condition}
-                    mainNoteTitle={mainNoteTitle}
-                    isRoot={isRoot}
-                    isSelected={isSelected}
-                    isCurrent={n.coll.name === currentPathName}
-                    isDropTarget={dropTarget === n.coll.name}
-                    memberCount={n.coll.members.length}
-                    diffFromCurrent={
-                      currentPathName && n.coll.name !== currentPathName
-                        ? pathDiffCounts(baselineMembers, n.coll.members)
-                        : undefined
-                    }
-                    createdAt={n.coll.created_at}
-                    x={n.x + 22}
-                    y={n.y - 40}
-                    width={CARD_W}
-                  />
+                  {displayMode === "ink" ? (
+                    <DestinationCard
+                      name={n.coll.name}
+                      condition={n.coll.condition}
+                      mainNoteTitle={mainNoteTitle}
+                      isRoot={isRoot}
+                      isSelected={isSelected}
+                      isCurrent={n.coll.name === currentPathName}
+                      isDropTarget={dropTarget === n.coll.name}
+                      memberCount={n.coll.members.length}
+                      diffFromCurrent={
+                        currentPathName && n.coll.name !== currentPathName
+                          ? pathDiffCounts(baselineMembers, n.coll.members)
+                          : undefined
+                      }
+                      createdAt={n.coll.created_at}
+                      x={n.x + 22}
+                      y={n.y - 40}
+                      width={CARD_W}
+                    />
+                  ) : (
+                    <DestinationRibbon
+                      name={n.coll.name}
+                      condition={n.coll.condition}
+                      color={color}
+                      isRoot={isRoot}
+                      isSelected={isSelected}
+                      isCurrent={n.coll.name === currentPathName}
+                      isDropTarget={dropTarget === n.coll.name}
+                      memberCount={n.coll.members.length}
+                      x={n.x - 8}
+                      y={n.y - 16}
+                    />
+                  )}
                 </g>
 
                 {!pendingForkParent && (
@@ -715,12 +835,12 @@ function ForkingRoadInner({
                     style={{ cursor: "pointer" }}
                     data-road-interactive
                   >
-                    <circle cx={bx} cy={n.y} r={14} fill="var(--yel)" />
+                    <circle cx={bx} cy={n.y} r={10} fill="var(--yel)" />
                     <text
                       x={bx}
-                      y={n.y + 5}
+                      y={n.y + 4}
                       textAnchor="middle"
-                      style={{ fontSize: 18, fill: "var(--on-yel)", pointerEvents: "none" }}
+                      style={{ fontSize: 13, fill: "var(--on-yel)", fontWeight: 600, pointerEvents: "none" }}
                     >+</text>
                   </g>
                 )}
@@ -735,6 +855,7 @@ function ForkingRoadInner({
               depth={byName.get(pendingForkParent)!.depth + 1}
               totalRows={flat.length}
               yShift={liveYShift}
+              rowH={ROW_H}
               onCommit={onCommitPendingFork}
               onCancel={onCancelPendingFork}
             />
@@ -882,6 +1003,95 @@ function Signpost({
   );
 }
 
+/** Compact pill node for the gradient-ribbon display mode. A rounded
+ *  rectangle carrying just the path name + a coloured dot + member
+ *  count — the gradient stroke on the incoming edge does the colour-
+ *  inheritance signalling, so the node itself stays quiet. Drops all
+ *  the DestinationCard's metadata (created-at, main-note, diff badge)
+ *  in favour of a single line; the PathDetail panel is still one click
+ *  away for full context. */
+function DestinationRibbon({
+  name,
+  condition,
+  color,
+  isRoot,
+  isSelected,
+  isCurrent,
+  isDropTarget,
+  memberCount,
+  x,
+  y,
+}: {
+  name: string;
+  condition: string;
+  color: string;
+  isRoot: boolean;
+  isSelected: boolean;
+  isCurrent: boolean;
+  isDropTarget?: boolean;
+  memberCount: number;
+  x: number;
+  y: number;
+}) {
+  const nameW = Math.min(180, Math.max(80, name.length * 7 + 26));
+  const w = nameW + 38;
+  const h = 28;
+  const stroke = isDropTarget
+    ? "var(--yel)"
+    : isSelected ? "var(--yel2)"
+    : isRoot ? "var(--yel)"
+    : color;
+  const sw = isDropTarget ? 2.2 : isSelected || isRoot ? 1.6 : 1;
+  const bg = isDropTarget
+    ? "var(--yelp)"
+    : isSelected ? "var(--yelp)"
+    : "var(--bg-soft)";
+  return (
+    <g>
+      <rect
+        x={x} y={y} width={w} height={h} rx={h / 2}
+        fill={bg} stroke={stroke} strokeWidth={sw}
+        fillOpacity={isSelected || isDropTarget ? 1 : 0.85}
+      />
+      {/* Colour chip ties the node visually to its gradient-ribbon edge. */}
+      <circle cx={x + 13} cy={y + h / 2} r={4} fill={color} />
+      <text
+        x={x + 24} y={y + 19}
+        className="serif"
+        style={{
+          fontSize: 13.5,
+          fill: isSelected || isDropTarget ? "var(--yeld)" : "var(--char)",
+          fontWeight: isRoot ? 600 : 500,
+        }}
+      >
+        {name.length > 24 ? name.slice(0, 23) + "…" : name}
+      </text>
+      <text
+        x={x + w - 10} y={y + 18}
+        textAnchor="end"
+        className="mono"
+        style={{ fontSize: 10, fill: "var(--t3)" }}
+      >
+        {memberCount}
+      </text>
+      {isCurrent && (
+        <circle cx={x + w + 8} cy={y + h / 2} r={3} fill="var(--yeld)">
+          <title>you are here</title>
+        </circle>
+      )}
+      {condition && (
+        <text
+          x={x + 24} y={y + h + 12}
+          className="serif"
+          style={{ fontSize: 10.5, fill: "var(--t2)", fontStyle: "italic" }}
+        >
+          {condition.length > 34 ? condition.slice(0, 33) + "…" : `if ${condition.replace(/^if /i, "")}`}
+        </text>
+      )}
+    </g>
+  );
+}
+
 function DestinationCard({
   name,
   condition,
@@ -1015,6 +1225,7 @@ function PendingForkStub({
   depth,
   totalRows,
   yShift,
+  rowH,
   onCommit,
   onCancel,
 }: {
@@ -1022,6 +1233,7 @@ function PendingForkStub({
   depth: number;
   totalRows: number;
   yShift: number;
+  rowH: number;
   onCommit: (condition: string) => void;
   onCancel: () => void;
 }) {
@@ -1033,7 +1245,7 @@ function PendingForkStub({
   }, []);
   // Anchor relative to the parent so ghosts on the left don't skew the stub.
   const stubX = parent.x + COL_W;
-  const stubY = PAD_T + yShift + totalRows * ROW_H + ROW_H / 2;
+  const stubY = PAD_T + yShift + totalRows * rowH + rowH / 2;
   void depth; // depth arg retained for caller compatibility; position derives from parent
   const x1 = parent.x + 14;
   const y1 = parent.y;

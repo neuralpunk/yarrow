@@ -54,6 +54,9 @@ interface Props {
   onFindReplace?: () => void;
   onPrintActiveNote?: () => void;
   onOpenTrash?: () => void;
+  onOpenActivity?: () => void;
+  onOpenTagGraph?: () => void;
+  onInsertTable?: () => void;
   onImportObsidian?: () => void;
   onComparePaths?: () => void;
   onOpenDecisionMatrix?: () => void;
@@ -239,9 +242,9 @@ export default function CommandPalette(props: Props) {
       ...(props.onImportObsidian
         ? [{
             kind: "command" as const,
-            key: "import-obsidian",
-            label: "Import an Obsidian vault…",
-            sublabel: "copy notes into this workspace as a single checkpoint",
+            key: "import-foreign",
+            label: "Import from another app…",
+            sublabel: "bring in a vault from Obsidian, Bear, Logseq, or Notion",
             run: () => { onClose(); props.onImportObsidian!(); },
           }]
         : []),
@@ -261,6 +264,33 @@ export default function CommandPalette(props: Props) {
             label: "Decision matrix…",
             sublabel: "star must-have notes; see which path satisfies them",
             run: () => { onClose(); props.onOpenDecisionMatrix!(); },
+          }]
+        : []),
+      ...(props.onOpenActivity
+        ? [{
+            kind: "command" as const,
+            key: "activity-heatmap",
+            label: "Activity",
+            sublabel: "calendar of your writing intensity across every path",
+            run: () => { onClose(); props.onOpenActivity!(); },
+          }]
+        : []),
+      ...(props.onOpenTagGraph
+        ? [{
+            kind: "command" as const,
+            key: "tag-graph",
+            label: "Tag graph",
+            sublabel: "see how your tags cluster — which notes share which themes",
+            run: () => { onClose(); props.onOpenTagGraph!(); },
+          }]
+        : []),
+      ...(props.onInsertTable
+        ? [{
+            kind: "command" as const,
+            key: "insert-table",
+            label: "Insert table…",
+            sublabel: "pick rows × columns — Tab moves between cells inside a row",
+            run: () => { onClose(); props.onInsertTable!(); },
           }]
         : []),
     ];

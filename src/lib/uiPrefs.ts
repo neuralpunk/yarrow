@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 // ──────────────────────── UI font family ────────────────────────
 
 export type UiFontId =
+  | "instrument-serif"
   | "inter"
   | "roboto-serif"
   | "plex-serif"
@@ -25,6 +26,16 @@ export interface UiFontChoice {
 }
 
 export const UI_FONTS: UiFontChoice[] = [
+  {
+    id: "instrument-serif",
+    label: "Instrument Serif",
+    kind: "serif",
+    // Single-weight display serif — high contrast, warm italics. Used
+    // as the default because its restrained feel lets the chrome
+    // recede and the prose lead.
+    stack: "'Instrument Serif', ui-serif, Georgia, serif",
+    sample: "Notes that branch and connect.",
+  },
   {
     id: "inter",
     label: "Inter",

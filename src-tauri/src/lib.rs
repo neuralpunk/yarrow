@@ -5,13 +5,17 @@ pub mod crypto;
 pub mod error;
 pub mod export;
 pub mod find_replace;
+pub mod foreign_import;
 pub mod git;
 pub mod graph;
 pub mod notes;
 pub mod obsidian_import;
 pub mod path_collections;
+pub mod path_content;
 pub mod path_meta;
+pub mod sample_vault;
 pub mod search;
+pub mod search_index;
 pub mod templates;
 pub mod trash;
 pub mod workspace;
@@ -25,6 +29,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             commands::cmd_init_workspace,
+            commands::cmd_init_sample_workspace,
             commands::cmd_open_workspace,
             commands::cmd_active_workspace,
             commands::cmd_close_workspace,
@@ -43,12 +48,20 @@ pub fn run() {
             commands::cmd_read_daily_template,
             commands::cmd_write_daily_template,
             commands::cmd_read_note,
+            commands::cmd_read_note_on_path,
             commands::cmd_save_note,
+            commands::cmd_save_note_on_path,
             commands::cmd_save_note_full,
+            commands::cmd_list_path_overrides,
+            commands::cmd_clear_path_override,
             commands::cmd_create_note,
             commands::cmd_rename_note,
             commands::cmd_set_pinned,
             commands::cmd_set_tags,
+            commands::cmd_set_annotations,
+            commands::cmd_pin_checkpoint,
+            commands::cmd_list_pinned_checkpoints,
+            commands::cmd_unpin_checkpoint,
             commands::cmd_delete_note,
             commands::cmd_note_absolute_path,
             commands::cmd_add_link,
@@ -65,8 +78,12 @@ pub fn run() {
             commands::cmd_list_path_collections,
             commands::cmd_create_path_collection,
             commands::cmd_delete_path_collection,
+            commands::cmd_promote_path_to_main,
             commands::cmd_rename_path_collection,
             commands::cmd_set_path_collection_condition,
+            commands::cmd_set_path_collection_color,
+            commands::cmd_set_path_collection_auto_tag,
+            commands::cmd_suggest_path_clusters,
             commands::cmd_set_path_collection_main_note,
             commands::cmd_set_path_collection_parent,
             commands::cmd_add_note_to_path_collection,
@@ -75,6 +92,7 @@ pub fn run() {
             commands::cmd_get_graph,
             commands::cmd_orphans,
             commands::cmd_note_history,
+            commands::cmd_writing_activity,
             commands::cmd_note_at_checkpoint,
             commands::cmd_restore_note,
             commands::cmd_paragraph_provenance,
@@ -84,6 +102,9 @@ pub fn run() {
             commands::cmd_append_scratchpad,
             commands::cmd_promote_scratchpad,
             commands::cmd_search,
+            commands::cmd_clear_search_index,
+            commands::cmd_rebuild_search_index,
+            commands::cmd_clear_all_cache,
             commands::cmd_branch_topology,
             commands::cmd_merge_state,
             commands::cmd_list_conflicts,
@@ -122,6 +143,7 @@ pub fn run() {
             commands::cmd_empty_trash,
             commands::cmd_render_note_html,
             commands::cmd_render_note_body_html,
+            commands::cmd_render_markdown_html,
             commands::cmd_find_replace_preview,
             commands::cmd_find_replace_apply,
             commands::cmd_read_dictionary,
@@ -129,6 +151,9 @@ pub fn run() {
             commands::cmd_open_new_window,
             commands::cmd_compare_paths,
             commands::cmd_import_obsidian_vault,
+            commands::cmd_import_bear_vault,
+            commands::cmd_import_logseq_vault,
+            commands::cmd_import_notion_vault,
             commands::cmd_default_workspaces_root,
             commands::cmd_create_workspace_dir,
             commands::cmd_count_wikilink_references,

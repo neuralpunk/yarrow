@@ -25,6 +25,7 @@ import {
   CircleHelp,
   Sparkles,
   CalendarDays,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 
@@ -71,6 +72,7 @@ export const RenameIcon       = wrap(Pencil, 12);
 export const DeleteIcon       = wrap(Trash2, 12);
 export const SparkIcon        = wrap(Sparkles, 14);
 export const JournalIcon      = wrap(CalendarDays);
+export const ActivityIcon     = wrap(Activity);
 
 /** Small circular status indicator, coloured via the given CSS color. */
 export function StatusDot({

@@ -1,6 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { NoteSummary } from "../../lib/types";
-import { relativeTime } from "../../lib/format";
 import { prefetchNote } from "../../lib/notePrefetch";
 import {
   PlusIcon,
@@ -9,7 +8,6 @@ import {
   RenameIcon,
   DeleteIcon,
 } from "../../lib/icons";
-import { SK } from "../../lib/platform";
 import Modal from "../Modal";
 
 interface Props {
@@ -36,7 +34,12 @@ interface Props {
   onDecryptNote?: (slug: string) => void;
   onReveal?: (slug: string) => void;
   onCopyAsMarkdown?: (slug: string) => void;
+  /** Optional path count for the pinned-active hero card's meta line —
+   *  renders as "{N} notes · {M} paths". Omitted when undefined. */
+  pathCount?: number;
 }
+
+type TimeBucket = "today" | "yesterday" | "week" | "older";
 
 function NoteListInner({
   notes,
@@ -59,16 +62,20 @@ function NoteListInner({
   onDecryptNote,
   onReveal,
   onCopyAsMarkdown,
+  pathCount,
 }: Props) {
   const [menu, setMenu] = useState<{ slug: string; x: number; y: number } | null>(null);
   const [showOrphans, setShowOrphans] = useState(false);
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
-  // Hover intent timer: only warm the cache if the cursor sticks around for
-  // ~120ms, to avoid a prefetch storm when the user flicks through the list.
+  // Hover-intent timer: only warm the note cache if the cursor lingers
+  // for ~120ms, so flicking down the list doesn't trigger a prefetch storm.
   const hoverPrefetchTimer = useRef<number | null>(null);
   const [renameState, setRenameState] = useState<{ slug: string; title: string } | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Older section is collapsed by default. Users land with a short,
+  // recent-first list; deep history is one click away.
+  const [showAllOlder, setShowAllOlder] = useState(false);
 
   useEffect(() => {
     if (!menu) return;
@@ -89,8 +96,7 @@ function NoteListInner({
 
   // Hover-to-highlight: the paths pane fires `yarrow:path-highlight` with a
   // slug list when the user is pointing at a path card. We dim every other
-  // row so the slugs from that path "light up" inside the note list, giving
-  // an instant ambient view of what membership means.
+  // row so the slugs from that path "light up" inside the note list.
   const [pathHighlight, setPathHighlight] = useState<Set<string> | null>(null);
   useEffect(() => {
     const onHighlight = (ev: Event) => {
@@ -106,13 +112,16 @@ function NoteListInner({
   const now = Date.now();
   const decayCutoff = now - decayDays * 86400 * 1000;
 
-  // Start-of-today for the "today" chip — compared against a note's
-  // modified timestamp. Recomputed on each pass so notes cross into / out
-  // of the "today" state if the app is left open past midnight.
-  const startOfToday = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
+  // Bucket boundaries, recomputed each pass so notes cross at midnight.
+  const { startOfToday, startOfYesterday, startOf7DaysAgo } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const t = today.getTime();
+    return {
+      startOfToday: t,
+      startOfYesterday: t - 86400 * 1000,
+      startOf7DaysAgo: t - 7 * 86400 * 1000,
+    };
   }, [now]);
 
   const enriched = useMemo(() => {
@@ -121,16 +130,40 @@ function NoteListInner({
       const stale = mTime < decayCutoff;
       const daysOld = Math.floor((now - mTime) / (86400 * 1000));
       const isOrphan = orphans.has(n.slug);
-      const touchedToday = mTime >= startOfToday;
-      return { ...n, stale, daysOld, isOrphan, touchedToday };
+      const bucket: TimeBucket =
+        mTime >= startOfToday ? "today"
+        : mTime >= startOfYesterday ? "yesterday"
+        : mTime >= startOf7DaysAgo ? "week"
+        : "older";
+      return { ...n, mTime, stale, daysOld, isOrphan, bucket };
     });
-  }, [notes, decayCutoff, orphans, now, startOfToday]);
+  }, [notes, decayCutoff, orphans, now, startOfToday, startOfYesterday, startOf7DaysAgo]);
   void tagFilter; // filtering is applied upstream in AppShell
 
   const relatedToHovered = hoveredSlug ? neighbors[hoveredSlug] : null;
 
-  const pinned = enriched.filter((n) => n.pinned);
+  // Sort each bucket newest-first — within a bucket, the most recently
+  // touched note reads at the top.
+  const sortByMTime = <T extends { mTime: number }>(arr: T[]) =>
+    arr.slice().sort((a, b) => b.mTime - a.mTime);
+
+  const pinned = sortByMTime(enriched.filter((n) => n.pinned));
   const rest = enriched.filter((n) => !n.pinned);
+  const today = sortByMTime(rest.filter((n) => n.bucket === "today"));
+  const yesterday = sortByMTime(rest.filter((n) => n.bucket === "yesterday"));
+  const week = sortByMTime(rest.filter((n) => n.bucket === "week"));
+  const older = sortByMTime(rest.filter((n) => n.bucket === "older"));
+
+  // "Older" is capped to a preview until the user expands it. Anything
+  // over the cap shows as "+ N MORE" on the group header.
+  const OLDER_PREVIEW = 3;
+  const olderVisible = showAllOlder ? older : older.slice(0, OLDER_PREVIEW);
+  const olderHidden = Math.max(0, older.length - OLDER_PREVIEW);
+
+  const activePinned = pinned.find((n) => n.slug === activeSlug) ?? null;
+  const otherPinned = activePinned
+    ? pinned.filter((n) => n.slug !== activePinned.slug)
+    : pinned;
 
   const renderRow = (n: typeof enriched[number]) => {
     const active = n.slug === activeSlug;
@@ -149,7 +182,7 @@ function NoteListInner({
             ? "none"
             : pathHighlight.has(n.slug) ? "in" : "out"
         }
-        className="relative flex items-center gap-1 yarrow-path-hl"
+        className="relative flex items-center yarrow-path-hl"
         onMouseEnter={() => {
           setHoveredSlug(n.slug);
           if (hoverPrefetchTimer.current) window.clearTimeout(hoverPrefetchTimer.current);
@@ -172,17 +205,13 @@ function NoteListInner({
               else next.add(n.slug);
               setSelected(next);
             }}
-            className="ml-2 accent-yel shrink-0"
+            className="ml-2 mr-1 accent-yel shrink-0"
             aria-label={`Select ${n.title || n.slug}`}
           />
         )}
         <button
           draggable
           onDragStart={(e) => {
-            // Carry the slug so any path-card drop target (in PathsPane or
-            // ForkingRoad) can add the note to that path. We use both a
-            // custom mime so other drop zones can ignore us, and `text/plain`
-            // for compatibility with developer tools / external editors.
             e.dataTransfer.setData("application/x-yarrow-note", n.slug);
             e.dataTransfer.setData("text/plain", n.title || n.slug);
             e.dataTransfer.effectAllowed = "copy";
@@ -210,20 +239,25 @@ function NoteListInner({
                 ? "This note isn't linked to anything yet"
                 : undefined
           }
-          className={`note-row flex-1 min-w-0 text-left px-3 py-2 rounded-md font-serif text-[15px] group transition-colors ${
+          className={`note-row flex-1 min-w-0 text-left px-4 py-1.5 font-serif text-[14px] leading-snug group transition-[background-color,color,box-shadow] duration-150 ${
             isSelected
-              ? "bg-yelp/70 text-char"
+              ? "bg-yelp/60 text-char"
               : active
                 ? "bg-yelp text-char"
                 : related
                   ? "bg-accent2-dim/40 text-ch2"
                   : n.stale
-                    ? "text-t2 hover:bg-s2"
-                    : "text-ch2 hover:bg-s2"
+                    // Modern editorial hover: warm paper wash + a thin
+                    // gold rule slides in on the left edge (like a
+                    // manuscript margin mark), and the title lifts from
+                    // muted to full-contrast so your eye follows the
+                    // cursor without a background change shouting at you.
+                    ? "text-t2 hover:bg-yelp/25 hover:text-ch2 hover:shadow-[inset_2px_0_0_rgba(227,186,104,0.45)]"
+                    : "text-ch2 hover:bg-yelp/25 hover:text-char hover:shadow-[inset_2px_0_0_rgba(227,186,104,0.45)]"
           }`}
           style={
             isMain
-              ? { boxShadow: "inset 3px 0 0 0 #D4A04A" }
+              ? { boxShadow: "inset 2px 0 0 0 #D4A04A" }
               : undefined
           }
         >
@@ -231,15 +265,10 @@ function NoteListInner({
             {isMain && (
               <span
                 className="shrink-0 leading-none"
-                style={{ color: "#D4A04A", fontSize: 13 }}
+                style={{ color: "#D4A04A", fontSize: 12 }}
                 title="Starting note — your workspace's main"
               >
                 ★
-              </span>
-            )}
-            {n.pinned && (
-              <span className="text-yel shrink-0" title="Pinned">
-                <PinIcon />
               </span>
             )}
             {n.encrypted && (
@@ -259,149 +288,236 @@ function NoteListInner({
               </span>
             )}
           </div>
-          <div className="text-2xs text-t3 font-mono mt-0.5 flex items-center gap-1.5">
-            <span>{relativeTime(n.modified)}</span>
-            {n.touchedToday && (
-              <span
-                className="px-1 py-px rounded bg-yel/20 text-yeld text-[9px] uppercase tracking-wider font-sans font-semibold leading-none"
-                title="Modified today"
-              >
-                today
-              </span>
-            )}
-          </div>
         </button>
       </li>
     );
   };
 
+  // Editorial group header — a small uppercase label with optional
+  // trailing count text ("+ 4 MORE"). Shared between time groups and the
+  // collapsed-older treatment so the rhythm reads consistently.
+  const renderGroupHeader = (
+    label: string,
+    trailing?: { text: string; onClick: () => void },
+  ) => (
+    <div className="px-4 pt-4 pb-1 flex items-baseline justify-between">
+      <span className="text-[10px] uppercase tracking-[0.16em] text-t3 font-sans font-semibold">
+        {label}
+      </span>
+      {trailing && (
+        <button
+          onClick={trailing.onClick}
+          className="text-[10px] uppercase tracking-[0.16em] text-t3 font-sans font-semibold hover:text-ch2 transition"
+        >
+          {trailing.text}
+        </button>
+      )}
+    </div>
+  );
+
+  const renderGroup = (
+    label: string,
+    rows: typeof enriched,
+    trailing?: { text: string; onClick: () => void },
+  ) => {
+    if (rows.length === 0 && !trailing) return null;
+    return (
+      <>
+        {renderGroupHeader(label, trailing)}
+        <ul className="flex flex-col">
+          {rows.map((n) => renderRow(n))}
+        </ul>
+      </>
+    );
+  };
+
+  // Hero card for a pinned-AND-active note — the editorial "you are here"
+  // surface at the top of the list. Highlighted background, PIN/ACTIVE
+  // eyebrow, title in serif, quiet meta line.
+  const renderPinnedActiveHero = (n: typeof enriched[number]) => (
+    <button
+      key={n.slug}
+      onClick={() => onSelect(n.slug)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setMenu({ slug: n.slug, x: e.clientX, y: e.clientY });
+      }}
+      className="text-left mx-3 mt-3 mb-1 px-4 py-3 rounded-lg bg-yelp/50 border border-yel/40 hover:bg-yelp/70 transition block w-[calc(100%-1.5rem)]"
+    >
+      <div className="text-[9px] uppercase tracking-[0.2em] text-yeld font-sans font-semibold flex items-center gap-1.5">
+        <PinIcon />
+        <span>Pinned</span>
+        <span className="text-t3">·</span>
+        <span>Active</span>
+      </div>
+      <div className="font-serif text-[16px] text-char leading-snug mt-1.5 truncate">
+        {n.title || n.slug}
+      </div>
+      <div className="text-[11px] text-t3 font-sans mt-1 font-feature-settings-['tnum']">
+        {notes.length} note{notes.length === 1 ? "" : "s"}
+        {typeof pathCount === "number" && pathCount > 0
+          ? ` · ${pathCount} path${pathCount === 1 ? "" : "s"}`
+          : ""}
+      </div>
+    </button>
+  );
+
+  // Smaller hero variant for pinned notes that aren't currently active —
+  // same eyebrow + title layout, quieter background so the active one
+  // still reads as the "you are here" anchor.
+  const renderPinnedOtherHero = (n: typeof enriched[number]) => (
+    <button
+      key={n.slug}
+      onClick={() => onSelect(n.slug)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setMenu({ slug: n.slug, x: e.clientX, y: e.clientY });
+      }}
+      className="text-left mx-3 mb-1 px-4 py-2.5 rounded-lg bg-s1 border border-bd hover:bg-s2 transition block w-[calc(100%-1.5rem)]"
+    >
+      <div className="text-[9px] uppercase tracking-[0.2em] text-t3 font-sans font-semibold flex items-center gap-1.5">
+        <PinIcon />
+        <span>Pinned</span>
+      </div>
+      <div className="font-serif text-[14.5px] text-ch2 leading-snug mt-1 truncate">
+        {n.title || n.slug}
+      </div>
+    </button>
+  );
+
   const menuNote = menu ? enriched.find((n) => n.slug === menu.slug) : null;
 
   return (
-    <div className="pt-3">
-      <div className="flex items-center justify-between px-4 mb-2">
-        <div className="text-[14px] text-t2">
-          Your Notes
-        </div>
-        <div className="flex items-center gap-1">
+    <div className="flex flex-col h-full min-h-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        {activePinned && renderPinnedActiveHero(activePinned)}
+        {otherPinned.map(renderPinnedOtherHero)}
+
+        {tagFilter && (
+          <div className="mx-3 mt-2 mb-1 px-2.5 py-1 text-2xs flex items-center gap-1.5 bg-yelp/60 text-yeld rounded">
+            <span>filtering <span className="font-mono">#{tagFilter}</span></span>
+            <button
+              onClick={onClearTagFilter}
+              className="ml-auto hover:text-char"
+              aria-label="Clear tag filter"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {selectMode && (
+          <div className="mx-3 mt-2 mb-1 px-2.5 py-1.5 text-2xs flex items-center gap-2 bg-s2 rounded">
+            <span className="text-t2">{selected.size} selected</span>
+            <button
+              onClick={() => setSelected(new Set(enriched.map((n) => n.slug)))}
+              className="text-yeld hover:text-char"
+            >
+              all
+            </button>
+            <button
+              onClick={() => setSelected(new Set())}
+              className="text-t2 hover:text-char"
+            >
+              none
+            </button>
+            <button
+              disabled={selected.size === 0}
+              onClick={() => {
+                if (selected.size === 0) return;
+                onDeleteMany?.(Array.from(selected));
+                setSelectMode(false);
+              }}
+              className="ml-auto text-danger hover:text-char disabled:opacity-40"
+            >
+              delete
+            </button>
+          </div>
+        )}
+
+        {renderGroup("Today", today)}
+        {renderGroup("Yesterday", yesterday)}
+        {renderGroup("Last Week", week)}
+        {older.length > 0 && renderGroup(
+          "Older",
+          olderVisible,
+          olderHidden > 0
+            ? {
+                text: showAllOlder ? "collapse" : `+ ${olderHidden} more`,
+                onClick: () => setShowAllOlder((x) => !x),
+              }
+            : undefined,
+        )}
+
+        {enriched.length === 0 && (
+          <div className="px-4 py-6 text-xs text-t3 italic">
+            No notes yet. Click + New to start.
+          </div>
+        )}
+
+        {orphanCount > 0 && (
+          <div className="mx-3 mt-4 mb-2">
+            <button
+              onClick={() => setShowOrphans((x) => !x)}
+              className="w-full text-left px-2 py-1.5 text-2xs text-t3 hover:text-t2 flex items-center gap-1 transition"
+              title="Notes with no links yet — a nudge, nothing more"
+            >
+              <span
+                className="inline-flex items-center transition-transform"
+                style={{ transform: showOrphans ? "rotate(90deg)" : "none" }}
+              >
+                <ChevronRightIcon />
+              </span>
+              <span>{orphanCount} unlinked note{orphanCount === 1 ? "" : "s"}</span>
+            </button>
+            {showOrphans && (
+              <ul className="ml-2 mt-1 space-y-0.5">
+                {enriched
+                  .filter((n) => n.isOrphan)
+                  .map((n) => (
+                    <li key={n.slug}>
+                      <button
+                        onClick={() => onSelect(n.slug)}
+                        className="w-full text-left px-2 py-1.5 text-xs text-t2 hover:bg-s2 rounded italic truncate flex items-center gap-1.5"
+                      >
+                        <UnlinkIcon />
+                        <span className="truncate">{n.title || n.slug}</span>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Sticky footer — count on the left, New button on the right.
+          Multi-select is accessible via a tiny text link between them so
+          it's discoverable but doesn't add visual weight to the strip. */}
+      <div className="shrink-0 border-t border-bd/60 px-4 py-2 flex items-center justify-between text-[11px]">
+        <span className="text-t3 font-sans font-feature-settings-['tnum']">
+          {notes.length} note{notes.length === 1 ? "" : "s"}
+        </span>
+        <div className="flex items-center gap-3">
           <button
             onClick={() => setSelectMode((x) => !x)}
-            className={`y-tip w-6 h-6 flex items-center justify-center rounded transition ${
-              selectMode ? "bg-yelp text-yeld" : "text-t2 hover:text-char hover:bg-s2"
-            }`}
-            data-tip={selectMode ? "Exit select" : "Select multiple"}
-            data-tip-align="right"
-            aria-label="Toggle select mode"
+            className={`text-[11px] transition ${selectMode ? "text-yeld" : "text-t3 hover:text-ch2"}`}
+            title={selectMode ? "Exit multi-select" : "Select multiple notes"}
           >
-            <SelectIcon />
+            {selectMode ? "done" : "select"}
           </button>
           <button
             onClick={onCreate}
-            className="y-tip w-6 h-6 flex items-center justify-center text-t2 hover:text-char hover:bg-s2 rounded transition"
-            data-tip={`New note (${SK.newNote})`}
-            data-tip-align="right"
+            className="flex items-center gap-1 text-t2 hover:text-char transition"
             aria-label="New note"
           >
-            <PlusIcon />
+            <PlusIcon size={11} />
+            <span>New</span>
           </button>
         </div>
       </div>
-      {tagFilter && (
-        <div className="mx-3 mb-2 px-2.5 py-1 text-2xs flex items-center gap-1.5 bg-yelp/60 text-yeld rounded">
-          <span>filtering <span className="font-mono">#{tagFilter}</span></span>
-          <button
-            onClick={onClearTagFilter}
-            className="ml-auto hover:text-char"
-            aria-label="Clear tag filter"
-          >
-            ×
-          </button>
-        </div>
-      )}
-      {selectMode && (
-        <div className="mx-3 mb-2 px-2.5 py-1.5 text-2xs flex items-center gap-2 bg-s2 rounded">
-          <span className="text-t2">
-            {selected.size} selected
-          </span>
-          <button
-            onClick={() => setSelected(new Set(enriched.map((n) => n.slug)))}
-            className="text-yeld hover:text-char"
-          >
-            all
-          </button>
-          <button
-            onClick={() => setSelected(new Set())}
-            className="text-t2 hover:text-char"
-          >
-            none
-          </button>
-          <button
-            disabled={selected.size === 0}
-            onClick={() => {
-              if (selected.size === 0) return;
-              onDeleteMany?.(Array.from(selected));
-              setSelectMode(false);
-            }}
-            className="ml-auto text-danger hover:text-char disabled:opacity-40"
-          >
-            delete
-          </button>
-        </div>
-      )}
-      {pinned.length > 0 && (
-        <>
-          <div className="px-4 mb-1 flex items-center gap-1.5 text-2xs uppercase tracking-wider text-t3 font-semibold">
-            <PinIcon /> <span>Pinned</span>
-          </div>
-          <ul className="px-2 space-y-0.5 mb-2">
-            {pinned.map((n) => renderRow(n))}
-          </ul>
-          <div className="mx-3 mb-2 border-t border-bd" />
-        </>
-      )}
-      <ul className="px-2 space-y-0.5">
-        {rest.map((n) => renderRow(n))}
-        {enriched.length === 0 && (
-          <li className="text-xs text-t3 px-3 py-2 italic">
-            No notes yet. Click + to start.
-          </li>
-        )}
-      </ul>
-
-      {orphanCount > 0 && (
-        <div className="mx-3 mt-2">
-          <button
-            onClick={() => setShowOrphans((x) => !x)}
-            className="w-full text-left px-2 py-1.5 text-2xs text-t3 hover:text-t2 flex items-center gap-1 transition"
-            title="Notes with no links yet — a nudge, nothing more"
-          >
-            <span
-              className="inline-flex items-center transition-transform"
-              style={{ transform: showOrphans ? "rotate(90deg)" : "none" }}
-            >
-              <ChevronRightIcon />
-            </span>
-            <span>{orphanCount} unlinked note{orphanCount === 1 ? "" : "s"}</span>
-          </button>
-          {showOrphans && (
-            <ul className="ml-2 mt-1 space-y-0.5">
-              {enriched
-                .filter((n) => n.isOrphan)
-                .map((n) => (
-                  <li key={n.slug}>
-                    <button
-                      onClick={() => onSelect(n.slug)}
-                      className="w-full text-left px-2 py-1.5 text-xs text-t2 hover:bg-s2 rounded italic truncate flex items-center gap-1.5"
-                    >
-                      <UnlinkIcon />
-                      <span className="truncate">{n.title || n.slug}</span>
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          )}
-        </div>
-      )}
 
       {menu && menuNote && (
         <div
@@ -536,15 +652,6 @@ function NoteListInner({
   );
 }
 
-function SelectIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="1.5" y="1.5" width="11" height="11" rx="1.8" />
-      <path d="M4.5 7.2l2 2 3-4" />
-    </svg>
-  );
-}
-
 function SmallLockIcon() {
   return (
     <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -556,7 +663,7 @@ function SmallLockIcon() {
 
 function PinIcon() {
   return (
-    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 1.5v5.5" />
       <path d="M3 2h6" />
       <path d="M4 7h4l-.5 2h-3L4 7z" />

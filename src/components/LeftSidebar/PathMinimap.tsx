@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import type { PathCollection, PathCollectionsView } from "../../lib/types";
 import { HelpIcon, NewDirectionIcon } from "../../lib/icons";
+import { buildPathColorMap, colorForPath } from "../../lib/pathAwareness";
 
 interface Props {
   view: PathCollectionsView | null;
@@ -66,13 +67,16 @@ function PathMinimapInner({ view, onOpen, onNewPath }: Props) {
     y: PAD_T + n.rowIndex * ROW + ROW / 2,
   });
 
-  const colorFor = (name: string) => {
-    if (name === rootName) return "var(--yel)";
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-    const hue = 260 + (h % 100);
-    return `hsl(${hue} 48% 48%)`;
-  };
+  const colorOverrides = useMemo(
+    () => buildPathColorMap(view?.collections),
+    [view?.collections],
+  );
+  // The minimap treats whichever path is currently `root` as main, so an
+  // unset accent falls through to the workspace primary via colorForPath.
+  const colorFor = (name: string) =>
+    name === rootName && !colorOverrides[name]
+      ? "var(--yel)"
+      : colorForPath(name, { overrides: colorOverrides });
 
   return (
     <div className="mt-5 pt-5 pb-2 border-t border-bd/20">

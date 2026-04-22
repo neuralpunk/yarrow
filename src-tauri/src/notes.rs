@@ -6,7 +6,36 @@ use serde::{Deserialize, Serialize};
 
 use crate::crypto::{self, BodyEnvelope, MasterKey};
 use crate::error::{Result, YarrowError};
+use crate::search_index;
 use crate::workspace;
+
+/// Best-effort search-index refresh. Reads the per-workspace toggle on
+/// every call and no-ops when disabled (default for workspaces that
+/// have explicitly turned indexing off). Encrypted bodies are always
+/// excluded — we feed title + tags + slug only, matching the substring
+/// path's behaviour. Failures are logged and swallowed.
+fn touch_index_after_write(root: &Path, note: &Note) {
+    let enabled = workspace::read_config(root)
+        .map(|c| c.preferences.search_index_enabled)
+        .unwrap_or(true);
+    if !enabled { return; }
+    let body = if note.frontmatter.encrypted { String::new() } else { note.body.clone() };
+    search_index::upsert_note_best_effort(
+        root,
+        &note.slug,
+        &note.frontmatter.title,
+        &body,
+        &note.frontmatter.tags,
+    );
+}
+
+fn touch_index_after_delete(root: &Path, slug: &str) {
+    let enabled = workspace::read_config(root)
+        .map(|c| c.preferences.search_index_enabled)
+        .unwrap_or(true);
+    if !enabled { return; }
+    search_index::delete_note_best_effort(root, slug);
+}
 
 pub const LINK_TYPES: &[&str] = &["supports", "challenges", "came-from", "open-question"];
 
@@ -20,6 +49,19 @@ pub struct Link {
     pub target: String,
     #[serde(rename = "type")]
     pub link_type: String,
+}
+
+/// Margin-ink annotation — a thinking-about-the-thinking note pinned to a
+/// short excerpt of the body. Stored in frontmatter so external markdown
+/// tools can round-trip the file. See `AnnotationsGutter.tsx` for the UI.
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
+pub struct Annotation {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub anchor: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -48,6 +90,10 @@ pub struct Frontmatter {
     pub salt: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub nonce: String,
+    /// 2.0 Margin Ink. Empty by default — serialization skips the key when
+    /// the note has no annotations, so existing notes stay byte-identical.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub annotations: Vec<Annotation>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -306,6 +352,7 @@ pub fn write_with_key_status(
                 kdf: String::new(),
                 salt: String::new(),
                 nonce: String::new(),
+                annotations: vec![],
             })
     });
     if fm.created.is_empty() { fm.created = now.clone(); }
@@ -348,16 +395,17 @@ pub fn write_with_key_status(
 
     let serialized = serialize(&fm, &body_on_disk);
     atomic_write(&path, serialized.as_bytes())?;
-    Ok((
-        Note {
-            slug: slug.to_string(),
-            frontmatter: fm.clone(),
-            body: if fm.encrypted && key.is_none() { String::new() } else { body.to_string() },
-            encrypted: fm.encrypted,
-            locked: fm.encrypted && key.is_none(),
-        },
-        true,
-    ))
+    let note = Note {
+        slug: slug.to_string(),
+        frontmatter: fm.clone(),
+        body: if fm.encrypted && key.is_none() { String::new() } else { body.to_string() },
+        encrypted: fm.encrypted,
+        locked: fm.encrypted && key.is_none(),
+    };
+    // Cache update happens after the canonical write — if this fails the
+    // save still succeeded and the index just falls behind.
+    touch_index_after_write(root, &note);
+    Ok((note, true))
 }
 
 /// Transform the raw bytes of a note file into a sealed-at-rest equivalent.
@@ -429,18 +477,26 @@ pub fn decrypt_note(root: &Path, slug: &str, key: &MasterKey) -> Result<Note> {
 /// filesystem is atomic on POSIX and best-effort on Windows.
 fn atomic_write(path: &Path, contents: &[u8]) -> Result<()> {
     use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    // Process-global counter so two threads calling `atomic_write` on
+    // the same nanosecond can't generate the same temp name. `SystemTime`
+    // on some platforms has worse-than-nanosecond precision (subsec_nanos
+    // can be identical across sub-microsecond calls on Windows). Adding
+    // a strict-monotonic counter closes that gap — two writes from the
+    // same pid in the same instant still get distinct names.
+    static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
     let parent = path
         .parent()
         .ok_or_else(|| YarrowError::Other(format!("no parent for {}", path.display())))?;
     std::fs::create_dir_all(parent)?;
-    // Unique temp name so concurrent writes to different slugs don't collide.
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
         .unwrap_or(0);
+    let seq = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let stem = path.file_name().and_then(|s| s.to_str()).unwrap_or("note");
-    let tmp = parent.join(format!(".{}.{}.{}.tmp", stem, pid, nanos));
+    let tmp = parent.join(format!(".{stem}.{pid}.{nanos}.{seq}.tmp"));
     {
         let mut f = std::fs::File::create(&tmp)?;
         f.write_all(contents)?;
@@ -473,6 +529,7 @@ pub fn create(root: &Path, title: &str) -> Result<Note> {
         kdf: String::new(),
         salt: String::new(),
         nonce: String::new(),
+        annotations: vec![],
     };
     write(root, &slug, "", Some(fm))
 }
@@ -503,6 +560,10 @@ pub fn rename(
         new_slug = format!("{}-{}", slug_from_title(new_title), n);
     }
     std::fs::rename(note_path(root, old_slug), note_path(root, &new_slug))?;
+    // The old slug no longer exists on disk, so its cache row would
+    // become a ghost if we didn't clear it. The subsequent `write` will
+    // upsert under the new slug via the `touch_index_after_write` hook.
+    touch_index_after_delete(root, old_slug);
     let moved = read(root, &new_slug)?;
     let mut fm = moved.frontmatter;
     fm.title = new_title.to_string();
@@ -573,6 +634,9 @@ pub fn delete(root: &Path, slug: &str) -> Result<()> {
             write(root, &summary.slug, &note.body, Some(note.frontmatter))?;
         }
     }
+    // Drop the row from the search cache. The per-backlink writes above
+    // already refreshed their own rows via `touch_index_after_write`.
+    touch_index_after_delete(root, slug);
     Ok(())
 }
 
@@ -733,7 +797,7 @@ fn excerpt_from(body: &str) -> String {
     chars.into_iter().collect()
 }
 
-fn parse(raw: &str) -> (Frontmatter, String) {
+pub(crate) fn parse(raw: &str) -> (Frontmatter, String) {
     let fm = parse_frontmatter(raw);
     let body = strip_frontmatter(raw);
     (fm, body)
@@ -753,7 +817,7 @@ fn strip_frontmatter(raw: &str) -> String {
     matter.parse(raw).content
 }
 
-fn serialize(fm: &Frontmatter, body: &str) -> String {
+pub(crate) fn serialize(fm: &Frontmatter, body: &str) -> String {
     let mut out = String::from("---\n");
     out.push_str(&format!("title: {}\n", yaml_escape(&fm.title)));
     out.push_str(&format!("created: {}\n", fm.created));
@@ -793,6 +857,18 @@ fn serialize(fm: &Frontmatter, body: &str) -> String {
             out.push_str(&format!("nonce: {}\n", yaml_escape(&fm.nonce)));
         }
     }
+    if !fm.annotations.is_empty() {
+        out.push_str("annotations:\n");
+        for a in &fm.annotations {
+            out.push_str(&format!("  - body: {}\n", yaml_escape(&a.body)));
+            if !a.anchor.is_empty() {
+                out.push_str(&format!("    anchor: {}\n", yaml_escape(&a.anchor)));
+            }
+            if !a.at.is_empty() {
+                out.push_str(&format!("    at: {}\n", yaml_escape(&a.at)));
+            }
+        }
+    }
     out.push_str("---\n");
     out.push_str(body);
     if !body.ends_with('\n') {
@@ -824,6 +900,7 @@ pub fn seed_note_markdown() -> String {
         kdf: String::new(),
         salt: String::new(),
         nonce: String::new(),
+        annotations: vec![],
     };
     let body = "\
 Welcome.
@@ -909,6 +986,7 @@ pub fn ensure_daily(root: &Path, date_iso: &str) -> Result<Note> {
         kdf: String::new(),
         salt: String::new(),
         nonce: String::new(),
+        annotations: vec![],
     };
     let body = render_daily_template(root, date_iso);
     write(root, &slug, &body, Some(fm))
@@ -952,6 +1030,122 @@ fn render_daily_template(root: &Path, date_iso: &str) -> String {
         .replace("{{week_number}}", &week)
         .replace("{{cursor}}", "")
         .replace("{{title}}", &daily_title(date_iso))
+}
+
+/// Sync the "Today's threads" section of a daily note with every note
+/// whose frontmatter `modified` date matches this journal date.
+///
+/// The rendered section lives between the two HTML-comment markers
+/// below so the reconciler can find and rewrite its own block without
+/// disturbing the user's surrounding prose. If the markers aren't in
+/// the body yet, a fresh section is appended at the end.
+///
+/// `threads` is optional: when `None`, the section stays untouched
+/// entirely — useful while the feature is toggling or when there's
+/// nothing to sync. Returns `true` if the body changed on disk.
+pub fn reconcile_daily_threads(root: &Path, date_iso: &str) -> Result<bool> {
+    let daily = daily_slug(date_iso);
+    let path = note_path(root, &daily);
+    if !path.exists() {
+        return Ok(false);
+    }
+    let mut note = read(root, &daily)?;
+
+    // Find notes whose local `modified` date matches `date_iso`. We
+    // parse the RFC3339 stamp's date component — cheap and correct for
+    // any timezone-aware stamp the editor writes.
+    let summaries = list(root)?;
+    let mut hits: Vec<(String, String)> = Vec::new(); // (slug, title)
+    for s in summaries {
+        if s.slug == daily {
+            continue;
+        }
+        // Skip other daily notes — connecting the journal to itself
+        // would be noise.
+        if s.slug.starts_with(DAILY_PREFIX) {
+            continue;
+        }
+        let modified_date = s.modified.get(0..10).unwrap_or("");
+        if modified_date != date_iso {
+            continue;
+        }
+        let title = if s.title.trim().is_empty() {
+            s.slug.clone()
+        } else {
+            s.title.clone()
+        };
+        hits.push((s.slug, title));
+    }
+    // Alphabetize for deterministic output.
+    hits.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+
+    let new_section = render_threads_section(&hits);
+    let new_body = splice_threads_section(&note.body, &new_section);
+    if new_body == note.body {
+        return Ok(false);
+    }
+    note.body = new_body;
+    write(root, &daily, &note.body, Some(note.frontmatter))?;
+    Ok(true)
+}
+
+const THREADS_MARK_BEGIN: &str = "<!-- yarrow:threads:begin -->";
+const THREADS_MARK_END: &str = "<!-- yarrow:threads:end -->";
+
+fn render_threads_section(hits: &[(String, String)]) -> String {
+    if hits.is_empty() {
+        // Keep the markers even when empty, so the next reconciliation
+        // can fill them in without re-appending a heading block.
+        return format!(
+            "## Today's threads\n{}\n_no notes edited on this date yet._\n{}",
+            THREADS_MARK_BEGIN, THREADS_MARK_END
+        );
+    }
+    let mut out = String::new();
+    out.push_str("## Today's threads\n");
+    out.push_str(THREADS_MARK_BEGIN);
+    out.push('\n');
+    for (_, title) in hits {
+        out.push_str(&format!("- [[{}]]\n", title));
+    }
+    out.push_str(THREADS_MARK_END);
+    out
+}
+
+/// Replace an existing threads section (if any) in the body with the
+/// freshly rendered one, or append if the markers aren't present yet.
+fn splice_threads_section(body: &str, new_section: &str) -> String {
+    if let (Some(b), Some(e)) = (body.find(THREADS_MARK_BEGIN), body.find(THREADS_MARK_END)) {
+        if e > b {
+            // Walk the begin marker back to the start of its heading so
+            // we replace the whole "## Today's threads" block, not just
+            // the comment-enclosed list. The heading is immediately
+            // before the begin marker in what we write.
+            let before_begin = &body[..b];
+            let heading_start = before_begin
+                .rfind("## Today's threads")
+                .unwrap_or(before_begin.len());
+            let head = &body[..heading_start];
+            let end_of_end_marker = e + THREADS_MARK_END.len();
+            let tail = &body[end_of_end_marker..];
+            let mut out = String::with_capacity(head.len() + new_section.len() + tail.len() + 2);
+            out.push_str(head.trim_end_matches(|c: char| c == '\n' || c == ' '));
+            if !out.is_empty() {
+                out.push_str("\n\n");
+            }
+            out.push_str(new_section);
+            out.push_str(tail);
+            return out;
+        }
+    }
+    // No existing section — append, guaranteeing a blank line first.
+    let mut out = body.trim_end().to_string();
+    if !out.is_empty() {
+        out.push_str("\n\n");
+    }
+    out.push_str(new_section);
+    out.push('\n');
+    out
 }
 
 /// Return ISO dates (YYYY-MM-DD) of every daily entry in the workspace.

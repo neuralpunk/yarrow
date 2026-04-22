@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { NoteSummary, PathCollectionsView } from "../lib/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ClusterSuggestion, NoteSummary, PathCollectionsView } from "../lib/types";
 import { isGhostPath } from "../lib/types";
 import { api } from "../lib/tauri";
 import { NewDirectionIcon, HelpIcon } from "../lib/icons";
@@ -53,19 +53,60 @@ export default function PathsPane({
   const [helpOpen, setHelpOpen] = useState(false);
   const [newFork, setNewFork] = useState<null | { parent: string; seedSlug?: string }>(null);
   const [promoteTarget, setPromoteTarget] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<ClusterSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Parent components often pass inline arrow callbacks, which would give
+  // `onCollectionsChanged` a new identity on every parent render. Pinning
+  // it to a ref keeps `refresh` stable and prevents a refresh↔setState
+  // feedback loop that pegged the WebKit process when Paths was open.
+  const onCollectionsChangedRef = useRef(onCollectionsChanged);
+  useEffect(() => { onCollectionsChangedRef.current = onCollectionsChanged; }, [onCollectionsChanged]);
 
   const refresh = useCallback(async () => {
     try {
       const v = await api.listPathCollections();
       setView(v);
       setErr(null);
-      onCollectionsChanged?.(v);
+      onCollectionsChangedRef.current?.(v);
     } catch (e) {
       setErr(String(e));
     }
-  }, [onCollectionsChanged]);
+  }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Load suggestions lazily — one IPC per PathsPane mount. Cheap on
+  // small vaults, and we cap at 6 candidates so even dense graphs don't
+  // produce a wall of suggestions.
+  useEffect(() => {
+    let alive = true;
+    api.suggestPathClusters().then((s) => {
+      if (alive) setSuggestions(s);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const acceptSuggestion = async (s: ClusterSuggestion) => {
+    try {
+      // Seed the new collection with its best-connected member; the
+      // backend dedupes the slug and avoids collisions. After creation,
+      // add the remaining members explicitly.
+      await api.createPathCollection(s.name, s.seed_title, rootName, s.seed_slug);
+      for (const slug of s.members) {
+        if (slug === s.seed_slug) continue;
+        await api.addNoteToPathCollection(s.name, slug);
+      }
+      await refresh();
+      setSuggestions((prev) => prev.filter((x) => x.seed_slug !== s.seed_slug));
+      setSelected(s.name);
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+  const dismissSuggestion = (s: ClusterSuggestion) => {
+    setSuggestions((prev) => prev.filter((x) => x.seed_slug !== s.seed_slug));
+  };
 
   const collections = view?.collections ?? [];
   // Members of the user's currently-active path — passed to PathDetail so it
@@ -173,6 +214,18 @@ export default function PathsPane({
       await refresh();
     } catch (e) { setErr(String(e)); }
   };
+  const handleSetColor = async (name: string, color: string | null) => {
+    try {
+      await api.setPathCollectionColor(name, color);
+      await refresh();
+    } catch (e) { setErr(String(e)); }
+  };
+  const handleSetAutoTag = async (name: string, tag: string | null) => {
+    try {
+      await api.setPathCollectionAutoTag(name, tag);
+      await refresh();
+    } catch (e) { setErr(String(e)); }
+  };
   const handleAddNote = async (name: string, slug: string) => {
     try {
       await api.addNoteToPathCollection(name, slug);
@@ -214,7 +267,7 @@ export default function PathsPane({
         collection={selectedCol}
         allNotes={notes}
         isRoot={selected === rootName}
-        isGhost={isGhostPath(selectedCol, rootName)}
+        isGhost={isGhostPath(selectedCol, rootName, collections)}
         parentName={parentOf(selected) || rootName}
         currentPathName={currentPathName}
         currentPathMembers={currentPathMembers}
@@ -227,6 +280,8 @@ export default function PathsPane({
         onRename={() => handleRename(selectedCol.name)}
         onDelete={() => handleDelete(selectedCol.name)}
         onSetMainNote={(slug) => handleSetMainNote(selectedCol.name, slug)}
+        onSetColor={(color) => handleSetColor(selectedCol.name, color)}
+        onSetAutoTag={(tag) => handleSetAutoTag(selectedCol.name, tag)}
         onAddNote={(slug) => handleAddNote(selectedCol.name, slug)}
         onRemoveNote={(slug) => handleRemoveNote(selectedCol.name, slug)}
         onBranchFromNote={(slug) => startFork(selectedCol.name, slug)}
@@ -274,6 +329,25 @@ export default function PathsPane({
               <span>New path from {rootName}</span>
             </button>
           )}
+          {suggestions.length > 0 && !onlyRoot && (
+            <button
+              onClick={() => setShowSuggestions((v) => !v)}
+              className={`text-xs px-3 py-1.5 rounded-md inline-flex items-center gap-1.5 transition ${
+                showSuggestions
+                  ? "bg-yelp text-yeld border border-yel"
+                  : "border border-bd text-t2 hover:bg-s2 hover:text-char"
+              }`}
+              title="Notes that cluster together but aren't yet a path"
+            >
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="4" cy="4" r="1.4" />
+                <circle cx="10" cy="4" r="1.4" />
+                <circle cx="7" cy="10" r="1.4" />
+                <path d="M4.5 4.5L6.5 9.5M9.5 4.5L7.5 9.5M5 4h4" />
+              </svg>
+              <span>{suggestions.length} suggested</span>
+            </button>
+          )}
           {onOpenDecisionMatrix && !onlyRoot && (
             <button
               onClick={onOpenDecisionMatrix}
@@ -309,6 +383,61 @@ export default function PathsPane({
       {err && (
         <div className="px-6 py-2.5 border-b border-bd bg-danger/10 text-xs text-danger">
           {err}
+        </div>
+      )}
+
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="px-6 py-3 border-b border-bd bg-s1/60">
+          <div className="flex items-baseline justify-between mb-2">
+            <div className="font-serif text-sm text-char">Suggested paths</div>
+            <div className="font-serif italic text-2xs text-t3">
+              notes that cluster together — a path candidate you haven't made yet
+            </div>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {suggestions.map((s) => (
+              <div
+                key={s.seed_slug}
+                className="shrink-0 w-[280px] bg-bg border border-bd rounded-md p-3"
+              >
+                <div className="text-xs text-char font-serif mb-1 truncate" title={s.seed_title}>
+                  {s.seed_title}
+                </div>
+                <div className="text-2xs text-t3 font-mono mb-2">
+                  {s.members.length} notes · {s.internal_edges} edges
+                </div>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {s.member_titles.slice(0, 5).map((t, i) => (
+                    <span
+                      key={i}
+                      className="px-1.5 py-0.5 bg-s2 rounded text-[10px] text-t2 truncate max-w-[120px]"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                  {s.member_titles.length > 5 && (
+                    <span className="px-1.5 py-0.5 text-[10px] text-t3 italic">
+                      +{s.member_titles.length - 5} more
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => acceptSuggestion(s)}
+                    className="px-2 py-1 bg-char text-bg rounded text-2xs hover:bg-yeld transition"
+                  >
+                    Create path
+                  </button>
+                  <button
+                    onClick={() => dismissSuggestion(s)}
+                    className="px-2 py-1 text-2xs text-t3 hover:text-char transition"
+                  >
+                    dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -455,7 +584,7 @@ export default function PathsPane({
           currentRoot={rootName}
           targetIsGhost={(() => {
             const c = collections.find((c) => c.name === promoteTarget);
-            return c ? isGhostPath(c, rootName) : false;
+            return c ? isGhostPath(c, rootName, collections) : false;
           })()}
           onCancel={() => setPromoteTarget(null)}
           onConfirm={async () => {
@@ -465,9 +594,11 @@ export default function PathsPane({
           }}
         />
       )}
+
     </div>
   );
 }
+
 
 function PromoteConfirm({
   target,

@@ -1,1151 +1,1135 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Yarrow 1.1 — notes that branch, evolve, and connect</title>
-<meta name="description" content="A local-first desktop note app built around the way thinking actually works. Every idea can branch, evolve, and connect — and nothing you ever write is lost. Version 1.1 out now: full markdown reading mode, KaTeX, decision tools for paths, Obsidian import." />
-
-<meta id="meta-theme-color" name="theme-color" content="#F7F5F0" />
-
-<meta property="og:title" content="Yarrow 1.1 — notes that branch, evolve, and connect" />
-<meta property="og:description" content="A local-first desktop notebook for non-linear thinking. Paths, checkpoints, connections, decision tools — and nothing is ever lost." />
-<meta property="og:image" content="main-light.png" />
-<meta property="og:type" content="website" />
-
+<title>Yarrow — a writing tool that remembers every version</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=GT+Sectra&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,500&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-<link rel="stylesheet" href="style.css" />
+<link rel="apple-touch-icon" href="app-icon-256.png" />
+<meta name="description" content="Yarrow is a local-first writing tool for non-linear thinking. Plain markdown, every save a checkpoint, every direction a path you can return to. Free and open source." />
+<meta property="og:title" content="Yarrow 2.0 — a writing tool that remembers every version" />
+<meta property="og:description" content="Local-first, git-backed, plain-text notes for writers who think in drafts." />
+<meta property="og:image" content="assets/main-reading-dark.png" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://yarrow.software/" />
+<meta name="theme-color" content="#f4efe2" media="(prefers-color-scheme: light)" />
+<style>
+  :root {
+    --paper: #f4efe2;
+    --paper-2: #ebe4cf;
+    --paper-3: #ded3ab;
+    --ink: #16140a;
+    --ink-2: #2a2614;
+    --ink-3: #5a5230;
+    --ink-4: #8f8553;
+    --rule: #c8be84;
+    --rule-2: #afa464;
+    --accent: #b18112;
+    --accent-deep: #6a4e07;
+    --red: #a63a1e;
+    --serif: 'Fraunces', ui-serif, Georgia, serif;
+    --sans: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01", "ss02", "kern";
+    /* iOS Safari/Chrome bumps up "small text" in landscape by default;
+       this disables that so our designed sizes hold. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  /* Trap any stray horizontal overflow (a single wide figure can
+     otherwise make the whole phone-width page scroll sideways). */
+  html, body { overflow-x: hidden; }
+  html { scroll-behavior: smooth; }
+  img { display: block; max-width: 100%; }
+  ::selection { background: var(--accent); color: var(--paper); }
 
-<link rel="preload" as="image" href="main-light.png" />
-<link rel="preload" as="image" href="main-dark.png" />
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 0 40px; }
+  @media (max-width: 780px) { .wrap { padding: 0 20px; } }
 
-<noscript>
-  <style>
-    /* If JS doesn't run, .reveal/.reveal-children would stay invisible
-       because the IntersectionObserver never gets the chance to flip
-       them. Make them visible immediately so the page is still usable. */
-    .reveal, .reveal-children > * {
-      opacity: 1 !important;
-      transform: none !important;
+  /* masthead */
+  .mast {
+    padding: 20px 0 16px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 24px;
+    border-bottom: 3px double var(--ink-2);
+  }
+  .mast-title {
+    font-family: var(--serif);
+    font-size: 48px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    font-variation-settings: "SOFT" 0, "WONK" 1, "opsz" 144;
+    line-height: 1;
+  }
+  .mast-title i { font-style: italic; color: var(--accent); }
+  .mast-left, .mast-right {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .mast-right { text-align: right; }
+
+  .sub-mast {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--ink-2);
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .sub-mast nav a {
+    color: var(--ink-2);
+    text-decoration: none;
+    margin-left: 22px;
+  }
+  .sub-mast nav a:hover { color: var(--accent); }
+  .sub-mast .prominent { color: var(--red); font-weight: 600; }
+
+  /* hero: 3-col editorial cover */
+  .cover {
+    padding: 48px 0 64px;
+    display: grid;
+    grid-template-columns: 1.1fr 2fr;
+    gap: 48px;
+    align-items: center;
+    border-bottom: 1px solid var(--rule);
+  }
+  @media (max-width: 1000px) { .cover { grid-template-columns: 1fr; } }
+
+  .cover-left {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  .kicker {
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--red);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .kicker::before {
+    content: '';
+    width: 28px;
+    height: 1px;
+    background: var(--red);
+  }
+  h1.cover-head {
+    font-family: var(--serif);
+    font-size: clamp(46px, 7vw, 92px);
+    line-height: 0.95;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+    margin: 0;
+    font-variation-settings: "SOFT" 50, "WONK" 1, "opsz" 144;
+    color: var(--ink);
+  }
+  h1.cover-head i { font-style: italic; color: var(--accent); font-weight: 500; }
+  .cover-left .byline {
+    font-size: 13px;
+    color: var(--ink-3);
+    line-height: 1.6;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+  }
+  .cover-left .byline b { color: var(--ink); font-weight: 600; }
+  .cover-left .byline em { font-style: italic; color: var(--ink-2); font-family: var(--serif); font-size: 17px; display: block; margin-bottom: 8px; }
+
+  .cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    padding: 14px 20px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-radius: 0;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: background .15s, color .15s, border-color .15s;
+    border: 1px solid var(--ink);
+  }
+  .btn-primary { background: var(--ink); color: var(--paper); }
+  .btn-primary:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+  .btn-ghost { background: transparent; color: var(--ink); }
+  .btn-ghost:hover { background: var(--ink); color: var(--paper); }
+  .btn svg { width: 14px; height: 14px; }
+
+  /* big photo treatment */
+  .cover-plate {
+    margin: 0;
+    background: #0e0c06;
+    position: relative;
+    overflow: hidden;
+    align-self: start;
+    border: 1px solid var(--ink);
+    box-shadow:
+      0 40px 80px -40px rgba(22, 20, 10, 0.5),
+      0 12px 24px -20px rgba(22, 20, 10, 0.3);
+  }
+  .cover-plate img { width: 100%; height: auto; display: block; }
+  .cover-plate .plate-cap {
+    position: absolute;
+    left: 20px; right: 20px; bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--sans);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(244, 239, 226, 0.7);
+    font-weight: 500;
+  }
+  .cover-plate .plate-cap .tag {
+    background: var(--accent);
+    color: var(--ink);
+    padding: 4px 8px;
+    font-weight: 600;
+  }
+
+  /* column strip */
+  .strap {
+    padding: 40px 0;
+    display: grid;
+    grid-template-columns: 1fr 2fr 1.4fr;
+    gap: 48px;
+    border-bottom: 1px solid var(--rule);
+  }
+  @media (max-width: 1000px) { .strap { grid-template-columns: 1fr; gap: 32px; } }
+  .strap h2 {
+    font-family: var(--serif);
+    font-size: 42px;
+    line-height: 0.98;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin: 0;
+    font-variation-settings: "SOFT" 50, "WONK" 1, "opsz" 120;
+  }
+  .strap h2 i { font-style: italic; color: var(--accent); }
+  .strap-lede {
+    font-size: 19px;
+    line-height: 1.45;
+    color: var(--ink-2);
+    font-family: var(--serif);
+    font-weight: 400;
+    font-variation-settings: "opsz" 24;
+  }
+  .strap-lede .drop {
+    font-size: 56px;
+    float: left;
+    line-height: 0.85;
+    padding: 6px 8px 0 0;
+    font-weight: 600;
+    color: var(--accent);
+    font-style: italic;
+  }
+  .strap-facts {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ink-3);
+    border-left: 1px solid var(--rule);
+    padding-left: 28px;
+  }
+  .strap-facts .row { padding: 10px 0; border-bottom: 1px dotted var(--rule); display: grid; grid-template-columns: 90px 1fr; gap: 8px; }
+  .strap-facts .row:last-child { border-bottom: none; }
+  .strap-facts dt {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    font-weight: 600;
+  }
+  .strap-facts dd { margin: 0; color: var(--ink-2); }
+
+  /* section header style */
+  .section-head {
+    padding: 56px 0 28px;
+    border-bottom: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: baseline;
+    gap: 24px;
+  }
+  .section-head .sec-num {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 28px;
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .section-head .sec-title {
+    font-family: var(--serif);
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .section-head .sec-meta {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    font-weight: 500;
+  }
+
+  /* feature: big spread with pull quote */
+  .spread {
+    padding: 56px 0 72px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: start;
+    border-bottom: 1px solid var(--rule);
+  }
+  @media (max-width: 1000px) { .spread { grid-template-columns: 1fr; } }
+  .spread .headline {
+    font-family: var(--serif);
+    font-size: clamp(36px, 4.4vw, 56px);
+    line-height: 1.0;
+    letter-spacing: -0.02em;
+    font-weight: 500;
+    font-variation-settings: "SOFT" 50, "WONK" 1, "opsz" 144;
+    margin: 10px 0 24px;
+  }
+  .spread .headline i { font-style: italic; color: var(--accent); }
+  .spread p.body {
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.52;
+    color: var(--ink-2);
+    margin: 0 0 1em;
+    font-variation-settings: "opsz" 20;
+    font-weight: 400;
+  }
+  .spread p.body em { font-style: italic; color: var(--ink); font-weight: 500; }
+  .spread .pull {
+    font-family: var(--serif);
+    font-size: 30px;
+    line-height: 1.2;
+    font-style: italic;
+    color: var(--accent-deep);
+    margin: 24px 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 22px 0;
+    font-weight: 500;
+  }
+  .spread-photo {
+    position: sticky;
+    top: 40px;
+  }
+  .spread-photo .frame {
+    background: #0e0c06;
+    padding: 14px;
+    border: 1px solid var(--ink-2);
+    box-shadow: 0 30px 60px -40px rgba(22, 20, 10, 0.45);
+  }
+  .spread-photo .cap {
+    margin-top: 14px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    display: flex;
+    justify-content: space-between;
+    font-weight: 500;
+  }
+  .spread-photo .cap em {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 14px;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink-3);
+  }
+
+  /* feature list (all 15) — 3 col with serifed nums */
+  .dossier {
+    padding: 64px 0 56px;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 48px;
+  }
+  @media (max-width: 900px) { .dossier { grid-template-columns: 1fr; } }
+  .dossier-head {
+    font-family: var(--serif);
+    font-size: 38px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    font-weight: 500;
+    margin: 0;
+    font-variation-settings: "SOFT" 50, "WONK" 1, "opsz" 144;
+  }
+  .dossier-head i { font-style: italic; color: var(--accent); }
+  .dossier-head small {
+    display: block;
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    margin-top: 16px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+  }
+  .dossier-list {
+    columns: 2;
+    column-gap: 40px;
+    column-rule: 1px solid var(--rule);
+  }
+  @media (max-width: 900px) { .dossier-list { columns: 1; } }
+  .dossier-item {
+    break-inside: avoid;
+    padding: 16px 0 18px;
+    border-bottom: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 12px;
+  }
+  .dossier-item:first-child, .dossier-list > .dossier-item:nth-child(1) { padding-top: 0; }
+  .dossier-num {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 20px;
+    color: var(--accent);
+    font-weight: 500;
+    line-height: 1.4;
+  }
+  .dossier-body .tit {
+    font-family: var(--serif);
+    font-size: 21px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-bottom: 4px;
+    font-variation-settings: "opsz" 36;
+  }
+  .dossier-body .tit .new {
+    font-family: var(--sans);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--red);
+    vertical-align: 3px;
+    margin-left: 6px;
+    font-weight: 700;
+  }
+  .dossier-body p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--ink-3);
+    line-height: 1.5;
+  }
+  .dossier-body p code, .dossier-body p kbd {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--paper-2);
+    padding: 1px 5px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    color: var(--ink-2);
+  }
+
+  /* mini gallery: three screenshots in a row */
+  .gallery {
+    padding: 48px 0 64px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    border-bottom: 1px solid var(--rule);
+  }
+  @media (max-width: 900px) { .gallery { grid-template-columns: 1fr; } }
+  .gal-fig {
+    margin: 0;
+  }
+  .gal-frame {
+    background: #0e0c06;
+    padding: 10px;
+    border: 1px solid var(--ink-2);
+    aspect-ratio: 1280/840;
+    overflow: hidden;
+  }
+  .gal-frame img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  .gal-cap {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    font-weight: 500;
+  }
+  .gal-cap em {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 15px;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ink-2);
+  }
+
+  /* principles: as mini essay columns */
+  .principles-sec {
+    padding: 64px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .princ-head {
+    font-family: var(--serif);
+    font-size: clamp(36px, 5vw, 64px);
+    line-height: 0.98;
+    letter-spacing: -0.025em;
+    font-weight: 500;
+    font-variation-settings: "SOFT" 50, "WONK" 1, "opsz" 144;
+    margin: 0 0 40px;
+    max-width: 24ch;
+  }
+  .princ-head i { font-style: italic; color: var(--accent); }
+  .princ-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 32px 48px;
+  }
+  @media (max-width: 900px) { .princ-grid { grid-template-columns: 1fr; } }
+  .princ {
+    padding-top: 16px;
+    border-top: 2px solid var(--ink);
+  }
+  .princ-num {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 18px;
+    color: var(--accent);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .princ-tit {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-bottom: 8px;
+  }
+  .princ-body {
+    font-size: 14px;
+    color: var(--ink-3);
+    line-height: 1.55;
+  }
+
+  /* download */
+  .download-sec {
+    padding: 72px 0;
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 64px;
+    border-bottom: 1px solid var(--rule);
+  }
+  @media (max-width: 900px) { .download-sec { grid-template-columns: 1fr; } }
+  .dl-head {
+    font-family: var(--serif);
+    font-size: clamp(42px, 5vw, 72px);
+    line-height: 0.98;
+    letter-spacing: -0.025em;
+    font-weight: 500;
+    font-variation-settings: "SOFT" 50, "WONK" 1, "opsz" 144;
+    margin: 0 0 16px;
+  }
+  .dl-head i { font-style: italic; color: var(--accent); }
+  .dl-sub {
+    font-family: var(--serif);
+    font-size: 18px;
+    color: var(--ink-3);
+    line-height: 1.5;
+    font-style: italic;
+    max-width: 36ch;
+  }
+  .dl-platforms { display: flex; flex-direction: column; }
+  .plat {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 24px;
+    align-items: center;
+    padding: 22px 0;
+    border-top: 1px solid var(--rule);
+    text-decoration: none;
+    color: var(--ink);
+    transition: padding .18s, color .18s;
+  }
+  .plat:last-child { border-bottom: 1px solid var(--rule); }
+  .plat:hover { color: var(--accent-deep); padding-left: 12px; }
+  .plat .num {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 32px;
+    color: var(--accent);
+    font-weight: 500;
+    line-height: 1;
+    min-width: 36px;
+  }
+  .plat .name {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .plat .meta {
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    margin-top: 6px;
+    font-weight: 500;
+  }
+  .plat .go {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 20px;
+    color: var(--accent-deep);
+  }
+
+  .foot {
+    padding: 36px 0;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 24px;
+    align-items: baseline;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    font-weight: 500;
+  }
+  .foot em {
+    font-family: var(--serif);
+    font-style: italic;
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 16px;
+    color: var(--ink-3);
+  }
+  .foot a { color: var(--ink-3); text-decoration: none; margin-left: 18px; }
+  .foot a:hover { color: var(--accent); }
+
+  /* ═══════════════════════════════════════════════════════════
+     Mobile polish — iPhone Chrome / Safari first. The big-grid
+     collapses happen at 900–1000px already; this block is for the
+     phone range where spacing, type scale, and stacked elements
+     need their own tuning. */
+  @media (max-width: 640px) {
+    /* Page gutters: honor iPhone's safe-area inset on both sides so
+       nothing disappears under the notch in landscape. */
+    .wrap {
+      padding-left: max(20px, env(safe-area-inset-left));
+      padding-right: max(20px, env(safe-area-inset-right));
     }
-  </style>
-</noscript>
 
-<script>
-  (function () {
-    var valid = { light: 1, dark: 1 };
-    var mode;
-    try { var t = localStorage.getItem('yarrow.site.theme'); if (t && valid[t]) mode = t; } catch (_) {}
-    if (!mode) mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', mode);
-  })();
-</script>
+    /* Masthead: the flanking Vol/Free-&-open-source labels squeeze
+       out the title on 360-wide screens. Stack vertically, centre,
+       hide the flanking labels (they're decorative). */
+    .mast {
+      grid-template-columns: 1fr;
+      text-align: center;
+      padding: 18px 0 14px;
+      gap: 6px;
+    }
+    .mast-left, .mast-right { display: none; }
+    .mast-title { font-size: 38px; }
+
+    /* Sub-mast: two lines — issue tag on top, horizontally-scrolling
+       nav below. Scrollbar hidden on iOS because it's already
+       momentum-scrolling through the overflow. */
+    .sub-mast {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 0 10px;
+    }
+    .sub-mast nav {
+      width: 100%;
+      overflow-x: auto;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .sub-mast nav::-webkit-scrollbar { display: none; }
+    .sub-mast nav a { margin-left: 0; margin-right: 18px; }
+
+    /* Cover: tighter pad, bigger breathing room between the prose and
+       the photo. Drop the huge clamp floor slightly so a 360-wide
+       phone doesn't feel shouted at. */
+    .cover { padding: 28px 0 40px; gap: 28px; }
+    h1.cover-head { font-size: clamp(40px, 11vw, 64px); }
+    .cover-left { gap: 20px; }
+    .cover-left .byline em { font-size: 16px; }
+    .cta-row .btn { flex: 1; justify-content: center; }
+
+    /* Strap / section-head: tighten the 3-col headers that otherwise
+       crush at phone widths. */
+    .strap { padding: 28px 0; gap: 24px; }
+    .strap h2 { font-size: 32px; }
+    .strap-lede { font-size: 17px; }
+    .strap-lede .drop { font-size: 44px; padding: 4px 6px 0 0; }
+    .strap-facts { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); padding-top: 16px; }
+    .strap-facts .row { grid-template-columns: 80px 1fr; }
+
+    .section-head {
+      grid-template-columns: auto 1fr;
+      padding: 36px 0 18px;
+      gap: 16px;
+    }
+    .section-head .sec-meta { grid-column: 1 / -1; font-size: 10px; }
+
+    /* Spread: the pull quote was 30px; brings it down to match the
+       reduced headline so the spread doesn't double-shout. */
+    .spread { padding: 36px 0 48px; gap: 28px; }
+    .spread .headline { font-size: clamp(30px, 8vw, 42px); margin: 6px 0 16px; }
+    .spread p.body { font-size: 16.5px; }
+    .spread .pull { font-size: 22px; padding: 16px 0; margin: 18px 0; }
+    .spread-photo { position: static; }
+
+    /* Dossier: the 2-col layout already becomes 1-col at 900px.
+       Tighten item padding + num column at phone size. */
+    .dossier { padding: 36px 0 32px; gap: 28px; }
+    .dossier-head { font-size: 30px; }
+    .dossier-item { grid-template-columns: 26px 1fr; gap: 10px; padding: 12px 0 14px; }
+    .dossier-body .tit { font-size: 18px; }
+
+    /* Gallery: photos stack at 900px; here we just reduce the
+       between-photo gap so they don't feel spaced out. */
+    .gallery { padding: 28px 0 40px; gap: 20px; }
+    .gal-cap { flex-wrap: wrap; gap: 4px; }
+
+    /* Principles: 1-col layout from 900px down — tighten the num bar. */
+    .principles-sec { padding: 40px 0; }
+    .princ-head { font-size: clamp(30px, 9vw, 44px); margin: 0 0 28px; }
+    .princ-grid { gap: 24px; }
+    .princ { padding-top: 12px; }
+    .princ-tit { font-size: 19px; }
+
+    /* Download platform tiles: the `auto 1fr auto` grid gets tight;
+       drop the "go →" column so name+meta has full width, keep the
+       tap target big. */
+    .download-sec { padding: 40px 0; gap: 28px; }
+    .dl-head { font-size: clamp(34px, 10vw, 48px); }
+    .dl-sub { font-size: 16px; }
+    .plat { grid-template-columns: auto 1fr; gap: 16px; padding: 18px 0; }
+    .plat .go { display: none; }
+    .plat .num { font-size: 24px; min-width: 28px; }
+    .plat .name { font-size: 24px; }
+    .plat:hover { padding-left: 0; } /* no indent hover on touch */
+
+    /* Footer: stack rows + respect the iPhone home-indicator bar so
+       the last link isn't pushed right against it. */
+    .foot {
+      grid-template-columns: 1fr;
+      gap: 12px;
+      padding: 28px 0 max(28px, env(safe-area-inset-bottom));
+    }
+    .foot > div:last-child {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+    }
+    .foot a { margin-left: 0; }
+  }
+
+  /* Narrower phones (iPhone SE / 360-wide Androids). The masthead
+     title and main cover head need one more nudge down, and a
+     handful of body-copy sizes drop 1 pt so two words fit per line
+     without feeling squeezed. */
+  @media (max-width: 380px) {
+    .mast-title { font-size: 34px; }
+    h1.cover-head { font-size: 38px; }
+    .dl-head { font-size: 30px; }
+    .princ-head { font-size: 28px; }
+    .strap h2 { font-size: 28px; }
+  }
+
+  /* Respect the user's motion preference. Nothing on the page
+     animates aggressively, but the smooth-scroll jump to a section
+     anchor can feel jittery to people who've opted out. */
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  }
+</style>
 </head>
 <body>
 
-<!-- ═══ masthead ═══ -->
-<header class="masthead">
-  <div class="masthead-inner">
-    <a class="wordmark" href="#top">
-      Yarrow
-      <span class="version">v1.1</span>
-    </a>
-    <span></span>
-    <div class="mast-nav">
-      <a href="#gallery">A look</a>
-      <a href="#manifesto">Why</a>
-      <a href="#whats-new">What's new</a>
-      <a href="#features">Features</a>
+<div class="wrap">
+
+  <header class="mast">
+    <div class="mast-left">
+      <div>Vol. 2 · № 0</div>
+      <div>April 2026 · §</div>
+    </div>
+    <div class="mast-title">Yar<i>r</i>ow</div>
+    <div class="mast-right">
+      <div>Free &amp; open source</div>
+      <div>yarrow.software</div>
+    </div>
+  </header>
+
+  <div class="sub-mast">
+    <div><span class="prominent">The 2.0 issue</span> &nbsp;·&nbsp; a living map of your thinking</div>
+    <nav>
+      <a href="#essay">Prospectus</a>
+      <a href="#features">Dossier</a>
+      <a href="#gallery">In situ</a>
       <a href="user-guide.html">User Guide</a>
-      <a href="#faq">FAQ</a>
-      <span class="sep">·</span>
-      <div class="theme-toggle" role="radiogroup" aria-label="Theme">
-        <button type="button" data-theme-value="light" aria-pressed="false" aria-label="Light theme" title="Light">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-        </button>
-        <button type="button" data-theme-value="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-        </button>
-      </div>
-      <a class="btn-mini" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-        Download 1.1
-      </a>
-    </div>
+      <a href="#download">Download</a>
+    </nav>
   </div>
-</header>
 
-<!-- ═══ hero ═══ -->
-<section id="top" class="hero page">
-  <div class="hero-grid">
-    <div class="hero-head">
-      <div class="eyebrow">
-        <span class="dot"></span>
-        <span>Version 1.1 · out now · free &amp; open source</span>
+  <!-- COVER -->
+  <section class="cover">
+    <div class="cover-left">
+      <div class="kicker">Desktop writing · 2.0 is out</div>
+      <h1 class="cover-head">Notes that <i>branch,</i> evolve, and&nbsp;connect.</h1>
+      <div class="byline">
+        <em>A local-first writing tool built around the way thinking actually works.</em>
+        Your notes are plain markdown. Every save is a checkpoint. Every direction you explore stays in an archive, not the trash.
       </div>
-      <h1>Notes that <em>branch</em>, <span class="and">evolve,</span> and connect.</h1>
-      <p class="hero-lede">
-        Most apps treat a document as a single, authoritative version. Yarrow
-        doesn't. Every save is a checkpoint. Every change of mind is a path
-        you can return to. Your thinking, preserved in full.
-      </p>
       <div class="cta-row">
-        <a class="btn primary" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download 1.1
+        <a href="https://github.com/neuralpunk/yarrow/releases/latest" class="btn btn-primary" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Download 2.0
         </a>
-        <a class="btn ghost" href="#gallery">
-          See it in full <span class="arrow">→</span>
-        </a>
-        <a class="btn quiet" href="#manifesto">
-          Why this exists
-        </a>
-      </div>
-      <div class="hero-sub">
-        <span>macOS</span><span class="bullet">·</span>
-        <span>Linux</span><span class="bullet">·</span>
-        <span>Windows</span><span class="bullet">·</span>
-        <span>~15 MB</span><span class="bullet">·</span>
-        <span>No account</span>
+        <a href="#gallery" class="btn btn-ghost">See it in motion →</a>
       </div>
     </div>
-
-    <!-- Hero art: a living Connections Map, built from the same design
-         tokens as the in-app graph — gold-ringed main note, plum-filled
-         active note, paper-chip neighbors, quiet plum edges, one dashed
-         edge standing in for an open-question link. -->
-    <figure class="hero-art" aria-label="A stylised version of the Yarrow Connections Map, showing notes linked by meaning.">
-      <svg viewBox="0 0 420 520" xmlns="http://www.w3.org/2000/svg" role="img">
-        <defs>
-          <filter id="soft-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="6" />
-          </filter>
-        </defs>
-
-        <!-- Edges (drawn first, behind nodes). x1/y1/x2/y2 start at the
-             static positions so the SVG renders correctly if JS never runs;
-             the inline force-simulation below rewires them each frame. -->
-        <g class="edges">
-          <line class="edge e1" data-from="main"   data-to="active"
-                x1="100" y1="130" x2="210" y2="268" />
-          <line class="edge e2" data-from="active" data-to="n1"
-                x1="210" y1="268" x2="328" y2="118" />
-          <line class="edge e3" data-from="active" data-to="n2"
-                x1="210" y1="268" x2="82"  y2="380" />
-          <line class="edge e4" data-from="active" data-to="n3"
-                x1="210" y1="268" x2="340" y2="380" />
-          <line class="edge e5 dashed" data-from="active" data-to="n4"
-                x1="210" y1="268" x2="215" y2="458" />
-          <line class="edge aux a1" data-from="main" data-to="n1"
-                x1="100" y1="130" x2="328" y2="118" />
-          <line class="edge aux a2" data-from="n1"   data-to="n3"
-                x1="328" y1="118" x2="340" y2="380" />
-          <line class="edge aux a3" data-from="n2"   data-to="n3"
-                x1="82"  y1="380" x2="340" y2="380" />
-        </g>
-
-        <!-- Nodes. Each <g> is driven by its `transform="translate(x,y)"`
-             so child circles and labels share one coordinate origin; the
-             JS simulation mutates that attribute each tick, which lets
-             labels and the star ride along with the node when you drag. -->
-        <g class="nodes">
-          <!-- MAIN note: paper fill, gold ring, ★ above. -->
-          <g class="node main" data-id="main" data-r="36"
-             transform="translate(100, 130)">
-            <text class="mark-star" x="0" y="-44" text-anchor="middle">★</text>
-            <circle class="node-ring" cx="0" cy="0" r="40" />
-            <circle cx="0" cy="0" r="36" fill="var(--s2)" stroke="var(--gold)" stroke-width="3" />
-            <text class="lbl lbl-serif sm" x="0" y="-4" text-anchor="middle">Two weeks</text>
-            <text class="lbl lbl-serif sm" x="0" y="12" text-anchor="middle">in Europe</text>
-          </g>
-
-          <!-- Neighbor: Food -->
-          <g class="node neighbor n1" data-id="n1" data-r="32"
-             transform="translate(328, 118)">
-            <circle cx="0" cy="0" r="32" fill="var(--s2)" stroke="var(--bd2)" stroke-width="1" />
-            <text class="lbl lbl-serif" x="0" y="5" text-anchor="middle">Food</text>
-          </g>
-
-          <!-- Neighbor: If it rains -->
-          <g class="node neighbor n2" data-id="n2" data-r="30"
-             transform="translate(82, 380)">
-            <circle cx="0" cy="0" r="30" fill="var(--s2)" stroke="var(--bd2)" stroke-width="1" />
-            <text class="lbl lbl-serif xs" x="0" y="-3" text-anchor="middle">If it</text>
-            <text class="lbl lbl-serif xs" x="0" y="12" text-anchor="middle">rains</text>
-          </g>
-
-          <!-- Neighbor: Budget -->
-          <g class="node neighbor n3" data-id="n3" data-r="32"
-             transform="translate(340, 380)">
-            <circle cx="0" cy="0" r="32" fill="var(--s2)" stroke="var(--bd2)" stroke-width="1" />
-            <text class="lbl lbl-serif" x="0" y="5" text-anchor="middle">Budget</text>
-          </g>
-
-          <!-- Open-question neighbor (dashed edge to active): Solo trip -->
-          <g class="node neighbor n4" data-id="n4" data-r="26"
-             transform="translate(215, 458)">
-            <circle cx="0" cy="0" r="26" fill="var(--s2)" stroke="var(--bd2)" stroke-width="1" stroke-dasharray="3 3" />
-            <text class="lbl lbl-serif xs" x="0" y="-2" text-anchor="middle">Solo</text>
-            <text class="lbl lbl-serif xs" x="0" y="12" text-anchor="middle">trip?</text>
-          </g>
-
-          <!-- ACTIVE note at center: plum fill, white label, soft glow. -->
-          <g class="node active" data-id="active" data-r="52"
-             transform="translate(210, 268)">
-            <circle class="active-glow" cx="0" cy="0" r="60" fill="var(--yel)" opacity="0.22" filter="url(#soft-glow)" />
-            <circle cx="0" cy="0" r="52" fill="var(--yel)" />
-            <text class="lbl active-lbl" x="0" y="-2" text-anchor="middle">Paris</text>
-            <text class="lbl active-lbl sub" x="0" y="16" text-anchor="middle">four days</text>
-          </g>
-        </g>
-      </svg>
-      <figcaption class="hero-art-caption">
-        <span class="chip"><span class="chip-dot"></span> Map · connections</span>
+    <figure class="cover-plate">
+      <img src="assets/main-reading-dark.png" alt="Yarrow's reading view showing a long-form note titled 'One month in Europe' in the warm dusk dark theme." />
+      <figcaption class="plate-cap">
+        <span>Fig. 1 &nbsp;·&nbsp; Reading view · warm dusk</span>
+        <span class="tag">Photographed 04/26</span>
       </figcaption>
     </figure>
-  </div>
-</section>
+  </section>
 
-<!-- ═══ gallery ═══ -->
-<section id="gallery" class="section gallery">
-  <div class="page">
-    <div class="section-label">01 · A look</div>
-    <h2 class="section-h reveal">Three windows on the same notebook.</h2>
-    <p class="section-lede reveal">
-      The editor is the trunk. <em>Paths</em> are the alternate takes you
-      don't have to choose between. The <em>Map</em> is the shape your
-      thinking took over time. One workspace, three perspectives.
+  <!-- COLUMN STRAP -->
+  <section class="strap">
+    <h2>Thinking is non-linear. Your notes <i>should be</i> too.</h2>
+    <p class="strap-lede">
+      <span class="drop">M</span>ost note tools treat a document as a single, authoritative version. Yarrow doesn't. Every save is a checkpoint. Every time you want to try a different take on an idea, you open a new <em>direction</em>, and the original stays exactly where it was. Under the hood it is git — at the surface, there is no git anywhere.
     </p>
+    <dl class="strap-facts">
+      <div class="row"><dt>Cost</dt><dd>Free. MIT.</dd></div>
+      <div class="row"><dt>Platforms</dt><dd>macOS · Linux · Windows</dd></div>
+      <div class="row"><dt>Binary</dt><dd>~15 MB · no bundled Chromium</dd></div>
+      <div class="row"><dt>Data</dt><dd>Plain <code style="font-family:var(--mono);font-size:12px;background:var(--paper-2);padding:1px 4px;border:1px solid var(--rule);">.md</code> files on your disk</dd></div>
+      <div class="row"><dt>Privacy</dt><dd>No account. No telemetry.</dd></div>
+    </dl>
+  </section>
 
-    <div class="gallery-tabs" role="tablist" aria-label="Yarrow views">
-      <button type="button" class="tab" data-tab="editor" role="tab" aria-selected="true">
-        <span class="tab-num">I.</span>
-        <span class="tab-label">Editor</span>
-      </button>
-      <button type="button" class="tab" data-tab="paths" role="tab" aria-selected="false">
-        <span class="tab-num">II.</span>
-        <span class="tab-label">Paths</span>
-      </button>
-      <button type="button" class="tab" data-tab="map" role="tab" aria-selected="false">
-        <span class="tab-num">III.</span>
-        <span class="tab-label">Map</span>
-      </button>
-    </div>
-
-    <div class="gallery-frame">
-      <!-- Editor panel -->
-      <figure class="gallery-panel shown" data-panel="editor">
-        <div class="gallery-shot">
-          <img src="main-light.png" alt="The editor, light theme — serif body, path ribbon, tool-rail." class="shot-light shown" />
-          <img src="main-dark.png"  alt="The editor, dark theme — serif body, path ribbon, tool-rail." class="shot-dark hidden-shot" />
-        </div>
-        <figcaption>
-          <div class="gallery-meta">
-            <span class="chip"><span class="chip-dot"></span> Editor</span>
-            <span>Serif body on Source Serif 4 · path ribbon across the top · a slim 52 px tool-rail to the right</span>
-          </div>
-          <div class="gallery-callouts">
-            <div class="cal">
-              <div class="cal-num">01</div>
-              <h4>Pinned &amp; Your Notes</h4>
-              <p>Anchor the handful that matter. A gold ★ marks the workspace's starting note. The rest scroll below — no folders, no hierarchy to invent.</p>
-            </div>
-            <div class="cal">
-              <div class="cal-num">02</div>
-              <h4>The path ribbon</h4>
-              <p>Current path, alternate paths, a back-to-main pill when you've strayed. Branch this, Connections Map, Paths — three actions inline, no menu dive.</p>
-            </div>
-            <div class="cal">
-              <div class="cal-num">03</div>
-              <h4>Serif editor</h4>
-              <p>Markdown in, prose out. Raw syntax hides on unfocused lines. Rich-text that's still plain text on disk.</p>
-            </div>
-            <div class="cal">
-              <div class="cal-num">04</div>
-              <h4>Tool-rail</h4>
-              <p>Writing ↔ Reading · Map · Links · History · Paths · Scratchpad · Settings. The sidebar became a thin column of verbs.</p>
-            </div>
-          </div>
-        </figcaption>
-      </figure>
-
-      <!-- Paths panel -->
-      <figure class="gallery-panel hidden-panel" data-panel="paths">
-        <div class="gallery-shot">
-          <img src="paths-light.png" alt="The Paths graph, light theme — main trunk with branching side paths and a ghost era." class="shot-light shown" />
-          <img src="paths-dark.png"  alt="The Paths graph, dark theme — main trunk with branching side paths and a ghost era." class="shot-dark hidden-shot" />
-        </div>
-        <figcaption>
-          <div class="gallery-meta">
-            <span class="chip"><span class="chip-dot"></span> Paths</span>
-            <span>Branch off main · promote a side path to main · past eras kept as ghosts</span>
-          </div>
-          <div class="gallery-callouts">
-            <div class="cal">
-              <div class="cal-num">01</div>
-              <h4>One main, many branches</h4>
-              <p>Every path flows from a single trunk. Branches sit as direct siblings — one level deep, always legible, never nested into confusion.</p>
-            </div>
-            <div class="cal">
-              <div class="cal-num">02</div>
-              <h4>Promote a path to main</h4>
-              <p>The trip was for two; now it's solo. Promote the Solo path to main — the old main and its siblings move to the ghost zone, preserved, not destroyed.</p>
-            </div>
-            <div class="cal">
-              <div class="cal-num">03</div>
-              <h4>Ghost eras keep their shape</h4>
-              <p>Historical paths render faded to the left of the live main, connected by dashed lines. Bring any one back and its original siblings come with it.</p>
-            </div>
-            <div class="cal">
-              <div class="cal-num">04</div>
-              <h4>Conditions, first-class</h4>
-              <p>A path's <em>if…</em> question is its name. Click to edit. The member list, the main note, the whole shape of a side-thought — on one panel.</p>
-            </div>
-          </div>
-        </figcaption>
-      </figure>
-
-      <!-- Map panel -->
-      <figure class="gallery-panel hidden-panel" data-panel="map">
-        <div class="gallery-shot">
-          <img src="map-light.png" alt="The Connections Map, light theme — a force-directed graph with a gold-ringed main note." class="shot-light shown" />
-          <img src="map-dark.png"  alt="The Connections Map, dark theme — a force-directed graph with a gold-ringed main note." class="shot-dark hidden-shot" />
-        </div>
-        <figcaption>
-          <div class="gallery-meta">
-            <span class="chip"><span class="chip-dot"></span> Map</span>
-            <span>Force-directed graph · main note in gold · active note in plum · quiet edges</span>
-          </div>
-          <div class="gallery-callouts">
-            <div class="cal">
-              <div class="cal-num">01</div>
-              <h4>Home is always legible</h4>
-              <p>The workspace's starting note wears a gold ring and a ★. From anywhere in the map, you can see where home is — and get back in one click.</p>
-            </div>
-            <div class="cal">
-              <div class="cal-num">02</div>
-              <h4>Calm by default</h4>
-              <p>One quiet plum stroke per edge, no directional arrows, no ring guides. Open-question links stay dashed — the single visual exception.</p>
-            </div>
-            <div class="cal">
-              <div class="cal-num">03</div>
-              <h4>Filterable to a path</h4>
-              <p>Open the map from a path's detail panel and the graph filters to that path's members. Perfect for "what does this path actually hold together?"</p>
-            </div>
-            <div class="cal">
-              <div class="cal-num">04</div>
-              <h4>Legend, quietly</h4>
-              <p>Gold ring · main. Plum fill · you're here. Paper chip · connected. A legend that teaches the map without shouting at you.</p>
-            </div>
-          </div>
-        </figcaption>
-      </figure>
-    </div>
+  <!-- SECTION HEAD: the feature -->
+  <div class="section-head" id="essay">
+    <div class="sec-num">§1</div>
+    <div class="sec-title">The feature</div>
+    <div class="sec-meta">10-minute read</div>
   </div>
-</section>
 
-<!-- ═══ manifesto (compact) ═══ -->
-<section id="manifesto" class="section section-compact page">
-  <div class="section-label">02 · Why Yarrow exists</div>
-  <div class="manifesto">
-    <aside class="manifesto-aside">
-      <span class="mark">A note from the author</span>
-      Notes used to be static. Rigid. Something you preserved, not
-      something you worked with. Yarrow is a notebook that thinks
-      alongside you.
-    </aside>
-    <div class="manifesto-body">
-      <p>
-        Thinking is not a straight line. You circle a problem, try a
-        version, cross it out, come back to the first draft three days
-        later and realise you were right the first time.
+  <!-- SPREAD -->
+  <section class="spread">
+    <div>
+      <div class="kicker" style="color: var(--ink-3); margin-bottom: 8px;">
+        <span style="width: 28px; height: 1px; background: var(--ink-3); display: inline-block; margin-right: 8px;"></span>
+        The case against the single draft
+      </div>
+      <h3 class="headline">The draft you abandoned is the draft you <i>might have wanted.</i></h3>
+      <p class="body">
+        Most note tools treat a document as one authoritative version. Every revision overwrites the last. The you-from-a-month-ago — her drafts, her alternate phrasing, her tentative outline — is lost to the undo buffer, and the undo buffer has long since been cleared.
       </p>
-      <p>
-        Yet every note app treats writing as a <em>single, authoritative
-        version</em>. The draft is gone. The angle you didn't take is gone.
-        The shape of how you got there: gone.
+      <p class="body">
+        Yarrow proceeds differently. When you want to try a different take, you open a new <em>direction</em>. Your original sits exactly where it was. You can switch between them, compare prose-level, or fold one into the other. <em>Nothing is ever lost.</em>
       </p>
-      <p>
-        Yarrow is the opposite promise. <strong>Nothing you write is ever
-        lost.</strong> Every save is a checkpoint. Every change of mind is a
-        path you can return to.
+      <div class="pull">Under the hood it is git. At the surface, there is no git anywhere.</div>
+      <p class="body">
+        No commits, no branches, no HEAD. Just your writing, paths you can fork and return to, connections you can draw between ideas, and a quiet sense that the work you did is still there.
       </p>
-
-      <div class="pullquote">
-        Notes are no longer static. They work the way we think.
-      </div>
-      <div class="pullquote-attrib">— On the 1.0 release</div>
     </div>
+    <div class="spread-photo">
+      <div class="frame">
+        <img src="assets/paths-light.png" alt="The Paths view in Yarrow — a trunk labeled main with four branched directions: if-it-rains, budget-backpacker, cheap-last-minute, and solo-trip." />
+      </div>
+      <div class="cap">
+        <span>Fig. 2 &nbsp;· &nbsp; Paths</span>
+        <em>a trunk of main, four branches, each safe to return to</em>
+      </div>
+    </div>
+  </section>
+
+  <!-- DOSSIER: all features as a 15-entry list -->
+  <div class="section-head" id="features">
+    <div class="sec-num">§2</div>
+    <div class="sec-title">The dossier</div>
+    <div class="sec-meta">All 15 features</div>
   </div>
-</section>
 
-<!-- ═══ what's new in 1.1 ═══ -->
-<section id="whats-new" class="section whatsnew">
-  <div class="page">
-    <div class="whatsnew-badge">
-      <span class="dot"></span>
-      <span>New in 1.1</span>
+  <section class="dossier">
+    <div>
+      <h2 class="dossier-head">Everything <i>new</i> — and the mechanics underneath.</h2>
+      <small>Seven additions in 2.0 · eight mechanics that have been there since the start</small>
     </div>
-    <h2 class="section-h reveal">A richer page — and Paths that <em>help you decide.</em></h2>
-    <p class="section-lede reveal">
-      1.1 deepens the writing surface (real GitHub-style reading mode, KaTeX
-      math, code-block colors, smart paste, spell-check) and turns the Paths
-      system into a proper decision-support tool: every other path now tells
-      you, at a glance, what you'd gain and what you'd leave behind by taking
-      it. Plus an in-app workspace wizard that imports Obsidian vaults.
-    </p>
-
-    <div class="whatsnew-grid reveal-children">
-      <article class="wn-card wide">
-        <div class="wn-num">01</div>
-        <h3>GitHub-style <em>reading mode.</em></h3>
-        <p>
-          The reading toggle now switches the editor for a fully rendered HTML
-          view via pulldown-cmark — themed code blocks with darker backgrounds,
-          bordered tables, blockquote bars, task lists, KaTeX math. Wikilinks
-          stay clickable and open in-app. Flip back to writing when you want
-          to edit.
-        </p>
-      </article>
-
-      <article class="wn-card wide">
-        <div class="wn-num">02</div>
-        <h3>Paths, <em>as a decision tool.</em></h3>
-        <p>
-          Every path card on the Forking Road graph now shows a
-          <code>+N / −M</code> badge vs. your current path. Click in for the
-          three-state diff: what you'd gain, what's edited differently, what
-          you'd leave behind — optionally clustered by tag. Hover any card
-          and the path's notes light up in the sidebar, the rest dim.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">03</div>
-        <h3>Decision matrix.</h3>
-        <p>
-          A spreadsheet for path choices: rows are notes, columns are paths,
-          cells are ✓/✗. Star a row as must-have; column headers grow a
-          <code>★ N/M</code> score that turns red if any starred row is
-          missing. The "if I solo Europe, I lose Rome" answer in one glance.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">04</div>
-        <h3>Drag-to-add-to-path.</h3>
-        <p>
-          Drag any note from the sidebar onto a path card on the graph (or
-          onto an open path's "In this path" section) to add it. Cards
-          highlight as drop targets. No menu dive.
-        </p>
-      </article>
-
-      <article class="wn-card wide">
-        <div class="wn-num">05</div>
-        <h3>Workspace wizard <em>+ Obsidian import.</em></h3>
-        <p>
-          Creating a workspace is no longer a bare folder picker. A two-step
-          in-app modal asks what you're starting from (blank notebook or an
-          Obsidian vault), then name / location / mode / starting note — with
-          a live <em>"Will create:"</em> path preview. The Obsidian importer
-          preserves <code>[[wikilinks]]</code>, <code>#tags</code>, and
-          frontmatter; skips <code>.obsidian/</code>; lands as one checkpoint
-          you can roll back.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">06</div>
-        <h3>Inline math (KaTeX).</h3>
-        <p>
-          <code>$x^2$</code> renders inline, <code>$$\int_0^\infty…$$</code>
-          renders centered. Click into the delimiters to edit the LaTeX
-          source; click out to render. Skipped inside code fences.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">07</div>
-        <h3>Code-block syntax highlighting.</h3>
-        <p>
-          Fenced <code>```python</code> (and every other language) gets
-          keyword/string/comment colouring while editing, plus themed
-          <code>&lt;pre&gt;</code> styling in reading mode.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">08</div>
-        <h3>Smart paste.</h3>
-        <p>
-          Paste a URL → it becomes <code>[&lt;page title&gt;](url)</code> after
-          a background fetch. With a selection, the selection becomes the link
-          label. Tables paste cleanly; nothing else changes.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">09</div>
-        <h3>Spell-check, <em>committed.</em></h3>
-        <p>
-          Misspellings underline in wavy red outside code, wikilinks, and URLs.
-          Right-click for suggestions or "Add to dictionary." Custom words
-          live in <code>.yarrow/dictionary.txt</code> — committed, so the team
-          shares vocabulary.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">10</div>
-        <h3>Find &amp; replace, undoable.</h3>
-        <p>
-          <code>⌘⇧F</code> opens a workspace-wide modal with case-insensitive
-          matching, scope (workspace / current path), and live previews. The
-          whole change is one checkpoint — undo from History on any
-          affected note.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">11</div>
-        <h3>Trash, with undelete.</h3>
-        <p>
-          Deleting a note now stashes a copy under <code>.yarrow/trash/</code>.
-          The new Trash modal lists removed notes with <em>restore</em> and
-          <em>permanent purge</em> actions. No more "I meant to delete the
-          other one."
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">12</div>
-        <h3>Auto-rename wikilinks.</h3>
-        <p>
-          Renaming a note pre-flights how many other notes link to it; if any
-          do, asks: <em>Rename only this note</em> or <em>Rename and update
-          wikilinks.</em> Handles <code>[[Title|alias]]</code> and
-          <code>[[Title#section]]</code> too.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">13</div>
-        <h3>Print / save as PDF.</h3>
-        <p>
-          <code>⌘P</code> renders the active note via pulldown-cmark with
-          print-friendly styling and opens your OS print dialog. "Save as
-          PDF" works everywhere a print dialog does.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">14</div>
-        <h3>Wikilink hover preview <em>everywhere.</em></h3>
-        <p>
-          The popover that's been in writing mode now appears in reading mode
-          too — same excerpt, same path-membership chips, same
-          <em>"Start a path here"</em> action. Cache is shared across modes.
-        </p>
-      </article>
-
-      <article class="wn-card">
-        <div class="wn-num">15</div>
-        <h3>Multiple windows.</h3>
-        <p>
-          <em>Open new window</em> from the palette spawns a second window
-          onto the same workspace. Window position and size persist across
-          launches via <code>tauri-plugin-window-state</code>.
-        </p>
-      </article>
-
-    </div>
-
-    <div class="whatsnew-extras">
-      <span>+ Path comparison view (palette: Compare two paths)</span>
-      <span>+ Three-state diff in the path detail (added · changed · removed)</span>
-      <span>+ Group diff lists by tag</span>
-      <span>+ Hover-to-highlight path members in the note list</span>
-      <span>+ Default UI font swapped to Merriweather</span>
-      <span>+ Roomier window resize edges (no more pixel-hunting)</span>
-      <span>+ In-app modals replace native browser confirm/alert</span>
-      <span><a href="user-guide.html">New User Guide →</a></span>
-      <span><a href="https://github.com/neuralpunk/yarrow/blob/main/CHANGELOG.md" rel="noopener">Full changelog →</a></span>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ mental model ═══ -->
-<section class="section page">
-  <div class="section-label">03 · The mental model</div>
-  <h2 class="section-h reveal">Three ideas, and the rest follows.</h2>
-  <p class="section-lede">
-    Yarrow's whole vocabulary fits on one line. Once you have these three,
-    the rest of the app is just a place to do them.
-  </p>
-  <div class="mental-grid reveal-children">
-    <div class="mental-col">
-      <div class="n">I.</div>
-      <h3>Notes</h3>
-      <p>Plain markdown files. One per idea. Open, write, close. Yarrow saves silently while you type — there is no save button to miss.</p>
-      <p class="small">Every save is a checkpoint you can scrub back to.</p>
-    </div>
-    <div class="mental-col">
-      <div class="n">II.</div>
-      <h3>Paths</h3>
-      <p>Want to try a different take on a note — or on the whole workspace? Open a new direction. The old version stays safe.</p>
-      <p class="small">Switch, compare prose-level, or bring two paths back together.</p>
-    </div>
-    <div class="mental-col">
-      <div class="n">III.</div>
-      <h3>Connections</h3>
-      <p>Link notes by meaning: <em>supports</em>, <em>challenges</em>, <em>came from</em>, <em>open question</em>. Reverse links are added automatically.</p>
-      <p class="small">The shape of your thinking becomes visible over time.</p>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ features grid ═══ -->
-<section id="features" class="section features page">
-  <div class="section-label">04 · The full feature set</div>
-  <h2 class="section-h reveal">Everything else you get, <em>without asking.</em></h2>
-
-  <div class="feat-grid reveal-children">
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none"><line x1="5.5" y1="7.3" x2="5.5" y2="16.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M 5.5 15.5 C 5.5 11, 11 9.5, 15.7 9.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="5.5" cy="4.5" r="2.5" fill="currentColor"/><circle cx="5.5" cy="19.5" r="2.5" fill="currentColor"/><circle cx="18.5" cy="9.5" r="2.5" fill="currentColor"/></svg></div>
-      <h4>Branching paths</h4>
-      <p>Open a direction to try a different angle. The original stays untouched. Switch back any time.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
-      <h4>Silent auto-save</h4>
-      <p>No save button, no panic. Every pause is a checkpoint — including versions from weeks ago.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12h6"/><path d="M9 8c-2 0-4 2-4 4s2 4 4 4"/><path d="M15 16c2 0 4-2 4-4s-2-4-4-4"/></svg></div>
-      <h4>Typed connections</h4>
-      <p>Link notes by meaning — <em>supports</em>, <em>challenges</em>, <em>came from</em>, <em>open question</em>. Reverse links auto-added.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="5" cy="6" r="2"/><circle cx="20" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><line x1="12" y1="12" x2="5" y2="6"/><line x1="12" y1="12" x2="20" y2="6"/><line x1="12" y1="12" x2="5" y2="18"/></svg></div>
-      <h4>The connections map</h4>
-      <p>Every linked note on a force-directed canvas. Main note gold-ringed; active note plum-filled; edges calm.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/></svg></div>
-      <h4>Daily notes &amp; calendar</h4>
-      <p>One markdown file per day. Month grid with dots on days you wrote. <kbd>⌘T</kbd> jumps to today.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor"/><path d="m5 18 4-4 3 3 4-5 3 3"/></svg></div>
-      <h4>Drop-in attachments</h4>
-      <p>Drag files or paste screenshots. Content-addressed, inline-previewed. No config, no asset plumbing.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon mono-label">⌘K</div>
-      <h4>Command palette</h4>
-      <p><kbd>⌘K</kbd> to do anything. <kbd>⌘O</kbd> to fuzzy-jump. The mouse is optional, not required.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon mono-label">??</div>
-      <h4>Open questions</h4>
-      <p>Write <code>??</code> followed by a question anywhere; it surfaces in a panel. Loose ends, tracked.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v8"/><path d="M8 3h8"/><path d="M10 11h4l-1 3h-2l-1-3z"/><path d="M12 14v7"/></svg></div>
-      <h4>Pinned notes</h4>
-      <p>Anchor the handful that matter at the top of the sidebar. Right-click → <em>Pin to top</em>.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M5 12h14"/><path d="M12 5v14"/></svg></div>
-      <h4>Quick capture</h4>
-      <p><kbd>⌘⇧Space</kbd> pops a small window. Type, hit <kbd>⌘⏎</kbd>, it's timestamped into the scratchpad.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="4" y="6" width="16" height="14" rx="2"/><rect x="8" y="10" width="8" height="2" rx="0.5" fill="currentColor"/><rect x="8" y="14" width="6" height="2" rx="0.5" fill="currentColor"/></svg></div>
-      <h4>Transclusion</h4>
-      <p><code>![[note]]</code>, <code>![[note#heading]]</code>, <code>![[note^block]]</code> — embed content inline, live-resolved.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 3v18"/><path d="M18 3v18"/><path d="M6 8l12 0"/><path d="M6 16l12 0"/></svg></div>
-      <h4>Path diffing</h4>
-      <p>Compare two paths prose-level — added notes, removed notes, line-level change. A story of how a thought diverged.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></div>
-      <h4>Static-site export</h4>
-      <p>Ship your workspace as a self-contained HTML bundle — notes, attachments, connections graph, <em>client-side search.</em></p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon mono-label">.md</div>
-      <h4>Plain markdown, forever</h4>
-      <p>Notes live as <code>.md</code> files in a folder you choose. Open them in any editor. No lock-in, ever.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7v10c0 2 2 3 4 3h8c2 0 4-1 4-3V7"/><path d="M4 7c0-2 2-3 4-3h8c2 0 4 1 4 3"/><path d="M4 7c0 2 2 3 4 3h8c2 0 4-1 4-3"/><path d="M12 10v10"/></svg></div>
-      <h4>Sync anywhere git runs</h4>
-      <p>Point at any git remote — GitHub, Gitea, a bare server. One button. Your tokens never leave your machine.</p>
-    </div>
-    <div class="feat">
-      <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 2h6v4l3 3v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9l3-3V2z"/><path d="M9 14h6"/><path d="M9 18h4"/></svg></div>
-      <h4>Local-first, private</h4>
-      <p>Works fully offline. No account. No telemetry. Yarrow never phones home — we don't know you're using it.</p>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ principles ═══ -->
-<section class="section principles page">
-  <div class="section-label">05 · Principles</div>
-  <h2 class="section-h reveal">The rules we wrote down, <em>then didn't break.</em></h2>
-  <ol class="principle-list reveal-children">
-    <li>
-      <div class="n">i.</div>
-      <div>
-        <h4>Nothing you write is ever lost.</h4>
-        <p>Every change is a checkpoint. Abandoned paths go into an archive, not the trash. If you wrote it, you can get back to it.</p>
-      </div>
-    </li>
-    <li>
-      <div class="n">ii.</div>
-      <div>
-        <h4>Plain text, forever.</h4>
-        <p>Notes are <code>.md</code> files on disk. Open them in any editor. Git is invisible infrastructure — not a UI you have to learn.</p>
-      </div>
-    </li>
-    <li>
-      <div class="n">iii.</div>
-      <div>
-        <h4>Local-first, by default.</h4>
-        <p>Yarrow works fully offline. Sync to a remote you own, on your schedule — or don't sync at all. Your notes stay yours.</p>
-      </div>
-    </li>
-    <li>
-      <div class="n">iv.</div>
-      <div>
-        <h4>The vocabulary is human.</h4>
-        <p>No commits, branches, HEADs, or merges. Just paths, checkpoints, directions, and connections. Words you'd use at dinner.</p>
-      </div>
-    </li>
-    <li>
-      <div class="n">v.</div>
-      <div>
-        <h4>Complexity lives in the backend.</h4>
-        <p>Yarrow is a Rust binary under ~15 MB. No bundled Chromium. Cold start in under a second on any machine from the last five years.</p>
-      </div>
-    </li>
-    <li>
-      <div class="n">vi.</div>
-      <div>
-        <h4>No account. No telemetry. No ads.</h4>
-        <p>Yarrow never phones home. We don't even know you're using it. That's the whole deal — and we don't intend to change it.</p>
-      </div>
-    </li>
-  </ol>
-</section>
-
-<!-- ═══ FAQ ═══ -->
-<section id="faq" class="section page">
-  <div class="section-label">06 · FAQ</div>
-  <h2 class="section-h reveal">The things <em>people ask first.</em></h2>
-
-  <div class="faq-list reveal-children">
-    <details>
-      <summary>Do I need to know git to use Yarrow?</summary>
-      <p>No. You never see git anywhere. The app uses git-the-library as the storage engine for checkpoints and paths, but the UI has no commits, branches, or HEAD — just your writing, paths, and connections. If you've never touched git in your life, Yarrow will feel like a normal note app that happens to remember everything.</p>
-    </details>
-    <details>
-      <summary>Where do my notes live?</summary>
-      <p>On your disk, in a folder you choose, as <code>.md</code> files. You can open them in VS Code, TextEdit, or any editor. You can back them up with any tool you already use. If Yarrow disappeared tomorrow, your notes would still be there, readable forever.</p>
-    </details>
-    <details>
-      <summary>How is Yarrow different from Obsidian?</summary>
-      <p>Obsidian is a rich editor that builds a graph from your links. Yarrow shares that premise, but adds two things Obsidian doesn't: <em>time</em> (every save is a checkpoint you can scrub back to) and <em>alternate paths</em> (try a different take without losing the first). If you want a linked-notes wiki, use Obsidian. If you want a notebook that remembers every draft, use Yarrow.</p>
-    </details>
-    <details>
-      <summary>What happens when I open a new path?</summary>
-      <p>A path is a way of saying "I want to try this differently." Every path branches from main — one trunk, many sibling branches. The old version stays exactly where it was; your main path is never overwritten. When you're done, you can switch back, compare the two, or promote a side path to become the new main.</p>
-    </details>
-    <details>
-      <summary>What are "ghost paths"?</summary>
-      <p>When you promote a side path to main, the old main and its siblings don't disappear — they move to a faded ghost zone to the left of the new main, with their original relationships preserved. Bring any one back to main and its era's peers come with it. Time moves forward; history is kept.</p>
-    </details>
-    <details>
-      <summary>Is there sync? A mobile app? Collaboration?</summary>
-      <p>Sync, yes — point Yarrow at any git remote (GitHub, Gitea, a bare server), hit one button in the toolbar. Mobile and real-time collaboration are not on the 1.0 roadmap. Yarrow is a single-user, local-first desktop app; we'd rather do one thing well than a lot of things adequately.</p>
-    </details>
-    <details>
-      <summary>What does 1.1 mean? Is it stable?</summary>
-      <p>1.0 was where Yarrow stopped being a tech demo. 1.1 deepens the writing surface (real markdown rendering in reading mode, KaTeX, code highlighting) and turns Paths into a decision tool — plus closes a class of cross-note save races we found after 1.0 shipped. Saves are atomic. The cross-note swap bug is fixed for good. Nothing you write will be lost. That's the promise we stake the Yarrow name on.</p>
-    </details>
-    <details>
-      <summary>I'm coming from Obsidian. Can I bring my vault?</summary>
-      <p>Yes. From the new-workspace wizard pick "Import an Obsidian vault" in step 1, or from any open workspace use the command palette (⌘K) → <em>Import an Obsidian vault…</em> and point at the folder. Yarrow walks every <code>.md</code> file, preserves your <code>[[wikilinks]]</code> and <code>#tags</code>, keeps existing frontmatter, and skips <code>.obsidian/</code>. The whole import is one git checkpoint, so if something looks wrong you can roll the lot back from History.</p>
-    </details>
-    <details>
-      <summary>Is it really free?</summary>
-      <p>Yes. Free as in beer, free as in speech. Yarrow is <a href="https://github.com/neuralpunk/yarrow" rel="noopener">open source on GitHub</a> under a permissive license. No paid tier. No usage limits. No "pro" version waiting in the wings.</p>
-    </details>
-    <details>
-      <summary>How do I give feedback or report a bug?</summary>
-      <p>Open an issue on <a href="https://github.com/neuralpunk/yarrow/issues" rel="noopener">the GitHub repo</a>. We read everything. Feature requests that align with the principles above get priority.</p>
-    </details>
-  </div>
-</section>
-
-<!-- ═══ download ═══ -->
-<section id="download" class="section download">
-  <div class="page">
-    <div class="section-label">07 · Download</div>
-    <h2 class="section-h reveal">Yarrow 1.1 — <em>yours, now.</em></h2>
-    <p class="section-lede reveal">
-      Pick your platform. The whole thing is ~15 MB. No account, no installer
-      phoning home, no bundled Chromium.
-    </p>
-
-    <div class="platforms reveal-children">
-      <a class="platform" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
-        <div class="platform-icon">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09ZM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z"/></svg>
+    <div class="dossier-list">
+      <div class="dossier-item">
+        <div class="dossier-num">i.</div>
+        <div class="dossier-body">
+          <div class="tit">Pinned notes <span class="new">new</span></div>
+          <p>Anchor a handful of always-visible notes at the top of the sidebar. Right-click → <em>Pin to top.</em></p>
         </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">ii.</div>
+        <div class="dossier-body">
+          <div class="tit">Quick capture <span class="new">new</span></div>
+          <p><kbd>⌘⇧Space</kbd> pops a small window; <kbd>Ctrl+Enter</kbd> appends it to the scratchpad with a timestamp.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">iii.</div>
+        <div class="dossier-body">
+          <div class="tit">Journal &amp; templates <span class="new">new</span></div>
+          <p>A month-grid calendar with dots on days you wrote; an optional <code>templates/daily.md</code> rendered into each entry.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">iv.</div>
+        <div class="dossier-body">
+          <div class="tit">Transclusion <span class="new">new</span></div>
+          <p><code>![[note]]</code>, <code>![[note#heading]]</code>, or <code>![[note^block]]</code> — embeds another note's content inline.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">v.</div>
+        <div class="dossier-body">
+          <div class="tit">Path diffing <span class="new">new</span></div>
+          <p>Compare any two paths prose-level. Export a path as a portable Markdown bundle — notes + attachments + README.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">vi.</div>
+        <div class="dossier-body">
+          <div class="tit">Rebuilt connections graph <span class="new">new</span></div>
+          <p>Structured radial layout with directional arrows, a legend, a nearby-vs-all filter, expand-to-fullscreen.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">vii.</div>
+        <div class="dossier-body">
+          <div class="tit">History modal <span class="new">new</span></div>
+          <p>Now/Then panes, difference-only toggle, human timeline grouped by <em>Today / Yesterday / Earlier this week.</em></p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">viii.</div>
+        <div class="dossier-body">
+          <div class="tit">Branching paths</div>
+          <p>Open a new <em>direction</em> to try a different take. The original stays untouched. Switch back any time.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">ix.</div>
+        <div class="dossier-body">
+          <div class="tit">Silent auto-save</div>
+          <p>No save button, no panic. Every pause in your typing is a checkpoint you can scrub back to — even weeks ago.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">x.</div>
+        <div class="dossier-body">
+          <div class="tit">Typed connections</div>
+          <p>Link notes by meaning — <em>supports, challenges, came from, open question.</em> Reverse links are automatic.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">xi.</div>
+        <div class="dossier-body">
+          <div class="tit">Daily notes</div>
+          <p>One markdown file per day at <code>notes/daily/</code>. Always on main; never splits.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">xii.</div>
+        <div class="dossier-body">
+          <div class="tit">Command palette</div>
+          <p><kbd>⌘K</kbd> to do anything; <kbd>⌘O</kbd> to fuzzy-jump. The mouse is optional.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">xiii.</div>
+        <div class="dossier-body">
+          <div class="tit">Open questions</div>
+          <p>Write <code>??</code> followed by a question anywhere; it appears in a dedicated panel. Unresolved tensions stay visible.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">xiv.</div>
+        <div class="dossier-body">
+          <div class="tit">Plain markdown, forever</div>
+          <p>Your notes live as <code>.md</code> files in a folder you choose. Open them in any editor.</p>
+        </div>
+      </div>
+      <div class="dossier-item">
+        <div class="dossier-num">xv.</div>
+        <div class="dossier-body">
+          <div class="tit">Sync anywhere git runs</div>
+          <p>Point Yarrow at any git remote — GitHub, Gitea, a bare server. Tokens never leave your machine.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- IN SITU -->
+  <div class="section-head" id="gallery">
+    <div class="sec-num">§3</div>
+    <div class="sec-title">In situ</div>
+    <div class="sec-meta">Three views</div>
+  </div>
+
+  <section class="gallery">
+    <figure class="gal-fig">
+      <div class="gal-frame"><img src="assets/main-dark.png" alt="Writing view, warm dusk theme."/></div>
+      <figcaption class="gal-cap">
+        <span>Fig. 3</span><em>The writing view</em>
+      </figcaption>
+    </figure>
+    <figure class="gal-fig">
+      <div class="gal-frame"><img src="assets/connections-dark.png" alt="Connections graph, warm dusk theme."/></div>
+      <figcaption class="gal-cap">
+        <span>Fig. 4</span><em>The connections graph</em>
+      </figcaption>
+    </figure>
+    <figure class="gal-fig">
+      <div class="gal-frame"><img src="assets/map-light.png" alt="Map view in the light theme."/></div>
+      <figcaption class="gal-cap">
+        <span>Fig. 5</span><em>The map view</em>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- PRINCIPLES -->
+  <section class="principles-sec">
+    <h2 class="princ-head">Six things we <i>will not</i> change.</h2>
+    <div class="princ-grid">
+      <div class="princ">
+        <div class="princ-num">i.</div>
+        <div class="princ-tit">Nothing you write is lost.</div>
+        <div class="princ-body">Every change is a checkpoint. Abandoned paths are an archive, not the trash.</div>
+      </div>
+      <div class="princ">
+        <div class="princ-num">ii.</div>
+        <div class="princ-tit">Plain text, forever.</div>
+        <div class="princ-body">Notes are <code style="font-family:var(--mono);font-size:12px;background:var(--paper-2);padding:1px 4px;border:1px solid var(--rule);">.md</code> files. Git is invisible infrastructure, not a UI.</div>
+      </div>
+      <div class="princ">
+        <div class="princ-num">iii.</div>
+        <div class="princ-tit">Local-first.</div>
+        <div class="princ-body">Yarrow works fully offline. Sync to a remote you own, or don't.</div>
+      </div>
+      <div class="princ">
+        <div class="princ-num">iv.</div>
+        <div class="princ-tit">The vocabulary is human.</div>
+        <div class="princ-body">No commits, branches, HEADs, or merges. Just paths, checkpoints, and directions.</div>
+      </div>
+      <div class="princ">
+        <div class="princ-num">v.</div>
+        <div class="princ-tit">Complexity lives out of sight.</div>
+        <div class="princ-body">The app is a Rust binary under ~15&nbsp;MB. No bundled Chromium.</div>
+      </div>
+      <div class="princ">
+        <div class="princ-num">vi.</div>
+        <div class="princ-tit">No account, no telemetry.</div>
+        <div class="princ-body">Yarrow never phones home. We don't even know you're using it.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DOWNLOAD -->
+  <section class="download-sec" id="download">
+    <div>
+      <h2 class="dl-head">Free to read, free to <i>fork.</i></h2>
+      <p class="dl-sub">Pick your platform — or clone the source and build it yourself. Requires Node 20+ and Rust stable.</p>
+    </div>
+    <div class="dl-platforms">
+      <a class="plat" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
+        <div class="num">i.</div>
         <div>
-          <div class="platform-name">macOS</div>
-          <div class="platform-meta">Universal · Intel + Apple Silicon · .dmg</div>
+          <div class="name">macOS</div>
+          <div class="meta">Universal · .dmg · ~15 MB</div>
         </div>
-        <div class="platform-arrow">→</div>
+        <div class="go">download →</div>
       </a>
-
-      <a class="platform" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
-        <div class="platform-icon">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 2c-1.85 0-3.35 1.5-3.35 3.35v2.43c-.05.45-.43.87-.85 1.15-1 .65-1.8 1.77-2 3-.2 1.22-.8 2.22-1.2 3.3-.4 1.08-.62 2.2 0 3.2l.12.18c.5.7 1.32 1.1 2.22 1.1.88 0 1.7-.4 2.2-1.1l.25-.35c.37-.5.62-.6 1.05-.5l2.25.5c.43-.1.67 0 1.05.5l.25.35c.5.7 1.32 1.1 2.2 1.1.9 0 1.72-.4 2.22-1.1l.12-.18c.62-1 .4-2.12 0-3.2-.4-1.08-1-2.08-1.2-3.3-.2-1.23-1-2.35-2-3-.42-.28-.8-.7-.85-1.15V5.35c0-1.85-1.5-3.35-3.35-3.35Z"/></svg>
-        </div>
+      <a class="plat" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
+        <div class="num">ii.</div>
         <div>
-          <div class="platform-name">Linux</div>
-          <div class="platform-meta">AppImage · .deb · .rpm · x86_64</div>
+          <div class="name">Linux</div>
+          <div class="meta">AppImage · .deb · .rpm</div>
         </div>
-        <div class="platform-arrow">→</div>
+        <div class="go">download →</div>
       </a>
-
-      <a class="platform" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
-        <div class="platform-icon">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 11 4.3v7.2H3V5.5Zm0 13.1v-6.3h8v7.4L3 18.6Zm9-14.4 10-1.5v9.2H12V4.2Zm0 15.8v-8.3h10V21L12 20Z"/></svg>
-        </div>
+      <a class="plat" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
+        <div class="num">iii.</div>
         <div>
-          <div class="platform-name">Windows</div>
-          <div class="platform-meta">.msi installer · portable .exe</div>
+          <div class="name">Windows</div>
+          <div class="meta">.msi · portable .exe</div>
         </div>
-        <div class="platform-arrow">→</div>
+        <div class="go">download →</div>
+      </a>
+      <a class="plat" href="https://github.com/neuralpunk/yarrow" rel="noopener">
+        <div class="num">iv.</div>
+        <div>
+          <div class="name">Source</div>
+          <div class="meta">Clone · build · hack</div>
+        </div>
+        <div class="go">github →</div>
       </a>
     </div>
+  </section>
 
-    <div class="dl-meta">
-      <div class="dl-meta-card">
-        <h4>Requirements</h4>
-        <ul>
-          <li>Any desktop from the last five years</li>
-          <li>Linux: webkit2gtk 4.1 (standard Tauri 2 dep)</li>
-          <li>Windows 10 or newer; macOS 11 or newer</li>
-          <li>No account. No telemetry. No network required.</li>
-        </ul>
-      </div>
-      <div class="dl-meta-card">
-        <h4>Build from source</h4>
-        <p>You'll need Node 20+ and Rust stable.</p>
-        <pre><code>git clone https://github.com/neuralpunk/yarrow.git
-cd yarrow
-npm install
-npm run tauri dev</code></pre>
-        <p><a href="https://github.com/neuralpunk/yarrow#install--from-source" rel="noopener">Full build guide →</a></p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ footer ═══ -->
-<footer class="foot">
-  <div class="page foot-inner">
-    <div class="foot-brand">Yarrow</div>
-    <p class="foot-lede">Local-first, git-backed, plain-text notes for non-linear thinking.</p>
-    <div class="foot-links">
+  <footer class="foot">
+    <div><em>Yarrow</em> &nbsp;—&nbsp; Vol. 2, № 0 &nbsp;·&nbsp; MIT &nbsp;·&nbsp; no telemetry</div>
+    <div>
       <a href="user-guide.html">User Guide</a>
       <a href="https://github.com/neuralpunk/yarrow" rel="noopener">GitHub</a>
-      <a href="https://github.com/neuralpunk/yarrow/releases" rel="noopener">Releases</a>
       <a href="https://github.com/neuralpunk/yarrow/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
       <a href="https://github.com/neuralpunk/yarrow/issues" rel="noopener">Issues</a>
     </div>
-  </div>
-</footer>
+  </footer>
 
-<script>
-  // ── scroll-reveal: drop `.in-view` on .reveal / .reveal-children
-  // when they intersect the viewport. Single observer, one-shot per
-  // element. Falls back to a no-op (CSS `.reveal` defaults are still
-  // visible-after-transition friendly because of the JS-disabled
-  // path below).
-  (function () {
-    if (!('IntersectionObserver' in window) || !document.body) {
-      // Without IO, just reveal everything immediately.
-      document.querySelectorAll('.reveal, .reveal-children').forEach(function (el) {
-        el.classList.add('in-view');
-      });
-      return;
-    }
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
-        if (e.isIntersecting) {
-          e.target.classList.add('in-view');
-          io.unobserve(e.target);
-        }
-      });
-    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.08 });
-    document.querySelectorAll('.reveal, .reveal-children').forEach(function (el) {
-      io.observe(el);
-    });
-  })();
-
-  // ── theme toggle ─────────────────────────────
-  (function () {
-    var buttons = document.querySelectorAll('[data-theme-value]');
-    var meta = document.getElementById('meta-theme-color');
-    var BG = { light: '#F7F5F0', dark: '#1B1D1C' };
-
-    function swapShots(mode) {
-      // Hero + gallery: dual light/dark images live side-by-side; only one is `.shown`.
-      document.querySelectorAll('[data-shot], .shot-light, .shot-dark').forEach(function (img) {
-        var target;
-        if (img.dataset.shot) {
-          target = img.dataset.shot;
-        } else {
-          target = img.classList.contains('shot-light') ? 'light' : 'dark';
-        }
-        if (target === mode) {
-          img.classList.add('shown');
-          img.classList.remove('hidden-shot');
-        } else {
-          img.classList.remove('shown');
-          img.classList.add('hidden-shot');
-        }
-      });
-    }
-
-    function set(mode) {
-      document.documentElement.setAttribute('data-theme', mode);
-      try { localStorage.setItem('yarrow.site.theme', mode); } catch (_) {}
-      if (meta) meta.setAttribute('content', BG[mode] || BG.light);
-      buttons.forEach(function (b) {
-        b.setAttribute('aria-pressed', b.getAttribute('data-theme-value') === mode ? 'true' : 'false');
-      });
-      swapShots(mode);
-    }
-
-    buttons.forEach(function (b) {
-      b.addEventListener('click', function () { set(b.getAttribute('data-theme-value')); });
-    });
-
-    set(document.documentElement.getAttribute('data-theme') || 'light');
-  })();
-
-  // ── gallery tabs ─────────────────────────────
-  (function () {
-    var tabs = document.querySelectorAll('.gallery-tabs .tab');
-    var panels = document.querySelectorAll('.gallery-panel');
-    function activate(name) {
-      tabs.forEach(function (t) {
-        var on = t.getAttribute('data-tab') === name;
-        t.setAttribute('aria-selected', on ? 'true' : 'false');
-        t.classList.toggle('active', on);
-      });
-      panels.forEach(function (p) {
-        var on = p.getAttribute('data-panel') === name;
-        p.classList.toggle('shown', on);
-        p.classList.toggle('hidden-panel', !on);
-      });
-    }
-    tabs.forEach(function (t) {
-      t.addEventListener('click', function () { activate(t.getAttribute('data-tab')); });
-    });
-  })();
-
-  // ── hero Connections Map — live force simulation ──────────────
-  // A tiny spring-and-repulsion sim driving the same <line> + <g> nodes
-  // the static SVG already renders. Left-click a node to drag it; release
-  // to hand it back to the springs. If JS is disabled or errors, the
-  // static SVG above is the fallback — no motion, but the same picture.
-  (function () {
-    var svg = document.querySelector('.hero-art svg');
-    if (!svg) return;
-
-    var prefersReduced = window.matchMedia &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    function parseTranslate(s) {
-      if (!s) return { x: 0, y: 0 };
-      var m = /translate\(\s*(-?\d+(?:\.\d+)?)[\s,]+(-?\d+(?:\.\d+)?)\s*\)/.exec(s);
-      return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 };
-    }
-
-    var nodes = [].slice.call(svg.querySelectorAll('.node')).map(function (el) {
-      var p = parseTranslate(el.getAttribute('transform'));
-      return {
-        el: el,
-        id: el.dataset.id,
-        r: parseFloat(el.dataset.r) || 30,
-        x: p.x, y: p.y,
-        vx: 0, vy: 0,
-        fx: null, fy: null
-      };
-    });
-    var byId = {};
-    nodes.forEach(function (n) { byId[n.id] = n; });
-
-    var edges = [].slice.call(svg.querySelectorAll('.edge'))
-      .map(function (el) {
-        var a = byId[el.dataset.from], b = byId[el.dataset.to];
-        if (!a || !b) return null;
-        var dx = b.x - a.x, dy = b.y - a.y;
-        return { el: el, a: a, b: b, rest: Math.sqrt(dx * dx + dy * dy) };
-      })
-      .filter(Boolean);
-
-    var vb = svg.viewBox.baseVal;
-    var CX = vb.width / 2, CY = vb.height / 2;
-
-    // Forces tuned for a calm, readable hero — not a party.
-    var REPEL = 1400;      // 1/r² pairwise repulsion
-    var SPRING_K = 0.025;  // edges pull toward their initial length
-    var CENTER_K = 0.006;  // gentle tug toward viewport middle
-    var DAMP = 0.86;
-    var BOUND_PAD = 10;
-
-    var running = false;
-
-    function tick() {
-      // 1. pairwise repulsion
-      for (var i = 0; i < nodes.length; i++) {
-        var a = nodes[i];
-        for (var j = i + 1; j < nodes.length; j++) {
-          var b = nodes[j];
-          var dx = a.x - b.x, dy = a.y - b.y;
-          var d2 = dx * dx + dy * dy + 0.01;
-          var d = Math.sqrt(d2);
-          var f = REPEL / d2;
-          dx /= d; dy /= d;
-          a.vx += dx * f; a.vy += dy * f;
-          b.vx -= dx * f; b.vy -= dy * f;
-        }
-      }
-      // 2. edge springs
-      for (var k = 0; k < edges.length; k++) {
-        var e = edges[k];
-        var ex = e.b.x - e.a.x, ey = e.b.y - e.a.y;
-        var ed = Math.sqrt(ex * ex + ey * ey) + 0.01;
-        var ef = SPRING_K * (ed - e.rest);
-        ex /= ed; ey /= ed;
-        e.a.vx += ex * ef; e.a.vy += ey * ef;
-        e.b.vx -= ex * ef; e.b.vy -= ey * ef;
-      }
-      // 3. centering
-      for (var m = 0; m < nodes.length; m++) {
-        var c = nodes[m];
-        c.vx += (CX - c.x) * CENTER_K;
-        c.vy += (CY - c.y) * CENTER_K;
-      }
-      // 4. integrate + bound
-      for (var n = 0; n < nodes.length; n++) {
-        var p = nodes[n];
-        if (p.fx !== null) {
-          p.x = p.fx; p.y = p.fy; p.vx = 0; p.vy = 0;
-        } else {
-          p.vx *= DAMP; p.vy *= DAMP;
-          p.x += p.vx; p.y += p.vy;
-        }
-        var minX = p.r + BOUND_PAD, maxX = vb.width - p.r - BOUND_PAD;
-        var minY = p.r + BOUND_PAD, maxY = vb.height - p.r - BOUND_PAD;
-        if (p.x < minX) { p.x = minX; p.vx *= -0.3; }
-        if (p.x > maxX) { p.x = maxX; p.vx *= -0.3; }
-        if (p.y < minY) { p.y = minY; p.vy *= -0.3; }
-        if (p.y > maxY) { p.y = maxY; p.vy *= -0.3; }
-      }
-      // 5. render
-      for (var q = 0; q < nodes.length; q++) {
-        var w = nodes[q];
-        w.el.setAttribute('transform', 'translate(' + w.x.toFixed(2) + ',' + w.y.toFixed(2) + ')');
-      }
-      for (var r = 0; r < edges.length; r++) {
-        var eg = edges[r];
-        eg.el.setAttribute('x1', eg.a.x.toFixed(2));
-        eg.el.setAttribute('y1', eg.a.y.toFixed(2));
-        eg.el.setAttribute('x2', eg.b.x.toFixed(2));
-        eg.el.setAttribute('y2', eg.b.y.toFixed(2));
-      }
-      if (running) requestAnimationFrame(tick);
-    }
-
-    // ── drag interactions ───
-    function toSVG(e) {
-      var pt = svg.createSVGPoint();
-      pt.x = e.clientX; pt.y = e.clientY;
-      return pt.matrixTransform(svg.getScreenCTM().inverse());
-    }
-    function hit(px, py) {
-      // iterate reverse so the top-rendered node wins the hit
-      for (var i = nodes.length - 1; i >= 0; i--) {
-        var n = nodes[i];
-        var dx = px - n.x, dy = py - n.y;
-        if (dx * dx + dy * dy <= n.r * n.r) return n;
-      }
-      return null;
-    }
-
-    var dragging = null;
-    var dragOff = { x: 0, y: 0 };
-
-    svg.addEventListener('pointerdown', function (e) {
-      if (e.button !== undefined && e.button !== 0) return;
-      var p = toSVG(e);
-      var h = hit(p.x, p.y);
-      if (!h) return;
-      e.preventDefault();
-      dragging = h;
-      dragOff.x = p.x - h.x;
-      dragOff.y = p.y - h.y;
-      h.fx = h.x; h.fy = h.y;
-      try { svg.setPointerCapture(e.pointerId); } catch (_) {}
-      svg.classList.add('grabbing');
-    });
-    svg.addEventListener('pointermove', function (e) {
-      if (!dragging) {
-        var p = toSVG(e);
-        svg.classList.toggle('hover-node', !!hit(p.x, p.y));
-        return;
-      }
-      var q = toSVG(e);
-      dragging.fx = q.x - dragOff.x;
-      dragging.fy = q.y - dragOff.y;
-    });
-    function endDrag(e) {
-      if (!dragging) return;
-      dragging.fx = null; dragging.fy = null;
-      dragging = null;
-      svg.classList.remove('grabbing');
-      if (e && e.pointerId !== undefined) {
-        try { svg.releasePointerCapture(e.pointerId); } catch (_) {}
-      }
-    }
-    svg.addEventListener('pointerup', endDrag);
-    svg.addEventListener('pointercancel', endDrag);
-
-    if (!prefersReduced) {
-      // Let the CSS draw-in reveal (~1.6s) finish before the sim takes
-      // over the positions, so the two don't interrupt each other.
-      setTimeout(function () { running = true; requestAnimationFrame(tick); }, 2000);
-    }
-  })();
-</script>
+</div>
 
 </body>
 </html>

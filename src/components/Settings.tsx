@@ -5,15 +5,34 @@ import { api } from "../lib/tauri";
 import type { NoteSummary, TemplateInfo, WorkspaceConfig } from "../lib/types";
 import MainNotePrompt from "./MainNotePrompt";
 import { useTheme, ThemeMode, THEME_ORDER, THEME_LABELS } from "../lib/theme";
-import { useShowRawMarkdown, useEditorFont, EDITOR_FONTS } from "../lib/editorPrefs";
+import {
+  useShowRawMarkdown,
+  useEditorFont,
+  EDITOR_FONTS,
+  useTypewriterMode,
+  useEditorialReading,
+  usePathTintedCaret,
+} from "../lib/editorPrefs";
+import {
+  EXTRAS,
+  useExtraCodeHighlight,
+  useExtraImagePreview,
+  useExtraMath,
+  useExtraRadialMenu,
+  useExtraSpell,
+  type ExtraKey,
+} from "../lib/extraPrefs";
 import { useUiFont, UI_FONTS, type UiFontId, useUiScale, UI_SCALES, type UiScaleId } from "../lib/uiPrefs";
 import { SunIcon, MoonIcon, AutoThemeIcon } from "../lib/icons";
 import { SK } from "../lib/platform";
+import { APP_VERSION } from "../lib/version";
 import Modal from "./Modal";
+import { useGuidance } from "../lib/guidanceStore";
 
 type Tab =
   | "appearance"
   | "writing"
+  | "guidance"
   | "sync"
   | "templates"
   | "security"
@@ -83,7 +102,7 @@ export default function Settings({
             <div className="text-2xs text-t3 mt-1.5 px-1">esc to close</div>
           </div>
           <nav className="flex-1 pt-2">
-            {(["appearance", "writing", "templates", "sync", "security", "workspace", "shortcuts", "about"] as Tab[]).map((t) => (
+            {(["appearance", "writing", "guidance", "templates", "sync", "security", "workspace", "shortcuts", "about"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => { setTab(t); setQuery(""); }}
@@ -111,6 +130,7 @@ export default function Settings({
               {tab === "writing" && config && (
                 <WritingPane config={config} onConfigChange={onConfigChange} />
               )}
+              {tab === "guidance" && <GuidancePane />}
               {tab === "sync" && config && (
                 <SyncPane
                   config={config}
@@ -143,6 +163,7 @@ export default function Settings({
 const TAB_LABELS: Record<Tab, string> = {
   appearance: "Appearance",
   writing: "Writing",
+  guidance: "Guidance",
   templates: "Templates",
   sync: "Sync",
   security: "Security",
@@ -205,6 +226,9 @@ const SETTINGS_INDEX: SettingEntry[] = [
   { tab: "writing", label: "Open workspaces in focus mode", keywords: ["focus", "default"] },
   { tab: "writing", label: "Show raw markdown syntax", keywords: ["markdown", "source", "raw"] },
   { tab: "writing", label: "Editor font", keywords: ["font", "serif", "sans", "lora", "source serif"] },
+
+  { tab: "guidance", label: "Guided mode", sublabel: "hand-holding for complex features", keywords: ["guide", "tour", "tutorial", "help", "teach", "walkthrough", "onboarding"] },
+  { tab: "guidance", label: "Reset guidance", sublabel: "see all the teaching modals again", keywords: ["reset", "forget", "tour", "show again"] },
 
   { tab: "templates", label: "Templates", sublabel: "reusable note scaffolds", keywords: ["template", "scaffold"] },
 
@@ -487,6 +511,7 @@ function WritingPane({
   };
 
   return (
+    <>
     <Section
       title="Writing"
       hint="How Yarrow behaves while you're writing notes."
@@ -573,7 +598,24 @@ function WritingPane({
         />
       </Row>
 
+      <Row
+        label="Fast search indexing"
+        hint="Keeps a local SQLite/FTS5 cache for instant search. Your notes stay canonical — the cache is rederivable and safe to delete."
+      >
+        <Toggle
+          value={local.search_index_enabled}
+          onChange={(v) => save({ ...local, search_index_enabled: v })}
+        />
+      </Row>
+      <ClearSearchIndexRow />
+
       <ShowRawMarkdownRow />
+
+      <TypewriterModeRow />
+
+      <EditorialReadingRow />
+
+      <PathTintedCaretRow />
 
       <EditorFontRow />
 
@@ -582,6 +624,98 @@ function WritingPane({
         {saving ? "saving…" : "changes save automatically"}
       </div>
     </Section>
+    <ExtrasSection />
+    </>
+  );
+}
+
+function TypewriterModeRow() {
+  const [on, setOn] = useTypewriterMode();
+  return (
+    <Row
+      label="Typewriter mode"
+      hint="The active line stays at the vertical middle of the editor — the page scrolls underneath. Reduces neck strain on long sessions."
+    >
+      <Toggle value={on} onChange={setOn} />
+    </Row>
+  );
+}
+
+function EditorialReadingRow() {
+  const [on, setOn] = useEditorialReading();
+  return (
+    <Row
+      label="Editorial reading"
+      hint="Reading mode uses drop caps, pull quotes, and generous leading — so finished notes read like a magazine spread. Use > pull: to mark a pull-quote."
+    >
+      <Toggle value={on} onChange={setOn} />
+    </Row>
+  );
+}
+
+function PathTintedCaretRow() {
+  const [on, setOn] = usePathTintedCaret();
+  return (
+    <Row
+      label="Path-tinted caret"
+      hint="The caret takes the colour of the path you're writing on, so you always know which draft you're editing. Turn off for high-contrast defaults."
+    >
+      <Toggle value={on} onChange={setOn} />
+    </Row>
+  );
+}
+
+function ExtrasSection() {
+  return (
+    <Section
+      title="Writing extras"
+      hint="Opt-in features that lazy-load their code only when enabled — the editor stays lean by default and picks these up the moment you flip them on."
+    >
+      {EXTRAS.map((x) => (
+        <ExtraRow key={x.key} extraKey={x.key} label={x.label} blurb={x.blurb} detail={x.detail} />
+      ))}
+    </Section>
+  );
+}
+
+function ExtraRow({
+  extraKey,
+  label,
+  blurb,
+  detail,
+}: {
+  extraKey: ExtraKey;
+  label: string;
+  blurb: string;
+  detail: string;
+}) {
+  // Each hook is bound to a specific key so TS knows the tuple shape;
+  // we pick the right one via a Record so every ExtraKey is required —
+  // TypeScript warns if a new key is added without a handler here (the
+  // earlier if/else chain silently fell through to the last branch,
+  // which once caused toggling slash commands to flip image preview).
+  const code = useExtraCodeHighlight();
+  const math = useExtraMath();
+  const spell = useExtraSpell();
+  const image = useExtraImagePreview();
+  const radial = useExtraRadialMenu();
+  const lookup: Record<ExtraKey, [boolean, (v: boolean) => void]> = {
+    codeHighlight: code,
+    math,
+    spell,
+    imagePreview: image,
+    radialMenu: radial,
+  };
+  const [value, setValue] = lookup[extraKey];
+  return (
+    <Row label={label} hint={blurb}>
+      <div className="flex flex-col items-end gap-1">
+        <Toggle value={value} onChange={setValue} />
+        <div className="text-2xs text-t3 italic font-serif max-w-[280px] text-right leading-snug">
+          {detail}
+        </div>
+      </div>
+    </Row>
   );
 }
 
@@ -593,6 +727,47 @@ function ShowRawMarkdownRow() {
       hint="Show ## headings, **bold**, and [[ ]] around links while you write. When off, tokens collapse on lines you're not editing."
     >
       <Toggle value={raw} onChange={setRaw} />
+    </Row>
+  );
+}
+
+/** Paired button for the "Fast search indexing" toggle: drops the cache
+ *  file and lets it rebuild on the next search. Confirms briefly after a
+ *  successful clear so the user knows the click registered — the UI is
+ *  otherwise silent because the cache is invisible by design. */
+function ClearSearchIndexRow() {
+  const [state, setState] = useState<"idle" | "working" | "done" | "error">("idle");
+  const [msg, setMsg] = useState<string>("");
+  const onClear = async () => {
+    setState("working");
+    setMsg("");
+    try {
+      await api.clearSearchIndex();
+      setState("done");
+      setMsg("Cache cleared — next search will rebuild it.");
+      window.setTimeout(() => { setState("idle"); setMsg(""); }, 3000);
+    } catch (e) {
+      setState("error");
+      setMsg(String(e));
+    }
+  };
+  return (
+    <Row
+      label="Clear search cache"
+      hint="Removes .yarrow/index.db. Your notes aren't touched — the cache rebuilds on the next search if indexing is still on."
+    >
+      <div className="flex items-center gap-2">
+        {msg && (
+          <span className={`text-2xs ${state === "error" ? "text-danger" : "text-t2"}`}>{msg}</span>
+        )}
+        <button
+          onClick={onClear}
+          disabled={state === "working"}
+          className="px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-xs hover:bg-s2 disabled:opacity-50"
+        >
+          {state === "working" ? "Clearing…" : "Clear"}
+        </button>
+      </div>
     </Row>
   );
 }
@@ -665,6 +840,45 @@ function FontGroup({
         })}
       </div>
     </div>
+  );
+}
+
+// ─────────────── guidance ───────────────
+
+function GuidancePane() {
+  const { enabled, setEnabled, reset } = useGuidance();
+  return (
+    <>
+      <Section
+        title="Guided mode"
+        hint="Yarrow has a handful of concepts that aren't obvious from looking at them — paths, checkpoints, wikilinks, comparison, syncs. Guided mode walks you through each one every time you use it, and keeps a quiet reminder visible when you're on a try path."
+      >
+        <Row
+          label={enabled ? "Guided mode is on" : "Guided mode is off"}
+          hint={
+            enabled
+              ? "Teaching modals fire every time you do a non-obvious thing — creating a path, inserting a wikilink, returning to main, and so on. The ribbon above the editor is always visible when you're on a non-main path. If one specific modal starts to annoy you, each one has its own 'Stop showing this one' opt-out."
+              : "You're on your own. No teaching modals, no ribbons. Tooltips still appear on hover, and destructive actions still ask to confirm."
+          }
+        >
+          <Toggle value={enabled} onChange={setEnabled} />
+        </Row>
+      </Section>
+
+      <Section
+        title="Per-modal opt-outs"
+        hint="If you've silenced an individual modal via its 'Stop showing this one' button, this resets those choices. Guided mode itself stays on."
+      >
+        <Row label="Show every modal again" hint="clears all per-key opt-outs; every teaching moment fires again">
+          <button
+            onClick={() => reset()}
+            className="px-3 py-1.5 text-sm rounded-md border border-bd hover:bg-s2 text-ch2 transition"
+          >
+            Reset opt-outs
+          </button>
+        </Row>
+      </Section>
+    </>
   );
 }
 
@@ -1654,6 +1868,16 @@ function WorkspacePane({
       </div>
 
       <div className="pt-5 border-t border-bd mt-4">
+        <div className="text-sm text-char mb-1">Clear all derived caches</div>
+        <p className="text-2xs text-t2 mb-3 leading-relaxed">
+          Wipes <span className="font-mono">.yarrow/index.json</span> (graph) and
+          <span className="font-mono"> .yarrow/index.db</span> (search). Your notes
+          stay exactly as they are — both caches rebuild on demand.
+        </p>
+        <ClearAllCacheButton />
+      </div>
+
+      <div className="pt-5 border-t border-bd mt-4">
         <button
           onClick={onCloseWorkspace}
           className="px-3 py-1.5 text-sm bg-s2 text-ch2 rounded-md hover:bg-s3"
@@ -1668,20 +1892,34 @@ function WorkspacePane({
   );
 }
 
+const AGE_OPTIONS = [30, 60, 90, 180] as const;
+type AgeDays = typeof AGE_OPTIONS[number];
+
 function TrimHistoryButtons() {
-  const [confirm, setConfirm] = useState<null | "age" | "empty">(null);
+  // Two-phase flow for age-based trimming: a picker modal where the user
+  // chooses the cutoff, then an age-specific confirm modal so they can
+  // still bail out after they see the warning. `empty` keeps its own
+  // single-step confirm, no cutoff needed.
+  const [picker, setPicker] = useState(false);
+  const [pickerDays, setPickerDays] = useState<AgeDays>(180);
+  const [confirm, setConfirm] = useState<
+    | null
+    | { kind: "age"; days: AgeDays }
+    | { kind: "empty" }
+  >(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const run = async (kind: "age" | "empty") => {
+  const run = async (target: { kind: "age"; days: AgeDays } | { kind: "empty" }) => {
     setBusy(true);
     setMsg(null);
     try {
       const report =
-        kind === "age"
-          ? await api.pruneHistoryOlderThan(180)
+        target.kind === "age"
+          ? await api.pruneHistoryOlderThan(target.days)
           : await api.pruneEmptyCheckpoints();
-      const label = kind === "age" ? "older than 180 days" : "with no content";
+      const label =
+        target.kind === "age" ? `older than ${target.days} days` : "with no content";
       if (report.removed === 0) {
         setMsg(`Nothing to trim — no checkpoints ${label}.`);
       } else {
@@ -1697,18 +1935,20 @@ function TrimHistoryButtons() {
     }
   };
 
+  const confirmDays = confirm?.kind === "age" ? confirm.days : 180;
+
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
         <button
-          onClick={() => setConfirm("age")}
+          onClick={() => { setPickerDays(180); setPicker(true); }}
           disabled={busy}
           className="px-3 py-1.5 text-sm text-danger border border-danger/40 bg-danger/5 rounded-md hover:bg-danger/10 disabled:opacity-50"
         >
-          Forget checkpoints older than 180 days
+          Forget old checkpoints…
         </button>
         <button
-          onClick={() => setConfirm("empty")}
+          onClick={() => setConfirm({ kind: "empty" })}
           disabled={busy}
           className="px-3 py-1.5 text-sm text-danger border border-danger/40 bg-danger/5 rounded-md hover:bg-danger/10 disabled:opacity-50"
         >
@@ -1720,12 +1960,55 @@ function TrimHistoryButtons() {
       )}
 
       <Modal
-        open={confirm === "age"}
-        onClose={() => !busy && setConfirm(null)}
-        title="Forget checkpoints older than 180 days?"
+        open={picker}
+        onClose={() => setPicker(false)}
+        title="Forget checkpoints older than…"
       >
         <p className="text-sm text-t2 mb-3 leading-relaxed">
-          Every saved snapshot older than 180 days will be dropped on every
+          Pick how far back to keep your history. Anything older will be dropped
+          on every path — current notes stay exactly as they are.
+        </p>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {AGE_OPTIONS.map((d) => (
+            <button
+              key={d}
+              onClick={() => setPickerDays(d)}
+              className={`px-3 py-3 text-sm rounded-md border transition text-left ${
+                pickerDays === d
+                  ? "bg-yelp text-yeld border-yel/50"
+                  : "bg-bg text-ch2 border-bd hover:bg-s2 hover:border-bd2"
+              }`}
+            >
+              <div className="font-medium">{d} days</div>
+              <div className="text-2xs text-t3 mt-0.5">
+                keep ~{d >= 180 ? "half a year" : d >= 90 ? "a quarter" : d >= 60 ? "two months" : "a month"}
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            className="px-3 py-1.5 text-sm text-t2 hover:text-char"
+            onClick={() => setPicker(false)}
+          >
+            cancel
+          </button>
+          <button
+            className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90"
+            onClick={() => { setPicker(false); setConfirm({ kind: "age", days: pickerDays }); }}
+          >
+            continue
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={confirm?.kind === "age"}
+        onClose={() => !busy && setConfirm(null)}
+        title={`Forget checkpoints older than ${confirmDays} days?`}
+      >
+        <p className="text-sm text-t2 mb-3 leading-relaxed">
+          Every saved snapshot older than {confirmDays} days will be dropped on every
           path. Your current notes stay exactly as they are — only the old
           history slider entries disappear.
         </p>
@@ -1747,7 +2030,7 @@ function TrimHistoryButtons() {
           </button>
           <button
             className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
-            onClick={() => run("age")}
+            onClick={() => confirm?.kind === "age" && run(confirm)}
             disabled={busy}
           >
             {busy ? "trimming…" : "yes, forget them"}
@@ -1756,7 +2039,7 @@ function TrimHistoryButtons() {
       </Modal>
 
       <Modal
-        open={confirm === "empty"}
+        open={confirm?.kind === "empty"}
         onClose={() => !busy && setConfirm(null)}
         title="Forget empty checkpoints?"
       >
@@ -1782,10 +2065,90 @@ function TrimHistoryButtons() {
           </button>
           <button
             className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
-            onClick={() => run("empty")}
+            onClick={() => run({ kind: "empty" })}
             disabled={busy}
           >
             {busy ? "trimming…" : "yes, forget them"}
+          </button>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+/** Big red "nuke every cache" button. Confirms before it fires, because
+ *  while the action is safe (nothing permanent is lost), the first
+ *  search after a clear pays a rebuild cost that can surprise the user
+ *  on a 1000-note vault. */
+function ClearAllCacheButton() {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api.clearAllCache();
+      setMsg("All derived caches cleared. Both will rebuild on demand.");
+      setConfirm(false);
+      window.setTimeout(() => setMsg(null), 4000);
+    } catch (e) {
+      setMsg(`Couldn't clear caches: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setConfirm(true)}
+        disabled={busy}
+        className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
+      >
+        Clear all cache
+      </button>
+      {msg && <p className="text-2xs text-t2 mt-2 leading-snug">{msg}</p>}
+
+      <Modal
+        open={confirm}
+        onClose={() => !busy && setConfirm(false)}
+        title="Clear all derived caches?"
+      >
+        <p className="text-sm text-t2 mb-3 leading-relaxed">
+          Deletes the graph index and the search database. Your notes and git
+          history are untouched. Both caches are rebuilt automatically — but
+          the next search on a large vault may pause briefly while FTS5
+          re-indexes every note.
+        </p>
+        <div className="p-3 bg-danger/10 border border-danger/30 rounded-md text-xs text-char leading-relaxed mb-4">
+          <div className="font-medium mb-1">Does clear:</div>
+          <ul className="list-disc pl-5 space-y-0.5 text-t2">
+            <li><span className="font-mono">.yarrow/index.json</span> — link graph</li>
+            <li><span className="font-mono">.yarrow/index.db</span> + WAL — search cache</li>
+          </ul>
+          <div className="font-medium mb-1 mt-2">Doesn't touch:</div>
+          <ul className="list-disc pl-5 space-y-0.5 text-t2">
+            <li>Your <span className="font-mono">.md</span> note files.</li>
+            <li>Git checkpoint history.</li>
+            <li>Workspace settings, templates, or attachments.</li>
+          </ul>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            className="px-3 py-1.5 text-sm text-t2 hover:text-char"
+            onClick={() => setConfirm(false)}
+            disabled={busy}
+          >
+            cancel
+          </button>
+          <button
+            className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
+            onClick={run}
+            disabled={busy}
+          >
+            {busy ? "clearing…" : "yes, clear everything"}
           </button>
         </div>
       </Modal>
@@ -1886,8 +2249,9 @@ function ShortcutsPane() {
         </div>
       ))}
       <div className="text-2xs text-t3 mt-4 leading-relaxed">
-        Inside the editor, type <kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">[[</kbd>
-        {" "}to bring up the wikilink autocomplete. Type <kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">??</kbd>
+        Right-click in the editor to insert a <kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">[[wikilink]]</kbd>
+        {" "}or <kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">![[embed]]</kbd>
+        {" "}— pick a note from the list, toggle inline if you want to transclude it. Type <kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">??</kbd>
         {" "}at the start of a line to mark an open question.
       </div>
     </Section>
@@ -1927,7 +2291,7 @@ function AboutPane() {
           </svg>
         </button>
         <div className="text-2xs text-t3 font-mono mt-2">
-          version 1.1.0 · local-first · plain markdown
+          version {APP_VERSION} · local-first · plain markdown
         </div>
       </div>
     </Section>

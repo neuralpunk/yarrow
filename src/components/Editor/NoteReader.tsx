@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/tauri";
 import type { Note, NoteSummary } from "../../lib/types";
 import { editorialDate, relativeTime, timeOfDayPhrase } from "../../lib/format";
+import { useExtraMath } from "../../lib/extraPrefs";
+import { useEditorialReading } from "../../lib/editorPrefs";
 import WikilinkPreview, {
   cachePreview, getCachedPreview,
   type WikilinkPreviewData,
 } from "../WikilinkPreview";
+import { decorateChangedBlocks, synthesizeDiffMarkdown } from "../../lib/readerDiff";
 
 interface Props {
   note: Note;
@@ -16,6 +19,10 @@ interface Props {
   /** Live body from the editor — when present, we render this instead of
    *  the persisted note so unsaved edits show up in the preview too. */
   currentBody?: string;
+  /** Main's body for this slug when on a non-root path. Present → we
+   *  render ley-line decorations (inline token-level del/ins on
+   *  modified lines, ghost strikethrough for deletions). */
+  mainBody?: string | null;
   /** Path → slugs map; passed through to the popover so it can show which
    *  paths the hovered note belongs to. */
   pathNotes?: Record<string, string[]>;
@@ -34,12 +41,17 @@ interface Props {
  *  them navigates inside the app instead of trying to load a `[[...]]`
  *  pseudo-URL. */
 export default function NoteReader({
-  note, currentPath, notes, currentBody, pathNotes,
+  note, currentPath, notes, currentBody, mainBody, pathNotes,
   onNavigate, onBranchFromWikilink, onSwitchToWriting,
 }: Props) {
   const [html, setHtml] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<WikilinkPreviewData | null>(null);
+  const [mathOn] = useExtraMath();
+  const [editorialOn, setEditorialOn] = useEditorialReading();
+  // Ref onto the rendered `.yarrow-reading` container so we can point
+  // KaTeX's auto-render at it after the HTML lands.
+  const renderedRef = useRef<HTMLDivElement>(null);
   // Same delayed-show / delayed-hide rhythm as the editor so the user can
   // travel from the link into the popover to click "Start a path here".
   const previewTimer = useRef<number | null>(null);
@@ -49,11 +61,88 @@ export default function NoteReader({
   useEffect(() => {
     let alive = true;
     setError(null);
+    // Ley Lines path: synthesize a diffed markdown (path body annotated
+    // with inline `<del>/<ins>` for modified lines, ghost placeholders
+    // for pure deletions) and render it through the same pulldown-cmark
+    // pipeline as a normal note. This keeps tables, fences, callouts,
+    // and footnotes rendering correctly — we're just adding inline HTML
+    // that pulldown-cmark passes through.
+    const pathBody = currentBody ?? note.body;
+    if (mainBody != null && mainBody !== pathBody) {
+      const { markdown, hasChanges } = synthesizeDiffMarkdown(mainBody, pathBody);
+      if (hasChanges) {
+        api.renderMarkdownHtml(markdown)
+          .then((h) => { if (alive) setHtml(rewriteWikilinks(decoratePullQuotes(h))); })
+          .catch((e) => { if (alive) setError(String(e)); });
+        return () => { alive = false; };
+      }
+    }
+    // Editorial mode slightly transforms the source: a line starting with
+    // `> pull:` becomes a bare blockquote marked `.yarrow-pull` in the
+    // post-processor below. When the feature is off, we take the faster
+    // prebuilt path (renderNoteBodyHtml reads the file from disk).
+    if (editorialOn) {
+      api.renderMarkdownHtml(stripPullPrefix(pathBody))
+        .then((h) => { if (alive) setHtml(rewriteWikilinks(decoratePullQuotes(h))); })
+        .catch((e) => { if (alive) setError(String(e)); });
+      return () => { alive = false; };
+    }
     api.renderNoteBodyHtml(note.slug)
-      .then((h) => { if (alive) setHtml(rewriteWikilinks(h)); })
+      .then((h) => { if (alive) setHtml(rewriteWikilinks(decoratePullQuotes(h))); })
       .catch((e) => { if (alive) setError(String(e)); });
     return () => { alive = false; };
-  }, [note.slug, note.body]);
+  }, [note.slug, note.body, mainBody, currentBody, editorialOn]);
+
+  // After the HTML lands, tag each block that contains a ley-* mark with
+  // `.ley-changed` so CSS paints the left change-bar on the paragraph.
+  useEffect(() => {
+    if (!html) return;
+    const el = renderedRef.current;
+    if (!el) return;
+    decorateChangedBlocks(el);
+  }, [html]);
+
+  // When the math extra is on, run KaTeX's auto-render over the rendered
+  // HTML so `$…$` / `$$…$$` delimiters turn into typeset equations.
+  // Lazy-loaded so the reader doesn't pay for KaTeX when the extra is off.
+  useEffect(() => {
+    if (!mathOn) return;
+    if (!html) return;
+    const el = renderedRef.current;
+    if (!el) return;
+    let cancelled = false;
+    (async () => {
+      const autoMod: any = await import("katex/contrib/auto-render");
+      if (cancelled) return;
+      const renderMathInElement =
+        (autoMod && autoMod.default) || autoMod;
+      if (typeof renderMathInElement !== "function") {
+        console.warn("[yarrow] katex auto-render import shape:", Object.keys(autoMod));
+        return;
+      }
+      try {
+        renderMathInElement(el, {
+          // Match the editor's inline/block syntax (single-$ and $$-block).
+          // `\(…\)` and `\[…\]` included because they're the KaTeX
+          // defaults and some users paste them in.
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false },
+            { left: "\\(", right: "\\)", display: false },
+            { left: "\\[", right: "\\]", display: true },
+          ],
+          throwOnError: false,
+          // Ignore code blocks — `$x$` inside a ```rust fence shouldn't
+          // become math.
+          ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"],
+        });
+        console.info("[yarrow] reader: math auto-rendered");
+      } catch (err) {
+        console.warn("[yarrow] reader: math auto-render failed", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [html, mathOn]);
 
   const resolveWikilink = (query: string): NoteSummary | undefined => {
     const q = query.toLowerCase();
@@ -148,6 +237,13 @@ export default function NoteReader({
           <span className="not-italic">edited {relativeTime(note.frontmatter.modified)}</span>
           <span className="text-t3/70"> · </span>
           <button
+            onClick={() => setEditorialOn(!editorialOn)}
+            className="not-italic underline decoration-dotted text-yeld hover:text-char mr-2"
+            title={editorialOn ? "Switch to plain reading" : "Switch to editorial reading — drop caps, pull quotes, generous leading"}
+          >
+            {editorialOn ? "plain" : "editorial"}
+          </button>
+          <button
             onClick={onSwitchToWriting}
             className="not-italic underline decoration-dotted text-yeld hover:text-char"
           >
@@ -168,7 +264,8 @@ export default function NoteReader({
           </div>
         )}
         <div
-          className="yarrow-reading mt-6"
+          ref={renderedRef}
+          className={`yarrow-reading mt-6${editorialOn ? " yarrow-editorial" : ""}`}
           onClick={onClick}
           onMouseOver={onMouseOver}
           onMouseOut={onMouseOut}
@@ -219,4 +316,28 @@ function rewriteWikilinks(html: string): string {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Strip the `pull:` tag from the start of a blockquote line so the
+ *  pulldown-cmark renderer still sees a plain blockquote. We'll tag it
+ *  with `yarrow-pull` in the rendered HTML via `decoratePullQuotes`. */
+function stripPullPrefix(md: string): string {
+  // Match any number of leading `>` followed by the `pull:` marker
+  // (case-insensitive), at the start of a line. Preserves indentation
+  // inside nested quotes.
+  return md.replace(/^(\s*>+\s*)pull:\s*/gim, "$1[[__YARROW_PULL__]] ");
+}
+
+/** Upgrade `<blockquote>` nodes whose first text begins with the pull
+ *  marker to `.yarrow-pull`. We use a string-level replace rather than
+ *  DOMParser so the html transform runs before the container mounts and
+ *  there's no flash of ungraced quote. */
+function decoratePullQuotes(html: string): string {
+  // Match the opening tag and the marker placed inside by `stripPullPrefix`.
+  // `[\s\S]*?` keeps the match non-greedy so we don't consume past the first
+  // element.
+  return html.replace(
+    /<blockquote>([\s\S]*?)\[\[__YARROW_PULL__\]\]\s*/g,
+    '<blockquote class="yarrow-pull">$1',
+  );
 }

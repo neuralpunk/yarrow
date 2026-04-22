@@ -49,6 +49,11 @@ pub struct Preferences {
     pub editor_font_size: u32,
     #[serde(default = "default_idle_lock")]
     pub encryption_idle_timeout_secs: u32,
+    /// Whether to maintain the SQLite/FTS5 search cache in
+    /// `.yarrow/index.db`. When off, search falls back to the pure
+    /// substring scanner. Notes stay canonical either way.
+    #[serde(default = "default_true")]
+    pub search_index_enabled: bool,
 }
 
 fn default_decay() -> u32 {
@@ -76,6 +81,7 @@ impl Default for Preferences {
             ask_thinking_on_close: true,
             editor_font_size: default_editor_font_size(),
             encryption_idle_timeout_secs: default_idle_lock(),
+            search_index_enabled: true,
         }
     }
 }
@@ -123,6 +129,9 @@ const INDEX_FILE: &str = "index.json";
 const GITIGNORE: &str = "\
 # Yarrow derived/cache files and per-machine secrets — do not track
 .yarrow/index.json
+.yarrow/index.db
+.yarrow/index.db-wal
+.yarrow/index.db-shm
 .yarrow/scratchpad.md
 .yarrow/credentials.toml
 .yarrow/trash/
@@ -147,6 +156,14 @@ pub fn notes_dir(root: &Path) -> PathBuf {
 
 pub fn scratchpad_path(root: &Path) -> PathBuf {
     yarrow_dir(root).join(SCRATCHPAD_FILE)
+}
+
+/// Sidecar holding the `{ id, slug, oid, label, note, pinned_at }`
+/// metadata for every keepsake pin. The authoritative protection is the
+/// git ref at `refs/yarrow/keepsakes/<id>` — this file just lets the UI
+/// list them without walking every ref on every open.
+pub fn keepsakes_path(root: &Path) -> PathBuf {
+    yarrow_dir(root).join("keepsakes.json")
 }
 
 pub fn security_path(root: &Path) -> PathBuf {

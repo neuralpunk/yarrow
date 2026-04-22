@@ -1,5 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  ActivityDay,
+  Annotation,
+  ClusterSuggestion,
   AttachmentData,
   AttachmentRef,
   BranchTopo,
@@ -9,6 +12,7 @@ import type {
   ExportReport,
   Graph,
   HistoryEntry,
+  Keepsake,
   LinkType,
   MergeOutcome,
   Note,
@@ -60,6 +64,12 @@ export const api = {
   // notes
   listNotes: () => invoke<NoteSummary[]>("cmd_list_notes"),
   readNote: (slug: string) => invoke<Note>("cmd_read_note", { slug }),
+  /** Read a note as it exists on a specific path. If that path has a
+   *  per-note override saved, the override's body is returned; otherwise
+   *  falls back to main's copy. Pass `null` or the workspace root to get
+   *  the regular (main) content. */
+  readNoteOnPath: (slug: string, pathName: string | null) =>
+    invoke<Note>("cmd_read_note_on_path", { slug, pathName }),
 
   // daily notes
   openDaily: (dateIso: string) =>
@@ -94,11 +104,44 @@ export const api = {
    *  fan-out the editor used to make after every keystroke pause. */
   saveNoteFull: (slug: string, body: string, thinkingNote?: string) =>
     invoke<SaveOutcome>("cmd_save_note_full", { slug, body, thinkingNote }),
+  /** Save onto a specific path. When pathName is non-null and not the root,
+   *  the body is written to that path's override file and main is never
+   *  touched (no graph rebuild, no checkpoint). Pass null for pathName to
+   *  route to the regular save. */
+  saveNoteOnPath: (slug: string, body: string, pathName: string | null, thinkingNote?: string) =>
+    invoke<Note>("cmd_save_note_on_path", { slug, body, pathName, thinkingNote }),
+  /** List slugs for which this path has a scratch override saved. */
+  listPathOverrides: (pathName: string) =>
+    invoke<string[]>("cmd_list_path_overrides", { pathName }),
+  /** Clear a single override — reverts that note on this path back to main's copy. */
+  clearPathOverride: (pathName: string, slug: string) =>
+    invoke<void>("cmd_clear_path_override", { pathName, slug }),
+  /** Promote a path to main: every override on that path is applied to main,
+   *  the path's scratch content is cleared, the path collection is deleted,
+   *  and the whole operation lands as a single git checkpoint. */
+  promotePathToMain: (name: string, thinkingNote?: string) =>
+    invoke<{ applied_slugs: string[]; path_name: string }>("cmd_promote_path_to_main", {
+      name,
+      thinkingNote,
+    }),
   createNote: (title: string) => invoke<Note>("cmd_create_note", { title }),
   renameNote: (oldSlug: string, newTitle: string, rewriteWikilinks: boolean) =>
     invoke<Note>("cmd_rename_note", { oldSlug, newTitle, rewriteWikilinks }),
   setTags: (slug: string, tags: string[]) =>
     invoke<Note>("cmd_set_tags", { slug, tags }),
+  /** Replace a note's margin-ink annotations. Empty bodies are dropped
+   *  server-side and a silent checkpoint lands — annotations are versioned
+   *  alongside the body so history scrubbing catches both. */
+  setAnnotations: (slug: string, annotations: Annotation[]) =>
+    invoke<Note>("cmd_set_annotations", { slug, annotations }),
+
+  // keepsakes — pinned checkpoints protected from history pruning
+  pinCheckpoint: (slug: string, oid: string, label: string, note?: string) =>
+    invoke<Keepsake>("cmd_pin_checkpoint", { slug, oid, label, note }),
+  listPinnedCheckpoints: () =>
+    invoke<Keepsake[]>("cmd_list_pinned_checkpoints"),
+  unpinCheckpoint: (id: string) =>
+    invoke<void>("cmd_unpin_checkpoint", { id }),
   /** Pre-flight: how many notes contain `[[Old Title]]` / `[[old-slug]]` so
    *  the user can decide whether to opt into the workspace-wide rewrite. */
   countWikilinkReferences: (slug: string) =>
@@ -139,6 +182,12 @@ export const api = {
     invoke<void>("cmd_rename_path_collection", { oldName, newName }),
   setPathCollectionCondition: (name: string, condition: string) =>
     invoke<void>("cmd_set_path_collection_condition", { name, condition }),
+  setPathCollectionColor: (name: string, color: string | null) =>
+    invoke<void>("cmd_set_path_collection_color", { name, color }),
+  setPathCollectionAutoTag: (name: string, tag: string | null) =>
+    invoke<void>("cmd_set_path_collection_auto_tag", { name, tag }),
+  suggestPathClusters: () =>
+    invoke<ClusterSuggestion[]>("cmd_suggest_path_clusters"),
   setPathCollectionMainNote: (name: string, slug: string | null) =>
     invoke<void>("cmd_set_path_collection_main_note", { name, slug }),
   setPathCollectionParent: (name: string, parent: string) =>
@@ -160,6 +209,8 @@ export const api = {
   // history
   noteHistory: (slug: string) =>
     invoke<HistoryEntry[]>("cmd_note_history", { slug }),
+  writingActivity: (days: number) =>
+    invoke<ActivityDay[]>("cmd_writing_activity", { days }),
   noteAtCheckpoint: (slug: string, oid: string) =>
     invoke<string>("cmd_note_at_checkpoint", { slug, oid }),
   restoreNote: (slug: string, oid: string) =>
@@ -188,6 +239,16 @@ export const api = {
   // search
   search: (query: string, limit?: number) =>
     invoke<SearchHit[]>("cmd_search", { query, limit }),
+  /** Drop the SQLite/FTS5 search cache. Next search (if indexing is
+   *  still enabled) triggers a full rebuild. Safe to call anytime —
+   *  the canonical notes are untouched. */
+  clearSearchIndex: () => invoke<void>("cmd_clear_search_index"),
+  /** Force a full rebuild of the search cache. Returns the row count. */
+  rebuildSearchIndex: () => invoke<number>("cmd_rebuild_search_index"),
+  /** Nuke every derived cache — graph index.json and search index.db
+   *  with its WAL sidecars. Notes are never touched; both caches
+   *  rebuild on demand. */
+  clearAllCache: () => invoke<void>("cmd_clear_all_cache"),
 
   // branch topology
   branchTopology: () => invoke<BranchTopo[]>("cmd_branch_topology"),
@@ -255,6 +316,7 @@ export const api = {
   // print / pdf
   renderNoteHtml: (slug: string) => invoke<string>("cmd_render_note_html", { slug }),
   renderNoteBodyHtml: (slug: string) => invoke<string>("cmd_render_note_body_html", { slug }),
+  renderMarkdownHtml: (body: string) => invoke<string>("cmd_render_markdown_html", { body }),
 
   // find & replace
   findReplacePreview: (
@@ -287,8 +349,16 @@ export const api = {
     invoke<PathComparison>("cmd_compare_paths", { left, right }),
 
   // obsidian import
+  initSampleWorkspace: (path: string, name?: string | null) =>
+    invoke<WorkspaceConfig>("cmd_init_sample_workspace", { path, name: name ?? null }),
   importObsidianVault: (source: string) =>
     invoke<ObsidianImportReport>("cmd_import_obsidian_vault", { source }),
+  importBearVault: (source: string) =>
+    invoke<ObsidianImportReport>("cmd_import_bear_vault", { source }),
+  importLogseqVault: (source: string) =>
+    invoke<ObsidianImportReport>("cmd_import_logseq_vault", { source }),
+  importNotionVault: (source: string) =>
+    invoke<ObsidianImportReport>("cmd_import_notion_vault", { source }),
 
   // new-workspace wizard
   defaultWorkspacesRoot: () => invoke<string>("cmd_default_workspaces_root"),

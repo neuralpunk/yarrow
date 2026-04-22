@@ -424,6 +424,71 @@ fn split_message(msg: &str) -> (String, Option<String>) {
     (head, body)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ActivityDay {
+    /// Local date in `YYYY-MM-DD` form.
+    pub date: String,
+    /// Number of checkpoints authored on this date.
+    pub count: u32,
+}
+
+/// Histogram of checkpoints per local date, walking every branch so the
+/// count reflects all paths — not just whichever one HEAD points at now.
+/// Results are ordered oldest → newest and capped to the last `days` days
+/// (0 means "no cap"). Commits older than the cutoff are skipped without
+/// breaking, since `Sort::TIME` isn't strictly monotonic across merges.
+pub fn writing_activity(repo: &Repository, days: u32) -> Result<Vec<ActivityDay>> {
+    let mut revwalk = repo.revwalk()?;
+    revwalk.set_sorting(Sort::TIME)?;
+    // Walk every local branch so an activity bucket reflects all paths,
+    // not just the current one. Revwalk dedupes commits reachable from
+    // multiple branches, so this counts each checkpoint once.
+    match revwalk.push_glob("refs/heads/*") {
+        Ok(()) => {}
+        Err(_) => {
+            // Empty repo or no refs yet — return an empty histogram.
+            return Ok(Vec::new());
+        }
+    }
+
+    let cutoff: Option<i64> = if days == 0 {
+        None
+    } else {
+        Some(chrono::Utc::now().timestamp() - (days as i64) * 86400)
+    };
+
+    let mut counts: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+    for oid in revwalk {
+        let oid = match oid {
+            Ok(o) => o,
+            Err(_) => continue,
+        };
+        let commit = match repo.find_commit(oid) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let ts = commit.time().seconds();
+        if let Some(c) = cutoff {
+            if ts < c {
+                continue;
+            }
+        }
+        // Local date so the calendar aligns with when the user was awake,
+        // not UTC midnight. `from_timestamp` returns naive UTC; we convert
+        // to Local for the label.
+        let local = chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0)
+            .map(|dt| dt.with_timezone(&chrono::Local));
+        let Some(local) = local else { continue };
+        let date = local.format("%Y-%m-%d").to_string();
+        *counts.entry(date).or_insert(0) += 1;
+    }
+
+    Ok(counts
+        .into_iter()
+        .map(|(date, count)| ActivityDay { date, count })
+        .collect())
+}
+
 /// Snapshot of every note on a given path (git branch). Used by the
 /// path-diffing UI to compare two paths without round-tripping through
 /// `switch_path`, which mutates the working tree.
@@ -483,7 +548,21 @@ pub struct PathCompareSummary {
     pub same: usize,
 }
 
-fn excerpt(body: &str, max_chars: usize) -> Option<String> {
+/// Structure-preserving slice of a note body, for compare views that need
+/// enough content to render a line-level diff. Keeps blank lines and
+/// formatting; truncates on character count with a trailing ellipsis.
+pub(crate) fn long_excerpt(body: &str, max_chars: usize) -> Option<String> {
+    if body.is_empty() {
+        return None;
+    }
+    let trimmed = body.trim_start_matches(|c: char| c == '-' || c.is_whitespace());
+    if trimmed.len() <= max_chars {
+        return Some(trimmed.to_string());
+    }
+    Some(trimmed.chars().take(max_chars).collect::<String>() + "…")
+}
+
+pub(crate) fn excerpt(body: &str, max_chars: usize) -> Option<String> {
     let trimmed = body.trim_start_matches(|c: char| c == '-' || c.is_whitespace());
     let cleaned: String = trimmed
         .lines()
@@ -1291,22 +1370,70 @@ where
         }
     }
 
+    // Remap keepsake refs. When we rewrite a pinned commit's parents
+    // (because an ancestor was dropped), the commit itself gets a new
+    // oid. Leaving the ref pointing at the old oid would protect a
+    // soon-garbage-collected object — worse than useless, since the next
+    // prune pass would skip over it and everything downstream. Repoint
+    // each keepsake ref and update the sidecar's `oid` field to match.
+    if let Some(workdir) = repo.workdir() {
+        let mut list = read_keepsakes_file(workdir);
+        let mut list_changed = false;
+        if let Ok(refs) = repo.references_glob(&format!("{}*", KEEPSAKE_REF_PREFIX)) {
+            for maybe in refs {
+                let r = match maybe { Ok(r) => r, Err(_) => continue };
+                let refname = r.name().map(|s| s.to_string());
+                let target = match r.target() { Some(t) => t, None => continue };
+                if let Some(Some(new_oid)) = map.get(&target) {
+                    if *new_oid != target {
+                        // Refresh the ref to the rewritten oid.
+                        if let Some(n) = refname {
+                            let _ = repo.reference(&n, *new_oid, true, "yarrow: keepsake remap");
+                            // Update sidecar: find the entry whose id matches
+                            // the ref tail and patch its oid.
+                            let tail = n.strip_prefix(KEEPSAKE_REF_PREFIX).unwrap_or("");
+                            for k in list.iter_mut() {
+                                if k.id == tail {
+                                    k.oid = new_oid.to_string();
+                                    list_changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if list_changed {
+            let _ = write_keepsakes_file(workdir, &list);
+        }
+    }
+
     Ok(PruneReport { removed, kept })
 }
 
 /// Drop every checkpoint older than `cutoff_secs` (unix timestamp). Children
 /// of a pruned commit inherit its parent, so the surviving history is still
 /// linear — only the old tail vanishes.
+///
+/// Keepsakes (pinned checkpoints) are respected — a commit with a
+/// `refs/yarrow/keepsakes/*` ref is never dropped no matter how old.
 pub fn prune_older_than(repo: &Repository, cutoff_secs: i64) -> Result<PruneReport> {
+    let pinned = list_keepsakes_oids(repo);
     rewrite_history_dropping(repo, |commit, _tree| {
+        if pinned.contains(&commit.id()) { return Ok(false); }
         Ok(commit.time().seconds() < cutoff_secs)
     })
 }
 
 /// Drop checkpoints whose note bodies were all empty — these typically come
 /// from "new note" creations and scaffolds that the user hadn't filled in yet.
+/// Pinned checkpoints are preserved.
 pub fn prune_empty_content(repo: &Repository) -> Result<PruneReport> {
-    rewrite_history_dropping(repo, |_commit, tree| Ok(tree_has_empty_notes(repo, tree)))
+    let pinned = list_keepsakes_oids(repo);
+    rewrite_history_dropping(repo, |commit, tree| {
+        if pinned.contains(&commit.id()) { return Ok(false); }
+        Ok(tree_has_empty_notes(repo, tree))
+    })
 }
 
 /// True if the tree has at least one `notes/*.md` file AND every such file's
@@ -1370,6 +1497,152 @@ pub fn clear_reflogs(repo: &Repository) -> Result<()> {
     }
     let _ = repo.reflog_delete("HEAD");
     Ok(())
+}
+
+// ───────────────────── keepsakes (pinned checkpoints) ─────────────────────
+//
+// A "keepsake" is a user-pinned checkpoint protected from history pruning.
+// Two storage layers:
+//   1. `refs/yarrow/keepsakes/<id>` — a real git ref on the commit oid.
+//      Because git ignores unreachable objects, not refs, pinning a
+//      checkpoint here guarantees history prune passes skip over it even
+//      if its branch would otherwise drop it.
+//   2. `.yarrow/keepsakes.json` — the sidecar with human metadata
+//      (slug, label, note, pinned_at). The UI reads this; git never does.
+//
+// Prune passes consult `list_keepsakes_oids` before dropping a commit.
+
+const KEEPSAKE_REF_PREFIX: &str = "refs/yarrow/keepsakes/";
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Keepsake {
+    pub id: String,
+    pub slug: String,
+    pub oid: String,
+    pub label: String,
+    #[serde(default)]
+    pub note: String,
+    pub pinned_at: i64,
+}
+
+fn keepsakes_file(repo_workdir: &Path) -> PathBuf {
+    repo_workdir.join(".yarrow").join("keepsakes.json")
+}
+
+fn read_keepsakes_file(repo_workdir: &Path) -> Vec<Keepsake> {
+    let path = keepsakes_file(repo_workdir);
+    match std::fs::read_to_string(&path) {
+        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
+fn write_keepsakes_file(repo_workdir: &Path, list: &[Keepsake]) -> Result<()> {
+    let path = keepsakes_file(repo_workdir);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(list)
+        .map_err(|e| YarrowError::Other(format!("keepsakes serialize: {}", e)))?;
+    std::fs::write(&path, json)?;
+    Ok(())
+}
+
+/// Make up a stable id that's URL-safe as a ref component. Not a git oid —
+/// the oid lives in `keepsake.oid`.
+fn new_keepsake_id(oid: Oid, label: &str) -> String {
+    let now = chrono::Utc::now().timestamp_millis();
+    // `slug::slugify` drops anything non-kebab so we get a clean ref
+    // component and don't fight git's ref rules.
+    let tag = slug::slugify(label);
+    let tag = if tag.is_empty() { "pin".to_string() } else { tag };
+    format!("{}-{}-{}", now, &oid.to_string()[..7], tag)
+}
+
+/// Pin a checkpoint. Writes both the ref and the sidecar metadata entry.
+pub fn pin_checkpoint(
+    repo: &Repository,
+    slug: &str,
+    oid_str: &str,
+    label: &str,
+    note: &str,
+) -> Result<Keepsake> {
+    let oid = Oid::from_str(oid_str)
+        .map_err(|_| YarrowError::Invalid(format!("bad checkpoint oid: {}", oid_str)))?;
+    // Sanity: the oid must exist in the repo. If it doesn't, the ref
+    // would succeed but protect nothing meaningful — error out loudly.
+    repo.find_commit(oid)
+        .map_err(|_| YarrowError::Invalid(format!("no such checkpoint: {}", oid_str)))?;
+
+    let id = new_keepsake_id(oid, label);
+    let refname = format!("{}{}", KEEPSAKE_REF_PREFIX, id);
+    repo.reference(&refname, oid, true, "yarrow: pin keepsake")?;
+
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| YarrowError::Other("bare repo has no workdir".into()))?;
+
+    let mut list = read_keepsakes_file(workdir);
+    let now = chrono::Utc::now().timestamp();
+    let ks = Keepsake {
+        id: id.clone(),
+        slug: slug.to_string(),
+        oid: oid.to_string(),
+        label: label.to_string(),
+        note: note.to_string(),
+        pinned_at: now,
+    };
+    list.push(ks.clone());
+    write_keepsakes_file(workdir, &list)?;
+    Ok(ks)
+}
+
+/// All keepsakes, newest first. UI reads this directly; git only knows
+/// about the refs, not the metadata.
+pub fn list_keepsakes(repo: &Repository) -> Result<Vec<Keepsake>> {
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| YarrowError::Other("bare repo has no workdir".into()))?;
+    let mut list = read_keepsakes_file(workdir);
+    list.sort_by(|a, b| b.pinned_at.cmp(&a.pinned_at));
+    Ok(list)
+}
+
+/// Unpin. Drops both the ref and the sidecar entry. No-op when the id
+/// is unknown — safe to call as part of a bulk cleanup.
+pub fn unpin_checkpoint(repo: &Repository, id: &str) -> Result<()> {
+    let refname = format!("{}{}", KEEPSAKE_REF_PREFIX, id);
+    // Ignore "no such ref" — we want unpin to be idempotent.
+    if let Ok(mut r) = repo.find_reference(&refname) {
+        r.delete()?;
+    }
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| YarrowError::Other("bare repo has no workdir".into()))?;
+    let mut list = read_keepsakes_file(workdir);
+    let before = list.len();
+    list.retain(|k| k.id != id);
+    if list.len() != before {
+        write_keepsakes_file(workdir, &list)?;
+    }
+    Ok(())
+}
+
+/// Every oid protected by a keepsake ref. Consulted by `rewrite_history_dropping`
+/// so a prune pass can never remove a pinned checkpoint even if it matches
+/// the user's filter (older-than, empty-content).
+fn list_keepsakes_oids(repo: &Repository) -> std::collections::HashSet<Oid> {
+    let mut out = std::collections::HashSet::new();
+    if let Ok(refs) = repo.references_glob(&format!("{}*", KEEPSAKE_REF_PREFIX)) {
+        for maybe in refs {
+            if let Ok(r) = maybe {
+                if let Some(target) = r.target() {
+                    out.insert(target);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Best-effort: ask the system `git` to prune unreachable objects so the

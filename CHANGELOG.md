@@ -6,6 +6,263 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.0.0] — 2026-04-21
+
+A big release. 2.0 is about posture (how the editor sits under your
+hands), tools (the map becomes a real workspace, not a viewer), and
+promises to your future self (pin a version, keep it forever). Plus a
+new gesture-aware radial right-click menu, a cleaner left sidebar, a
+new application mark, and imports from four more apps.
+
+### Writing posture
+
+- **Typewriter mode.** The active line pins to the vertical middle of
+  the editor; the page scrolls underneath you. Off by default —
+  Settings → Writing.
+- **Margin Ink.** Right-click a selection → *Annotate* drops a card
+  into a right-hand gutter anchored to the excerpt. Persists in YAML
+  frontmatter (`annotations: [{ anchor, body, at }]`) so external
+  markdown tools round-trip the file cleanly. Each save is a silent
+  checkpoint.
+- **Editorial reading.** Drop cap on the first paragraph, generous
+  leading, pull quotes promoted from any blockquote prefixed with
+  `> pull:`. Toggle from the reader header or Settings.
+- **Path-tinted caret.** The caret takes the colour of the current
+  path — accidentally editing the wrong draft becomes ambient
+  information. On by default; accessibility toggle flips it off.
+- **Where you left off.** One-line welcome-back banner when you reopen
+  a recent workspace: note, path, the sentence you paused on, and
+  three actions (*pick up here*, *start somewhere else*, *hide next
+  time*). Stored per-workspace; ages out after 72 h.
+- **Pinned keepsakes.** Any checkpoint can be pinned with a short
+  label ("before the prologue cut") — pinning lays a real
+  `refs/yarrow/keepsakes/<id>` git ref on the commit plus a sidecar at
+  `.yarrow/keepsakes.json`. Both prune passes skip pinned oids, and if
+  pruning rewrites an ancestor the keepsake ref + sidecar oid remap to
+  the new commit in the same pass.
+
+### The editor surface
+
+- **Radial right-click menu + The Still Point.** Right-click in the
+  editor opens a donut-shaped pie menu at the cursor. With no
+  selection: **Wikilink · Table · Task · Code · Callout · Heading**.
+  With a selection: **Wikilink · New path · Bold · Italic · Annotate ·
+  Scratchpad · Copy**. `Tab`/`Shift-Tab` cycle; `Enter` commits; `Esc`
+  cancels. The centre disc is gesture-aware — **tap** opens the
+  command palette, **long-press** (380 ms ring-fill) opens the Map,
+  **double-click** toggles Zen, **drag-out** commits a wedge directly,
+  **scroll-wheel** rotates the hovered wedge. Ships on by default;
+  Settings → Writing Extras → *Radial right-click menu* flips it to a
+  plain vertical drop-down with the same item contract and keyboard
+  nav. Right-click is now consistent across the whole editor column
+  (outer padding, metadata, tag row) — real inputs keep the OS menu.
+- **Wikilink autocomplete, restored.** Type `[[` to get a searchable
+  list of notes. `Enter` inserts and consumes any stray `]` from
+  bracket-closing so you don't end up with `[[Title]]]]`. Also:
+  right-click → *Insert wikilink…* opens a modal with an **Embed inline
+  (`![[…]]`)** toggle for when you want the target's body inlined.
+- **Markdown tables.** Right-click → *Table* now opens a fill-as-you-go
+  editor — stepper for rows/cols, per-column alignment toggle
+  (`:---` / `:---:` / `---:`), real text inputs for every cell, Tab
+  between cells, live markdown preview. Inside a pipe-table row, Tab
+  past the last cell of the last row appends a fresh one.
+- **Callouts.** Eight types — `note`, `info`, `tip`, `question`,
+  `decision`, `warning`, `danger`, `quote` — render with distinct
+  per-type icons and left-border tints in both writing and reading
+  mode. Right-click → *Callout* opens a dedicated modal with a
+  type-picker (icon chips), title + body inputs, and a live HTML
+  preview that renders through the same backend pipeline reading mode
+  uses.
+- **Writing Extras.** Settings → Writing hosts opt-in, lazy-loaded
+  editor features — **Code syntax highlighting**, **Math (KaTeX)**,
+  **Spell check**, **Inline image previews** — each gated behind a
+  dynamic import, all off by default (initial JS payload drops ~990 KB
+  with defaults). Plus a radial-menu toggle (on by default).
+- **Zen-mode indicator.** When focus mode is on, a pale-plum pill with
+  a pulsing dot and an **exit** button appears in the toolbar — so you
+  never need to remember `⌘\` to get out.
+
+### The map and paths
+
+- **Map as a tool, not a viewer.** A **View / Connect** mode toggle in
+  the graph toolbar. In Connect mode, dragging from one note onto
+  another draws a dashed rubber-band arrow and opens a typed-link
+  popover (supports / challenges / came-from / open-question).
+  Click-to-open is suppressed in Connect mode.
+- **Shift-drag lasso.** Rubber-band selection on empty canvas; the
+  floating action bar offers **Tag…** and **Add to path…** in one
+  move.
+- **Empty graph is usable.** Every note floats on the canvas from day
+  one; the nearby-only filter and radial-ring force both adapt to a
+  no-links state. Sparse graphs get a dismissable coach-mark tip.
+- **Link-type colours + legend highlighter.** Edges stroke by type;
+  hovering a legend row filters the graph — matching edges lift, the
+  rest fade.
+- **Paths on paths.** Branching off any path — not just the root —
+  works. Nested chains (`main → trip → budget → …`) render as a
+  genuine left-to-right timeline. Promotion stays a single pointer
+  flip on `view.root`; the transitive parent walk keeps deep chains
+  live instead of orphaning them.
+- **Path colours.** Each collection takes a user-assigned hex accent
+  (eight presets + native color-picker). Applied everywhere a path
+  renders — toolbar pill, switcher, ForkingRoad, sidebar strip, path
+  ribbon, and the path-tinted caret.
+- **Auto-path by tag.** A path can pin an `auto_membership_tag`; the
+  reconciler adds any matching note automatically after every save
+  and tag edit. Manual additions are preserved — it only adds.
+- **Cluster suggestions.** The paths pane surfaces a *"N suggested"*
+  button when the graph has egocentric clusters that aren't already a
+  path. Click to create with the cluster seeded in.
+- **Activity heatmap + tag graph.** Palette → *Activity* opens a
+  GitHub-style calendar of checkpoints across all paths (90-day /
+  6-month / 1-year windows) with streak stats and a compact 14-day
+  strip in the sidebar. Palette → *Tag graph* opens a force-directed
+  view of tag co-occurrence coloured by greedy clusters; click a tag
+  to filter.
+- **Reader-mode inline diff (Ley Lines).** On a non-root path the
+  reading view renders the path body with inline
+  `<del>old</del><ins>new</ins>` on modified lines, dedicated classes
+  on pure additions/deletions, and a left change-bar on every changed
+  block via a post-render DOM walk.
+- **Path-switching correctness.** Saves triggered by a path-switch
+  unmount now always route to the path the edits were typed on (4th
+  `onSave` argument captured at mount time). `activeNote` updates
+  guard on `effectivePath === currentPath` so a stale async save can't
+  slam a previous path's body back onto the visible editor.
+
+### Onboarding + imports
+
+- **Sample vault on first run.** Onboarding offers a *Try a sample
+  vault* button that creates a workspace seeded with a **one-month,
+  six-country Europe trip** — 25 notes, 10 nested paths
+  (`add-sweden → stockholm-only → lapland-detour`, etc.), typed links,
+  tags, and six checkpoints on main so the history slider has
+  scrub-room on day one.
+- **Imports from Bear, Logseq, Notion** — alongside Obsidian. The
+  new-workspace wizard stages a picked source and shows a contextual
+  card with the expected folder shape before the OS picker fires.
+  Each parser handles per-app quirks (Bear's flat `.md` + inline
+  `#tag`s, Logseq's `pages/` + `journals/` split with `_` → `-` for
+  journal stems, Notion's ` <32-hex-id>.md` suffix stripped). Each
+  import lands as one checkpoint.
+- **Guided *Open a different folder* modal.** Instead of dropping you
+  into the OS picker, onboarding shows what a Yarrow workspace looks
+  like on disk first.
+- **Daily journal as connector.** Opening today's journal auto-fills
+  a `## Today's threads` section (inside HTML-comment markers) with
+  wikilinks to every note modified today. The rest of the journal is
+  untouched.
+
+### Appearance + chrome
+
+- **New Yarrow sprig mark.** A stem + five pinnate branches with
+  seven filled nodes, defaults to `currentColor`, scales from 16 px to
+  1024 px without redrawing. Replaces the old git-fork logo across
+  the dock/taskbar icon, favicon, onboarding wordmark, new-workspace
+  wizard, and the docs site. Platform icons regenerated
+  (`icon.icns` / `.ico` / Linux sizes / Microsoft Store squircles /
+  iOS + Android asset catalogs).
+- **Editorial left sidebar.** Pinned-active hero card at the top,
+  time-grouped sections (Today / Yesterday / Last Week / Older, older
+  capped at 3 with a `+ N more` toggle), single-line serif rows,
+  sticky count + New footer. A utility row underneath exposes
+  Journal · Activity · Trash as one-click icon buttons.
+- **Reading-mode math.** When the Math extra is on, KaTeX auto-render
+  post-processes the rendered HTML so `$x^2$` and `$$…$$` typeset in
+  reading mode too.
+
+### Under the hood
+
+- **New IPC commands:** `cmd_set_annotations`, `cmd_pin_checkpoint` /
+  `cmd_list_pinned_checkpoints` / `cmd_unpin_checkpoint`,
+  `cmd_writing_activity`, `cmd_render_markdown_html`,
+  `cmd_import_bear_vault`, `cmd_import_logseq_vault`,
+  `cmd_import_notion_vault`, `cmd_set_path_collection_color`,
+  `cmd_set_path_collection_auto_tag`, `cmd_suggest_path_clusters`,
+  `cmd_init_sample_workspace`.
+- **New Rust modules:** `foreign_import` (Bear / Logseq / Notion
+  parsers), `sample_vault` (starter content + bootstrap). New
+  `graph::cluster_suggestions` for path suggestions; new
+  `notes::reconcile_daily_threads`; new
+  `path_collections::reconcile_auto_membership`.
+- **Frontmatter schema additions (migration-safe):**
+  `Frontmatter.annotations: Vec<Annotation>` and
+  `PathCollection.{color, auto_membership_tag}`, each with
+  `skip_serializing_if` so existing notes serialise byte-identical.
+- **Keepsake plumbing.** `git::rewrite_history_dropping` consults
+  `list_keepsakes_oids` before dropping any commit and remaps
+  keepsake refs when ancestors are rewritten. Sidecar metadata lives
+  in `.yarrow/keepsakes.json`.
+- **Lazy editor chunks:** `extensions/{codeHighlight, math, spell,
+  imagePreview, wikilinkAutocomplete}.ts`. Every CodeMirror tooltip is
+  now parented to `document.body` via `tooltips({...})` to fix the
+  webkit2gtk clipping that killed the old `[[` typeahead.
+- **Radial menu stack:** `RadialMenu.tsx`, `LinearContextMenu.tsx`,
+  `radialItems.tsx`, `center/actions.ts`. A 5-gesture centre disc
+  resolves tap / long-press / double-click / drag-out / scroll in a
+  single `mouseup` plus a passive-false wheel listener.
+- **Version centralization.** `package.json` is the single source of
+  truth; `scripts/sync-version.mjs` propagates to `src/lib/version.ts`,
+  `Cargo.toml`, `tauri.conf.json`, and `package-lock.json`. New
+  `npm run sync-version`.
+- **Editor prefs factory.** `makeBoolPref(key, evt, default)` —
+  localStorage-backed boolean with cross-window sync. Used by the
+  three new 2.0 toggles (typewriter, editorial, caret-tint) and the
+  radial-menu toggle.
+- **`lib/leftOff.ts`.** Workspace-keyed bookmark store; writes
+  debounced 900 ms, flushed on AppShell unmount.
+
+### Stability
+
+- **WebKit CPU spike on Paths open, fixed.** `PathsPane`'s
+  `onCollectionsChanged` prop identity was regenerated on every
+  AppShell render, pulling `refresh` into an infinite loop. Pinned in
+  a ref; `refresh` is now `useCallback(…, [])`-stable.
+- **No more crash on workspace close after an earlier panic.**
+  `cmd_close_workspace` and `cmd_active_workspace` now use
+  `unpoison()` — a poisoned mutex no longer takes down the recovery
+  path.
+- **Atomic-write temp filenames can't collide.** `notes::atomic_write`
+  gained a strict-monotonic counter on top of pid + subsec-nanos, so
+  two parallel writes within the same nanosecond are safe on every
+  platform.
+
+### Security &amp; hardening
+
+- **SSRF: URL-title fetch re-validates every redirect.** The smart-paste
+  fetcher used to check the initial URL against the
+  loopback/private-IP allowlist and then follow up to 5 redirects
+  unchecked — an attacker-controlled 302 could bounce us onto
+  `169.254.169.254`. Redirects are now followed manually, capped at 3,
+  with the allowlist + scheme check re-run on each hop.
+- **Regex DoS blocked.** Find-replace patterns are capped at 2 KB;
+  compiled NFA and DFA sizes are capped at 10 MB and 20 MB. Hostile
+  patterns now fail to build with "bad pattern" instead of hanging the
+  app.
+- **Attachment extension sanitised.** Only
+  `[a-z0-9]{1,10}` allowed; anything else falls back to `bin`.
+  Blocks null bytes, control chars, and pathological filenames.
+- **URL-title fetcher user-agent tracks `CARGO_PKG_VERSION`** — no
+  more stale version string in outbound requests.
+
+### Removed
+
+- **The Narrative Threads feature set** — the Paths-pane
+  Ledger/Timeline/Themes/Voice/Decision-phrases dashboard and the
+  later semantic experiments. The whole pattern-reading pipeline went
+  with it (`dimensions.rs`, `text_features.rs`, `embeddings.rs`,
+  `semantic.rs`, their frontend modules, ~1360 lines of dashboard
+  CSS, and the Rust deps `fastembed`, `rust-stemmers`,
+  `vader_sentiment`, `chrono-english`, `aho-corasick`,
+  `unicode-segmentation`).
+- **The "N try paths open" banner** above the editor. The on-main
+  pill row listing other paths went with it. The teaching ribbon
+  that appears when you're *on* a try path is kept.
+- **Scratchpad button in the left sidebar** — reachable from the
+  right-sidebar tab; the second surface was redundant.
+- **The old `[[`-typeahead fallback.** Replaced by the real tooltip-
+  backed autocomplete and the right-click *Insert wikilink…* modal.
+
 ## [1.1.0] — 2026-04-19
 
 The 1.1 release deepens the writing surface (real GitHub-style reading mode,

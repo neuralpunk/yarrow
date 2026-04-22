@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { HistoryEntry } from "../../lib/types";
+import type { HistoryEntry, Keepsake } from "../../lib/types";
 import { friendlyDate, relativeTime } from "../../lib/format";
 
 interface Props {
@@ -7,8 +7,15 @@ interface Props {
   preview: string | null;
   currentBody: string;
   noteTitle: string;
+  /** Pinned checkpoints for this note — shown as ★ badges next to their
+   *  entry in the timeline. Parent loads/filters server-side. */
+  keepsakes?: Keepsake[];
   onHover: (oid: string) => void;
   onRestore: (oid: string) => void;
+  /** Pin the selected checkpoint with a user-provided label. */
+  onPin?: (oid: string, label: string, note?: string) => void;
+  /** Remove a pin by keepsake id. */
+  onUnpin?: (keepsakeId: string) => void;
   onClose: () => void;
 }
 
@@ -38,13 +45,29 @@ export default function HistorySlider({
   preview,
   currentBody,
   noteTitle,
+  keepsakes,
   onHover,
   onRestore,
+  onPin,
+  onUnpin,
   onClose,
 }: Props) {
   const [idx, setIdx] = useState<number>(history.length > 0 ? 0 : -1);
   const [confirming, setConfirming] = useState(false);
   const [showDiffOnly, setShowDiffOnly] = useState(false);
+  const [pinPrompt, setPinPrompt] = useState<{ oid: string } | null>(null);
+  const [pinLabel, setPinLabel] = useState("");
+  const [pinNote, setPinNote] = useState("");
+
+  // oid → keepsake (first match, newest first). Lets us show a pin
+  // next to any timeline entry whose oid has been pinned.
+  const keepsakeByOid = useMemo(() => {
+    const m = new Map<string, Keepsake>();
+    for (const k of keepsakes ?? []) {
+      if (!m.has(k.oid)) m.set(k.oid, k);
+    }
+    return m;
+  }, [keepsakes]);
 
   useEffect(() => {
     if (idx >= 0 && history[idx]) onHover(history[idx].oid);
@@ -52,11 +75,26 @@ export default function HistorySlider({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Bail out when focus is in a real input — otherwise the j/k/Enter
+      // navigation shortcuts would eat letters the user is trying to
+      // type into the pin prompt's label/note fields. Escape still
+      // closes whatever's open (modal guards handle it below).
+      const t = e.target as HTMLElement | null;
+      const inInput = !!t && (
+        t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.isContentEditable
+      );
       if (e.key === "Escape") {
+        if (pinPrompt) { setPinPrompt(null); return; }
         if (confirming) { setConfirming(false); return; }
         onClose();
         return;
       }
+      // Any other key: if we're typing into an input, or a sub-modal
+      // is open, don't steal it. The pin prompt has its own onKeyDown
+      // on its input to handle Enter/Escape locally.
+      if (inInput || pinPrompt) return;
       if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault();
         setIdx((i) => Math.min(history.length - 1, i + 1));
@@ -72,7 +110,7 @@ export default function HistorySlider({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [history.length, onClose, idx, confirming]);
+  }, [history.length, onClose, idx, confirming, pinPrompt]);
 
   const selected = idx >= 0 ? history[idx] : null;
   const isLatest = idx === 0;
@@ -200,6 +238,14 @@ export default function HistorySlider({
                                   latest
                                 </span>
                               )}
+                              {keepsakeByOid.has(e.oid) && (
+                                <span
+                                  className="yarrow-keepsake-pin"
+                                  title={`pinned: ${keepsakeByOid.get(e.oid)?.label ?? ""}`}
+                                >
+                                  kept
+                                </span>
+                              )}
                             </div>
                             <div className="text-2xs text-t3 font-mono mt-0.5">
                               {friendlyDate(e.timestamp)}
@@ -207,6 +253,11 @@ export default function HistorySlider({
                             {e.thinking_note && (
                               <div className="text-2xs text-yeld italic mt-1 line-clamp-2">
                                 “{e.thinking_note}”
+                              </div>
+                            )}
+                            {keepsakeByOid.has(e.oid) && (
+                              <div className="text-2xs italic text-yeld/80 mt-1 line-clamp-2">
+                                {keepsakeByOid.get(e.oid)?.note || keepsakeByOid.get(e.oid)?.label}
                               </div>
                             )}
                           </div>
@@ -309,6 +360,32 @@ export default function HistorySlider({
               : "No checkpoint selected"}
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {selected && onPin && onUnpin && (
+              (() => {
+                const existing = keepsakeByOid.get(selected.oid);
+                return existing ? (
+                  <button
+                    onClick={() => onUnpin(existing.id)}
+                    className="px-3 py-1.5 text-xs rounded-md text-yeld hover:bg-yelp/60"
+                    title={`Unpin "${existing.label}". The checkpoint can be pruned again after this.`}
+                  >
+                    ★ unpin
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setPinLabel("");
+                      setPinNote("");
+                      setPinPrompt({ oid: selected.oid });
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-md text-t2 hover:text-yeld hover:bg-yelp/40"
+                    title="Pin this checkpoint — history pruning will never remove it."
+                  >
+                    ☆ pin this
+                  </button>
+                );
+              })()
+            )}
             <button
               onClick={onClose}
               className="px-3 py-1.5 text-xs text-t2 hover:text-char"
@@ -325,6 +402,66 @@ export default function HistorySlider({
             </button>
           </div>
         </div>
+
+        {pinPrompt && onPin && (
+          <div
+            className="absolute inset-0 flex items-center justify-center bg-bg/85"
+            onClick={() => setPinPrompt(null)}
+          >
+            <div
+              className="max-w-sm w-full mx-4 bg-bg border border-bd2 rounded-xl shadow-2xl p-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="font-serif text-xl text-char mb-2">
+                Pin this checkpoint
+              </div>
+              <p className="text-sm text-t2 mb-3 leading-relaxed">
+                It'll survive any future pruning — <em>older-than</em>, <em>empty-content</em>,
+                anything. Give it a short name so future-you remembers why.
+              </p>
+              <input
+                value={pinLabel}
+                onChange={(e) => setPinLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && pinLabel.trim()) {
+                    e.preventDefault();
+                    onPin(pinPrompt.oid, pinLabel.trim(), pinNote.trim() || undefined);
+                    setPinPrompt(null);
+                  }
+                  if (e.key === "Escape") setPinPrompt(null);
+                }}
+                autoFocus
+                placeholder="e.g. before I cut the prologue"
+                className="w-full px-3 py-2 bg-s1 border border-bd rounded text-char text-sm placeholder:text-t3 mb-3 focus:outline-none focus:border-yel"
+              />
+              <textarea
+                value={pinNote}
+                onChange={(e) => setPinNote(e.target.value)}
+                placeholder="Optional: what made this version worth keeping?"
+                rows={3}
+                className="w-full px-3 py-2 bg-s1 border border-bd rounded text-char text-xs placeholder:text-t3 mb-4 focus:outline-none focus:border-yel"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  className="px-3 py-1.5 text-sm text-t2 hover:text-char"
+                  onClick={() => setPinPrompt(null)}
+                >
+                  cancel
+                </button>
+                <button
+                  className="btn-yel px-4 py-1.5 text-sm rounded-md disabled:opacity-40"
+                  disabled={!pinLabel.trim()}
+                  onClick={() => {
+                    onPin(pinPrompt.oid, pinLabel.trim(), pinNote.trim() || undefined);
+                    setPinPrompt(null);
+                  }}
+                >
+                  pin it
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {confirming && selected && (
           <div

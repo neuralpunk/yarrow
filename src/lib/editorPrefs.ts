@@ -5,7 +5,7 @@ const EVT = "yarrow:showRawMarkdown-changed";
 
 // ───────────────── editor font family ─────────────────
 
-export type EditorFontId = "source-serif" | "lora" | "inter" | "plex-sans";
+export type EditorFontId = "newsreader" | "source-serif" | "lora" | "inter" | "plex-sans";
 
 export interface EditorFontChoice {
   id: EditorFontId;
@@ -19,6 +19,17 @@ export interface EditorFontChoice {
 }
 
 export const EDITOR_FONTS: EditorFontChoice[] = [
+  {
+    id: "newsreader",
+    label: "Newsreader",
+    kind: "serif",
+    // `opsz` axis is on — browsers fetch the large-optical-size master at
+    // editor body sizes, keeping the open letterforms Newsreader is known
+    // for instead of the squatter small-text cut.
+    stack: "'Newsreader', ui-serif, Georgia, serif",
+    lineHeight: 1.68,
+    sample: "Generous reading rhythm — the default.",
+  },
   {
     id: "source-serif",
     label: "Source Serif 4",
@@ -55,7 +66,7 @@ export const EDITOR_FONTS: EditorFontChoice[] = [
 
 const FONT_KEY = "yarrow.editorFont";
 const FONT_EVT = "yarrow:editorFont-changed";
-const DEFAULT_FONT: EditorFontId = "source-serif";
+const DEFAULT_FONT: EditorFontId = "newsreader";
 
 function readFont(): EditorFontId {
   try {
@@ -157,3 +168,69 @@ export function useShowRawMarkdown(): [boolean, (v: boolean) => void] {
 
   return [v, set];
 }
+
+// ───────────────── generic boolean-pref factory ─────────────────
+// The toggles below (typewriter mode, editorial reading, path-tinted caret)
+// all share the same shape: localStorage-backed boolean, cross-window sync
+// via a custom event, and a setter that broadcasts. Factor once, use thrice.
+
+function makeBoolPref(key: string, evt: string, def = false) {
+  const readOne = (): boolean => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw == null) return def;
+      return raw === "true";
+    } catch {
+      return def;
+    }
+  };
+  return function useBoolPref(): [boolean, (v: boolean) => void] {
+    const [v, setV] = useState<boolean>(readOne);
+    useEffect(() => {
+      const onChange = (e: Event) => {
+        const next = (e as CustomEvent<boolean>).detail;
+        setV(typeof next === "boolean" ? next : readOne());
+      };
+      const onStorage = (e: StorageEvent) => {
+        if (e.key === key) setV(readOne());
+      };
+      window.addEventListener(evt, onChange as EventListener);
+      window.addEventListener("storage", onStorage);
+      return () => {
+        window.removeEventListener(evt, onChange as EventListener);
+        window.removeEventListener("storage", onStorage);
+      };
+    }, []);
+    const set = useCallback((next: boolean) => {
+      try { localStorage.setItem(key, String(next)); } catch {}
+      setV(next);
+      window.dispatchEvent(new CustomEvent(evt, { detail: next }));
+    }, []);
+    return [v, set];
+  };
+}
+
+/** Typewriter mode: the active line stays at the vertical middle of the
+ *  editor viewport; the page scrolls underneath you. A writing posture,
+ *  not a default — per-user toggle under Settings → Writing. */
+export const useTypewriterMode = makeBoolPref(
+  "yarrow.typewriterMode",
+  "yarrow:typewriterMode-changed",
+);
+
+/** Editorial reading mode: the read-only view uses drop caps, pull quotes
+ *  (`> pull:` prefix), and generous leading — so finished notes read like
+ *  a magazine spread, not a preview pane. */
+export const useEditorialReading = makeBoolPref(
+  "yarrow.editorialReading",
+  "yarrow:editorialReading-changed",
+);
+
+/** Path-tinted caret: the caret takes the color of the current path so
+ *  you always know which draft you're editing. Accessibility toggle —
+ *  some users prefer the default caret's contrast. */
+export const usePathTintedCaret = makeBoolPref(
+  "yarrow.pathTintedCaret",
+  "yarrow:pathTintedCaret-changed",
+  true,
+);

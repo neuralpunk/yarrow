@@ -1,4 +1,4 @@
-import type { BranchTopo, PathMeta } from "./types";
+import type { BranchTopo, PathCollection, PathMeta } from "./types";
 
 /**
  * Cross-cutting path awareness: which paths a given note lives on, which notes
@@ -58,8 +58,19 @@ export function isRoot(name: string): boolean {
  *
  * Returns CSS color strings. Use warmthFor() separately if you want to fade
  * dormant paths; color is identity, warmth is state.
+ *
+ * The optional `overrides` map lets the UI win with a user-assigned accent
+ * (set via PathsPane). Pass the hex value keyed by path name — when present
+ * for `name`, it takes precedence over the derived hue.
  */
-export function colorForPath(name: string, opts?: { soft?: boolean }): string {
+export function colorForPath(
+  name: string,
+  opts?: { soft?: boolean; overrides?: Record<string, string | null | undefined> },
+): string {
+  const override = opts?.overrides?.[name];
+  if (override) {
+    return opts?.soft ? softenHex(override) : override;
+  }
   if (isRoot(name)) {
     // Main uses the primary accent variable so theme switches pick it up.
     return opts?.soft ? "var(--yelp)" : "var(--yel)";
@@ -71,6 +82,25 @@ export function colorForPath(name: string, opts?: { soft?: boolean }): string {
   const hue = 260 + (h % 100); // 260..360 — purples/pinks/warm reds
   if (opts?.soft) return `hsl(${hue} 55% 92%)`;
   return `hsl(${hue} 48% 48%)`;
+}
+
+/** Collapse a PathCollection[] into `{ name: color }` for the overrides map. */
+export function buildPathColorMap(
+  collections: PathCollection[] | undefined | null,
+): Record<string, string> {
+  const m: Record<string, string> = {};
+  for (const c of collections ?? []) {
+    if (c.color && typeof c.color === "string") m[c.name] = c.color;
+  }
+  return m;
+}
+
+/** Lighten a hex color by mixing it with the page background, so a stored
+ *  accent can still be used for soft chip fills without swamping the UI. */
+function softenHex(hex: string): string {
+  const match = /^#([0-9a-fA-F]{3,8})$/.exec(hex);
+  if (!match) return hex;
+  return `color-mix(in srgb, ${hex} 22%, var(--bg))`;
 }
 
 export interface PathConsequence {

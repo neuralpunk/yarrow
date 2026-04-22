@@ -97,13 +97,14 @@ fn import_one(
         kdf: String::new(),
         salt: String::new(),
         nonce: String::new(),
+        annotations: vec![],
     };
     notes::write(notes_dir.parent().unwrap(), &slug, body.trim_start_matches('\n'), Some(fm))?;
     Ok(notes_dir.join(format!("{slug}.md")))
 }
 
 /// Returns `(frontmatter_yaml, body_after_frontmatter)`.
-fn split_frontmatter(raw: &str) -> (String, &str) {
+pub(crate) fn split_frontmatter(raw: &str) -> (String, &str) {
     if !raw.starts_with("---") { return (String::new(), raw); }
     let after_first = &raw[3..];
     if let Some(end) = after_first.find("\n---") {
@@ -117,7 +118,7 @@ fn split_frontmatter(raw: &str) -> (String, &str) {
     (String::new(), raw)
 }
 
-fn pick_title(fm_yaml: &str, body: &str, stem: &str) -> String {
+pub(crate) fn pick_title(fm_yaml: &str, body: &str, stem: &str) -> String {
     if let Some(t) = pick_yaml_string(fm_yaml, "title") {
         if !t.trim().is_empty() { return t; }
     }
@@ -134,7 +135,7 @@ fn pick_title(fm_yaml: &str, body: &str, stem: &str) -> String {
 /// Extract a single string value from a flat YAML frontmatter (no nested
 /// keys). Tolerates `key: value`, `key: "value"`, `key: 'value'`. Used for
 /// title/created/modified and similar simple fields.
-fn pick_yaml_string(yaml: &str, key: &str) -> Option<String> {
+pub(crate) fn pick_yaml_string(yaml: &str, key: &str) -> Option<String> {
     let needle = format!("{key}:");
     for line in yaml.lines() {
         let trimmed = line.trim_start();
@@ -149,7 +150,7 @@ fn pick_yaml_string(yaml: &str, key: &str) -> Option<String> {
 
 /// Pull tags from a flat YAML frontmatter. Supports both `tags: [a, b]`
 /// inline arrays and the multi-line `tags:\n  - a` form.
-fn collect_frontmatter_tags(yaml: &str) -> Vec<String> {
+pub(crate) fn collect_frontmatter_tags(yaml: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut in_tags_block = false;
     for line in yaml.lines() {
@@ -188,7 +189,7 @@ fn collect_frontmatter_tags(yaml: &str) -> Vec<String> {
 
 /// Scan body for `#tag` annotations (Obsidian style). Excludes things that
 /// look like Markdown headings (`# Heading`) or anchor refs (`#L42`).
-fn scan_inline_tags(body: &str) -> Vec<String> {
+pub(crate) fn scan_inline_tags(body: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut in_fence = false;
     for line in body.lines() {

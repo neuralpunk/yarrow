@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use crate::notes;
+use crate::search_index;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SearchHit {
@@ -13,11 +14,48 @@ pub struct SearchHit {
     pub score: i32,
 }
 
-pub fn search(root: &Path, query: &str, limit: usize) -> Result<Vec<SearchHit>> {
+/// Public entry point. `use_index=true` attempts the FTS5 cache first and
+/// falls back to the pure substring scanner on any failure. Callers
+/// typically read `WorkspaceConfig.preferences.search_index_enabled` to
+/// decide the flag — the rest of the app doesn't need to know an index
+/// exists.
+pub fn search(root: &Path, query: &str, limit: usize, use_index: bool) -> Result<Vec<SearchHit>> {
     let q = query.trim();
     if q.is_empty() {
         return Ok(vec![]);
     }
+    if use_index {
+        if let Some(hits) = try_index_search(root, q, limit) {
+            return Ok(hits);
+        }
+        // Fell through → index couldn't answer the query. Degrade to
+        // substring search rather than returning nothing.
+    }
+    substring_search(root, q, limit)
+}
+
+/// FTS5 attempt. Returns `None` on any failure so the caller can fall
+/// back silently; an empty Vec means "the index is populated and the
+/// query genuinely had no matches" (distinguishable from None).
+fn try_index_search(root: &Path, q: &str, limit: usize) -> Option<Vec<SearchHit>> {
+    let conn = search_index::open(root).ok()?;
+    // Cold-start: if the cache is empty (first search after enabling
+    // indexing, or after a clear), populate it once so subsequent
+    // queries are instant. A failed rebuild falls through to substring.
+    if matches!(search_index::row_count(&conn), Ok(0)) {
+        drop(conn);
+        if search_index::rebuild(root).is_err() {
+            return None;
+        }
+        let conn2 = search_index::open(root).ok()?;
+        return search_index::query(&conn2, q, limit).ok();
+    }
+    search_index::query(&conn, q, limit).ok()
+}
+
+/// Pure substring-and-weighted-terms search — the original path, kept
+/// for graceful fallback and for workspaces that disable the cache.
+fn substring_search(root: &Path, q: &str, limit: usize) -> Result<Vec<SearchHit>> {
     let q_lower = q.to_lowercase();
     let terms: Vec<&str> = q_lower
         .split_whitespace()

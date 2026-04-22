@@ -3,7 +3,7 @@
    small UI chrome (pills, labels) and Display-grade glyphs for large
    headings. Static cuts look aliased at 11–13px on webkit2gtk; the VF
    axis was literally designed to fix that. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,ital,wght@8..60,0,400..700;8..60,1,400..600&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=Roboto+Serif:ital,opsz,wght@0,8..144,400..600;1,8..144,400..500&family=Frank+Ruhl+Libre:wght@400;500;600&family=Merriweather:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,ital,wght@8..60,0,400..700;8..60,1,400..600&family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Instrument+Serif:ital,wght@0,400;1,400&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=Roboto+Serif:ital,opsz,wght@0,8..144,400..600;1,8..144,400..500&family=Frank+Ruhl+Libre:wght@400;500;600&family=Merriweather:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -91,7 +91,12 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  /* "liga" 1 keeps standard ligatures on globally (browsers enable them
+     by default for most serifs; declaring explicitly makes intent clear
+     and survives any future fighting with a reset). The cv02-cv11/ss01
+     pairs are Inter character-variant selectors — harmless no-ops for
+     the serif-defaulted UI but still useful if the user picks Inter. */
+  font-feature-settings: "liga" 1, "cv02", "cv03", "cv04", "cv11", "ss01";
   font-synthesis: none;
   /* Let the browser pick the right optical-size master for whatever
      pixel size a glyph gets rendered at — Source Serif 4 then hands
@@ -128,8 +133,11 @@ body {
   background: var(--bg);
   color: var(--char);
   /* The UI font comes from a CSS var so the Settings → Appearance picker
-     can swap it at runtime. Default fallback is Merriweather — chosen for
-     its editorial weight; matches the v1.1 chrome direction. */
+     can swap it at runtime. Default is Merriweather — chosen for its
+     editorial weight and strong rendering at small UI sizes on
+     webkit2gtk. Tailwind's font-serif / font-sans utilities route
+     through the same var, so picking a different face in Settings
+     cascades to every component (sidebar, modals, diff views). */
   font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif);
   font-size: 14px;
   font-weight: 400;
@@ -186,7 +194,7 @@ button, input, select, textarea {
 .cm-editor {
   background: transparent;
   color: var(--char);
-  font-family: var(--editor-font-family, 'Source Serif 4', ui-serif, Georgia, serif);
+  font-family: var(--editor-font-family, 'Newsreader', ui-serif, Georgia, serif);
   font-size: var(--editor-font-size, 17px);
   font-weight: 400;
   line-height: var(--editor-line-height, 1.65);
@@ -214,20 +222,20 @@ button, input, select, textarea {
 
 /* markdown headings — Source Serif 4 handles both weights and italics */
 .cm-editor .cm-heading1 {
-  font-family: var(--editor-font-family, 'Source Serif 4', ui-serif, Georgia, serif);
+  font-family: var(--editor-font-family, 'Newsreader', ui-serif, Georgia, serif);
   font-size: 32px; line-height: 1.2;
   font-weight: 500;
   color: var(--char);
 }
 .cm-editor .cm-heading2 {
-  font-family: var(--editor-font-family, 'Source Serif 4', ui-serif, Georgia, serif);
+  font-family: var(--editor-font-family, 'Newsreader', ui-serif, Georgia, serif);
   font-size: 22px; line-height: 1.25;
   font-weight: 500;
   font-style: italic;
   color: var(--char);
 }
 .cm-editor .cm-heading3 {
-  font-family: var(--editor-font-family, 'Source Serif 4', ui-serif, Georgia, serif);
+  font-family: var(--editor-font-family, 'Newsreader', ui-serif, Georgia, serif);
   font-size: 18px; line-height: 1.3;
   font-weight: 500;
   color: var(--char);
@@ -280,6 +288,274 @@ button, input, select, textarea {
   border-radius: 6px;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
+}
+
+/* ──── callouts (editor) ─────────────────────────────────────
+   A line-level decoration for blockquotes that open with
+   `> [!type]`. Each type gets a distinct left border + tint
+   so the structure reads at a glance while the raw markdown
+   stays editable. Reading mode styles these as rendered blocks
+   via the `.yarrow-callout-*` classes below. */
+.cm-yarrow-callout {
+  border-left: 3px solid var(--bd2);
+  padding-left: 8px;
+  background: color-mix(in srgb, var(--s2) 35%, transparent);
+}
+.cm-yarrow-callout.cm-yarrow-callout-head {
+  padding-top: 2px;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+.cm-yarrow-callout.cm-yarrow-callout-tail {
+  padding-bottom: 2px;
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+  margin-bottom: 4px;
+}
+.cm-yarrow-callout-note,
+.cm-yarrow-callout-info {
+  border-left-color: color-mix(in srgb, var(--ch2) 70%, transparent);
+  background: color-mix(in srgb, var(--ch2) 8%, transparent);
+}
+.cm-yarrow-callout-tip {
+  border-left-color: color-mix(in srgb, #3aa890 80%, transparent);
+  background: color-mix(in srgb, #3aa890 10%, transparent);
+}
+.cm-yarrow-callout-question {
+  border-left-color: var(--yeld);
+  background: color-mix(in srgb, var(--yeld) 10%, transparent);
+}
+.cm-yarrow-callout-decision {
+  border-left-color: var(--yel);
+  background: color-mix(in srgb, var(--yel) 10%, transparent);
+}
+.cm-yarrow-callout-warning {
+  border-left-color: color-mix(in srgb, #c97a3a 80%, transparent);
+  background: color-mix(in srgb, #c97a3a 10%, transparent);
+}
+.cm-yarrow-callout-danger {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.cm-yarrow-callout-quote {
+  border-left-color: color-mix(in srgb, var(--t2) 60%, transparent);
+  background: transparent;
+  font-style: italic;
+}
+
+/* ──── callouts (reading mode) ──────────────────────────────
+   Backend-rendered callout blocks get a richer treatment:
+   titled header, typed icon colors, and body padding. */
+.yarrow-callout {
+  margin: 1.2em 0;
+  padding: 0;
+  border-left: 4px solid var(--bd2);
+  border-radius: 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--s2) 35%, transparent);
+}
+.yarrow-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 0.95em;
+  font-family: 'Source Serif 4', ui-serif, Georgia, serif;
+  font-style: italic;
+  letter-spacing: 0.01em;
+  color: var(--char);
+}
+.yarrow-callout-title::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  background: currentColor;
+  /* Each .yarrow-callout-{type} below sets --callout-icon to a data-URI
+     SVG so the icon paints in the title's colour via mask-image. This
+     one-line trick is how we get a different glyph per callout type
+     without adding any markup or JS. */
+  -webkit-mask: var(--callout-icon) center / contain no-repeat;
+  mask: var(--callout-icon) center / contain no-repeat;
+}
+.yarrow-callout-body {
+  padding: 0 14px 10px 14px;
+  color: var(--t2);
+  font-size: 0.95em;
+}
+.yarrow-callout-body > :first-child { margin-top: 0; }
+.yarrow-callout-body > :last-child { margin-bottom: 0; }
+
+.yarrow-callout-note,
+.yarrow-callout-info {
+  border-left-color: color-mix(in srgb, var(--ch2) 70%, transparent);
+  background: color-mix(in srgb, var(--ch2) 8%, transparent);
+}
+.yarrow-callout-note .yarrow-callout-title,
+.yarrow-callout-info .yarrow-callout-title { color: var(--ch2); }
+
+.yarrow-callout-tip {
+  border-left-color: #3aa890;
+  background: color-mix(in srgb, #3aa890 10%, transparent);
+}
+.yarrow-callout-tip .yarrow-callout-title { color: #3aa890; }
+
+.yarrow-callout-question {
+  border-left-color: var(--yeld);
+  background: color-mix(in srgb, var(--yeld) 10%, transparent);
+}
+.yarrow-callout-question .yarrow-callout-title { color: var(--yeld); }
+
+.yarrow-callout-decision {
+  border-left-color: var(--yel);
+  background: color-mix(in srgb, var(--yel) 10%, transparent);
+}
+.yarrow-callout-decision .yarrow-callout-title { color: var(--yeld); }
+
+.yarrow-callout-warning {
+  border-left-color: #c97a3a;
+  background: color-mix(in srgb, #c97a3a 10%, transparent);
+}
+.yarrow-callout-warning .yarrow-callout-title { color: #c97a3a; }
+
+.yarrow-callout-danger {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.yarrow-callout-danger .yarrow-callout-title { color: var(--danger); }
+
+.yarrow-callout-quote {
+  border-left-color: color-mix(in srgb, var(--t2) 60%, transparent);
+  background: transparent;
+}
+.yarrow-callout-quote .yarrow-callout-title { color: var(--t2); }
+
+/* ──── per-type icon URIs ──────────────────────────────────
+   Each SVG is drawn at a 24×24 viewBox with `currentColor` strokes
+   so it stays crisp when the browser applies `mask-image` to scale
+   it down. Shapes chosen to read at 12–16 px: a single-glyph
+   silhouette with generous stroke width.
+
+   These are the same assets writing-mode head lines use for the
+   small margin pip, via `.cm-yarrow-callout-head-*::before` below. */
+.yarrow-callout-note,
+.yarrow-callout-info {
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M12 8h.01M11 12h1v5h1'/></svg>");
+}
+.yarrow-callout-tip {
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 18h6M10 21h4'/><path d='M12 3a6 6 0 0 0-4 10.5c.8.8 1.2 1.7 1.3 2.5h5.4c.1-.8.5-1.7 1.3-2.5A6 6 0 0 0 12 3Z'/></svg>");
+}
+.yarrow-callout-question {
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .7-1 1.4v.3M12 17h.01'/></svg>");
+}
+.yarrow-callout-decision {
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 4v6'/><path d='M12 10l-4 4'/><path d='M12 10l4 4'/><circle cx='12' cy='4' r='1.8'/><circle cx='8' cy='14' r='1.8'/><circle cx='16' cy='14' r='1.8'/><circle cx='12' cy='20' r='1.8'/><path d='M8 14l4 6 4-6'/></svg>");
+}
+.yarrow-callout-warning {
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3 2.5 20h19z'/><path d='M12 10v4M12 17.5h.01'/></svg>");
+}
+.yarrow-callout-danger {
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='7.5,2.5 16.5,2.5 21.5,7.5 21.5,16.5 16.5,21.5 7.5,21.5 2.5,16.5 2.5,7.5'/><path d='M12 8v5M12 16.5h.01'/></svg>");
+}
+.yarrow-callout-quote {
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 17c0-3 2-5 4-5H6V7h5v5a5 5 0 0 1-5 5z'/><path d='M14 17c0-3 2-5 4-5h-4V7h5v5a5 5 0 0 1-5 5z'/></svg>");
+}
+
+/* ──── writing-mode head-line icon ─────────────────────────
+   A small pip sits in the left padding of the first line of a
+   callout block, coloured with the callout's accent. Uses the
+   same --callout-icon data URI as reading mode so both surfaces
+   stay in sync when we change an icon. */
+.cm-yarrow-callout.cm-yarrow-callout-head {
+  position: relative;
+  padding-left: 28px;
+}
+.cm-yarrow-callout.cm-yarrow-callout-head::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  background: var(--callout-line-color, var(--char));
+  -webkit-mask: var(--callout-icon) center / contain no-repeat;
+  mask: var(--callout-icon) center / contain no-repeat;
+  opacity: 0.9;
+  pointer-events: none;
+}
+.cm-yarrow-callout-note.cm-yarrow-callout-head,
+.cm-yarrow-callout-info.cm-yarrow-callout-head {
+  --callout-line-color: var(--ch2);
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M12 8h.01M11 12h1v5h1'/></svg>");
+}
+.cm-yarrow-callout-tip.cm-yarrow-callout-head {
+  --callout-line-color: #3aa890;
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 18h6M10 21h4'/><path d='M12 3a6 6 0 0 0-4 10.5c.8.8 1.2 1.7 1.3 2.5h5.4c.1-.8.5-1.7 1.3-2.5A6 6 0 0 0 12 3Z'/></svg>");
+}
+.cm-yarrow-callout-question.cm-yarrow-callout-head {
+  --callout-line-color: var(--yeld);
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .7-1 1.4v.3M12 17h.01'/></svg>");
+}
+.cm-yarrow-callout-decision.cm-yarrow-callout-head {
+  --callout-line-color: var(--yel);
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 4v6'/><path d='M12 10l-4 4'/><path d='M12 10l4 4'/><circle cx='12' cy='4' r='1.8'/><circle cx='8' cy='14' r='1.8'/><circle cx='16' cy='14' r='1.8'/><circle cx='12' cy='20' r='1.8'/><path d='M8 14l4 6 4-6'/></svg>");
+}
+.cm-yarrow-callout-warning.cm-yarrow-callout-head {
+  --callout-line-color: #c97a3a;
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3 2.5 20h19z'/><path d='M12 10v4M12 17.5h.01'/></svg>");
+}
+.cm-yarrow-callout-danger.cm-yarrow-callout-head {
+  --callout-line-color: var(--danger);
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='7.5,2.5 16.5,2.5 21.5,7.5 21.5,16.5 16.5,21.5 7.5,21.5 2.5,16.5 2.5,7.5'/><path d='M12 8v5M12 16.5h.01'/></svg>");
+}
+.cm-yarrow-callout-quote.cm-yarrow-callout-head {
+  --callout-line-color: var(--t2);
+  --callout-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 17c0-3 2-5 4-5H6V7h5v5a5 5 0 0 1-5 5z'/><path d='M14 17c0-3 2-5 4-5h-4V7h5v5a5 5 0 0 1-5 5z'/></svg>");
+}
+
+/* ──── callout icon "chip" — used in the CalloutInsertModal picker.
+   Same mask trick as above, tinted per type so the picker reads as
+   a palette of callout kinds. */
+.yarrow-callout-icon-chip {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  -webkit-mask: var(--chip-icon) center / 60% no-repeat;
+          mask: var(--chip-icon) center / 60% no-repeat;
+  background: var(--chip-tint);
+}
+.yarrow-callout-icon-chip[data-kind="note"],
+.yarrow-callout-icon-chip[data-kind="info"] {
+  --chip-tint: var(--ch2);
+  --chip-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M12 8h.01M11 12h1v5h1'/></svg>");
+}
+.yarrow-callout-icon-chip[data-kind="tip"] {
+  --chip-tint: #3aa890;
+  --chip-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 18h6M10 21h4'/><path d='M12 3a6 6 0 0 0-4 10.5c.8.8 1.2 1.7 1.3 2.5h5.4c.1-.8.5-1.7 1.3-2.5A6 6 0 0 0 12 3Z'/></svg>");
+}
+.yarrow-callout-icon-chip[data-kind="question"] {
+  --chip-tint: var(--yeld);
+  --chip-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .7-1 1.4v.3M12 17h.01'/></svg>");
+}
+.yarrow-callout-icon-chip[data-kind="decision"] {
+  --chip-tint: var(--yel);
+  --chip-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 4v6'/><path d='M12 10l-4 4'/><path d='M12 10l4 4'/><circle cx='12' cy='4' r='1.8'/><circle cx='8' cy='14' r='1.8'/><circle cx='16' cy='14' r='1.8'/><circle cx='12' cy='20' r='1.8'/><path d='M8 14l4 6 4-6'/></svg>");
+}
+.yarrow-callout-icon-chip[data-kind="warning"] {
+  --chip-tint: #c97a3a;
+  --chip-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3 2.5 20h19z'/><path d='M12 10v4M12 17.5h.01'/></svg>");
+}
+.yarrow-callout-icon-chip[data-kind="danger"] {
+  --chip-tint: var(--danger);
+  --chip-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='7.5,2.5 16.5,2.5 21.5,7.5 21.5,16.5 16.5,21.5 7.5,21.5 2.5,16.5 2.5,7.5'/><path d='M12 8v5M12 16.5h.01'/></svg>");
+}
+.yarrow-callout-icon-chip[data-kind="quote"] {
+  --chip-tint: var(--t2);
+  --chip-icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 17c0-3 2-5 4-5H6V7h5v5a5 5 0 0 1-5 5z'/><path d='M14 17c0-3 2-5 4-5h-4V7h5v5a5 5 0 0 1-5 5z'/></svg>");
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -446,7 +722,187 @@ button, input, select, textarea {
   font-size: 12px;
 }
 
-/* autocomplete */
+/* ─────────────────────────────────────────────────────────────
+   Radial menu (right-click pie menu in the editor)
+   ───────────────────────────────────────────────────────────── */
+
+.radial-menu {
+  filter: drop-shadow(0 14px 36px rgba(0, 0, 0, 0.32));
+  overflow: visible;
+}
+.radial-wedge path {
+  fill: color-mix(in srgb, var(--s2) 96%, transparent);
+  stroke: var(--bd2);
+  stroke-width: 1;
+  cursor: pointer;
+  transition:
+    fill 120ms ease,
+    transform 120ms ease;
+  transform-origin: center center;
+}
+.radial-wedge:hover path,
+.radial-wedge.is-selected path {
+  fill: var(--yelp);
+  stroke: var(--yeld);
+}
+.radial-wedge.is-disabled path {
+  fill: var(--s1);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.radial-label {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+  color: var(--ch2);
+  user-select: none;
+  pointer-events: none;
+  font-family: var(--ui-font-family, Figtree, ui-sans-serif, system-ui);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+.radial-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t2);
+  transition: color 120ms ease;
+}
+.radial-wedge:hover .radial-icon,
+.radial-wedge.is-selected .radial-icon,
+.radial-wedge:hover .radial-text,
+.radial-wedge.is-selected .radial-text {
+  color: var(--char);
+}
+.radial-wedge.is-disabled .radial-label {
+  color: var(--t3);
+}
+.radial-text {
+  color: var(--ch2);
+  transition: color 120ms ease;
+}
+.radial-sub {
+  font-size: 10px;
+  color: var(--t3);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-weight: 400;
+}
+.radial-center {
+  fill: var(--s1);
+  stroke: var(--bd2);
+  stroke-width: 1;
+  cursor: pointer;
+  transition: fill 120ms ease;
+}
+.radial-center:hover {
+  fill: var(--s3);
+}
+/* While the user holds the centre, a yellow ring fills clockwise from
+   12 o'clock over ~LONG_PRESS_MS; completion fires the long-press
+   action (Constellation). If the user lets go before the ring closes,
+   it fades and the action doesn't fire. */
+.radial-center-fill {
+  fill: none;
+  stroke: var(--yel);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 283; /* ~2π·45, the centre-disc circumference */
+  stroke-dashoffset: 283;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+.radial-center-pressing .radial-center {
+  fill: var(--yelp);
+}
+.radial-center-pressing .radial-center-fill {
+  opacity: 1;
+  animation: radialCenterFill 380ms linear forwards;
+}
+@keyframes radialCenterFill {
+  from { stroke-dashoffset: 283; }
+  to   { stroke-dashoffset: 0; }
+}
+.radial-center-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  fill: var(--t2);
+  dominant-baseline: central;
+  pointer-events: none;
+  user-select: none;
+}
+.radial-center-pressing .radial-center-label { fill: var(--yeld); }
+
+/* ─── The Still Point glyph ───
+   A 3×3 pixel-grid with a lifted core dot, plus 8 ghost interstitials
+   at half-distance that sit barely visible underneath — the mark
+   reads as a wireframe mesh receding into the back with one pixel
+   held in focus at the centre. */
+.radial-still-dot {
+  fill: var(--t2);
+  transition: fill 140ms ease, transform 140ms ease;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.radial-still-muted {
+  fill: var(--t2);
+  opacity: 0.55;
+  transition: fill 140ms ease, opacity 140ms ease;
+}
+/* "Ghost" dots — the 3D-fade layer. Kept very low opacity so they
+   register as depth, not detail. */
+.radial-still-ghost {
+  fill: var(--t2);
+  opacity: 0.22;
+  transition: fill 140ms ease, opacity 140ms ease;
+}
+
+/* Hover on the centre disc (via `:has()` on the parent group) and the
+   press-state both lift all three layers so the whole mark brightens
+   together — the mesh "resolves" as it gets tapped/held. */
+g:has(> .radial-center:hover) .radial-still-dot,
+.radial-center-pressing .radial-still-dot {
+  fill: var(--yeld);
+  transform: scale(1.3);
+}
+g:has(> .radial-center:hover) .radial-still-muted,
+.radial-center-pressing .radial-still-muted {
+  fill: var(--yeld);
+  opacity: 0.8;
+}
+g:has(> .radial-center:hover) .radial-still-ghost,
+.radial-center-pressing .radial-still-ghost {
+  fill: var(--yeld);
+  opacity: 0.45;
+}
+@keyframes radialIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-radialIn {
+  animation: radialIn 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center center;
+}
+
+/* autocomplete — slash menu + [[wikilink]] dropdown. Rendered into
+   document.body via tooltips({ parent: document.body }) so the nested
+   overflow-hidden containers in AppShell can't clip it (the cause of
+   the "typing / does nothing" bug on webkit2gtk / Wayland). */
 .cm-tooltip-autocomplete {
   background: var(--bg) !important;
   border: 1px solid var(--bd2) !important;
@@ -455,14 +911,40 @@ button, input, select, textarea {
   font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif) !important;
   font-size: 14px !important;
   font-weight: 450 !important;
+  /* Above toolbars, modals' backdrops, etc. The tooltip is a child of
+     <body>, so only its own z-index matters. */
+  z-index: 100 !important;
+  min-width: 260px;
+  max-width: 420px;
+}
+.cm-tooltip-autocomplete ul {
+  max-height: 320px !important;
+  font-family: inherit !important;
 }
 .cm-tooltip-autocomplete ul li {
   color: var(--ch2) !important;
-  padding: 5px 9px !important;
+  padding: 6px 10px !important;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
 .cm-tooltip-autocomplete ul li[aria-selected] {
   background: var(--yelp) !important;
   color: var(--char) !important;
+}
+/* Secondary text for a completion (note slug for wikilinks, snippet
+   preview for slash commands). Kept quieter than the label. */
+.cm-tooltip-autocomplete .cm-completionDetail {
+  margin-left: auto;
+  color: var(--t3) !important;
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+  font-size: 11px !important;
+  font-style: normal !important;
+  opacity: 0.85;
+}
+.cm-tooltip-autocomplete ul li[aria-selected] .cm-completionDetail {
+  color: var(--char) !important;
+  opacity: 0.7;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -658,3 +1140,394 @@ button, a {
 .note-row[data-related="true"] {
   box-shadow: inset 2px 0 0 var(--accent2-dim);
 }
+
+/* ─── Ley Lines: inline diff against main ────────────────────────── */
+.cm-ley-gutter {
+  padding: 0 6px 0 8px;
+  min-width: 20px;
+}
+.cm-ley-gutter-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-top: 7px;
+  cursor: pointer;
+  background: var(--yel);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--yel) 22%, transparent);
+  transition: transform 140ms ease, box-shadow 160ms ease;
+}
+.cm-ley-gutter-dot:hover { transform: scale(1.2); }
+.cm-ley-gutter-dot-add {
+  background: var(--accent2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent2) 22%, transparent);
+}
+.cm-ley-gutter-dot-del {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+.cm-ley-gutter-dot-mod { background: var(--yel); }
+.cm-ley-gutter-dot-open {
+  transform: scale(1.3);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--yel) 28%, transparent);
+}
+.cm-ley-gutter-dot-open.cm-ley-gutter-dot-add {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent2) 28%, transparent);
+}
+.cm-ley-gutter-dot-open.cm-ley-gutter-dot-del {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 28%, transparent);
+}
+
+.cm-ley-inline {
+  font-size: 0.96em;
+  line-height: 1.55;
+  margin: 4px 0;
+  padding: 6px 12px 6px 14px;
+  border-left: 2px solid var(--yel);
+  background: color-mix(in srgb, var(--yel) 6%, transparent);
+  border-radius: 0 6px 6px 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.cm-ley-inline-add { border-left-color: var(--accent2); background: color-mix(in srgb, var(--accent2) 6%, transparent); }
+.cm-ley-inline-del { border-left-color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, transparent); }
+.cm-ley-inline .cm-ley-tag {
+  font-family: ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t2);
+  margin-left: 8px;
+  opacity: 0.75;
+}
+.cm-ley-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--t2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+.cm-ley-close:hover { color: var(--char); background: var(--bd2); }
+
+.ley-del, del.ley-del {
+  color: color-mix(in srgb, var(--danger) 75%, var(--t2));
+  text-decoration: line-through;
+  text-decoration-color: var(--danger);
+  text-decoration-thickness: 1.5px;
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-style: normal;
+}
+.ley-ins, ins.ley-ins {
+  color: color-mix(in srgb, var(--accent2) 75%, var(--char));
+  text-decoration: none;
+  background: color-mix(in srgb, var(--accent2) 10%, transparent);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-style: normal;
+}
+
+.yarrow-reading .ley-ins-line,
+.yarrow-reading ins.ley-ins-line {
+  background: color-mix(in srgb, var(--accent2) 10%, transparent);
+  border-left: 2px solid var(--accent2);
+  padding-left: 8px;
+  display: block;
+  text-decoration: none;
+  font-style: normal;
+}
+.yarrow-reading .ley-del-line,
+.yarrow-reading del.ley-del-line {
+  color: var(--t2);
+  text-decoration: line-through;
+  text-decoration-color: var(--danger);
+  border-left: 2px solid var(--danger);
+  padding-left: 8px;
+  display: block;
+  background: color-mix(in srgb, var(--danger) 4%, transparent);
+  font-style: italic;
+  font-size: 0.94em;
+  opacity: 0.85;
+}
+.yarrow-reading .ley-changed {
+  position: relative;
+  padding-left: 14px;
+}
+.yarrow-reading .ley-changed::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0.25em; bottom: 0.25em;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--yel);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   2.0 — Typewriter mode
+   The scroll container that wraps the CodeMirror host gets huge
+   top/bottom padding so the active line (via scrollIntoView in
+   typewriter-mode ViewPlugin) can rest at the vertical middle
+   regardless of its position in the document.
+   ───────────────────────────────────────────────────────────── */
+.yarrow-typewriter {
+  /* Half-viewport runway either side so the very first and last
+     lines can still be centred. */
+  padding-top: 50vh !important;
+  padding-bottom: 50vh !important;
+  scroll-padding-top: 50vh;
+  scroll-padding-bottom: 50vh;
+}
+.yarrow-typewriter .cm-editor .cm-activeLine {
+  background: color-mix(in srgb, var(--yel) 12%, transparent);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   2.0 — Path-tinted caret
+   The `--caret-path-color` custom property is set inline by
+   NoteEditor based on the current path's color (pathAwareness +
+   collection override). Only applies when the pref is on and the
+   editor is focused — we don't want dormant notes on side paths
+   showing a rainbow of pills.
+   ───────────────────────────────────────────────────────────── */
+/* The tint class lives on the editor's host <div>, not on .cm-editor —
+   CodeMirror mounts asynchronously, so a class on the wrapper applies
+   reliably as soon as CM's DOM lands. These selectors thread the colour
+   through the wrapper → .cm-editor → cursor / selection layers. */
+.yarrow-caret-tinted .cm-editor .cm-content { caret-color: var(--caret-path-color, var(--yel)); }
+.yarrow-caret-tinted .cm-editor .cm-cursor,
+.yarrow-caret-tinted .cm-editor .cm-cursorLayer .cm-cursor {
+  border-left-color: var(--caret-path-color, var(--yel)) !important;
+  border-left-width: 2px !important;
+}
+.yarrow-caret-tinted .cm-editor .cm-selectionBackground,
+.yarrow-caret-tinted .cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--caret-path-color, var(--yel)) 16%, transparent) !important;
+}
+.yarrow-caret-tinted .cm-editor .cm-activeLine {
+  background: color-mix(in srgb, var(--caret-path-color, var(--yel)) 10%, transparent);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   2.0 — Editorial reading
+   Layered on top of .yarrow-reading: drop caps on the first
+   paragraph, pull-quote treatment for blockquotes tagged with
+   .yarrow-pull (see NoteReader post-processor), generous leading.
+   ───────────────────────────────────────────────────────────── */
+.yarrow-reading.yarrow-editorial {
+  font-family: 'Fraunces', 'Newsreader', Georgia, serif;
+  font-size: 19px;
+  line-height: 1.78;
+  letter-spacing: 0.005em;
+}
+.yarrow-reading.yarrow-editorial > p:first-of-type::first-letter,
+.yarrow-reading.yarrow-editorial > p.yarrow-dropcap::first-letter {
+  font-family: 'Fraunces', 'Instrument Serif', Georgia, serif;
+  font-style: normal;
+  font-weight: 500;
+  float: left;
+  font-size: 4.5em;
+  line-height: 0.82;
+  padding: 0.08em 0.12em 0 0;
+  color: var(--yeld);
+}
+.yarrow-reading.yarrow-editorial blockquote.yarrow-pull {
+  font-family: 'Fraunces', 'Instrument Serif', Georgia, serif;
+  font-style: italic;
+  font-size: 1.42em;
+  line-height: 1.38;
+  color: var(--yeld);
+  border-left: 3px solid var(--yel);
+  background: transparent;
+  padding: 0.3em 1em;
+  margin: 1.1em 0 1.2em -0.4em;
+  max-width: 100%;
+  border-radius: 0;
+}
+.yarrow-reading.yarrow-editorial blockquote.yarrow-pull p { margin: 0; }
+.yarrow-reading.yarrow-editorial h1,
+.yarrow-reading.yarrow-editorial h2,
+.yarrow-reading.yarrow-editorial h3 {
+  font-family: 'Fraunces', 'Instrument Serif', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   2.0 — Margin Ink annotations gutter
+   ───────────────────────────────────────────────────────────── */
+.yarrow-annotations-layout {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 24px;
+}
+@media (max-width: 960px) {
+  .yarrow-annotations-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.yarrow-annotations-gutter {
+  min-width: 0;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  padding-top: 8px;
+}
+.yarrow-annotation {
+  background: color-mix(in srgb, var(--yelp) 38%, transparent);
+  border-left: 2px solid var(--yel);
+  border-radius: 0 6px 6px 0;
+  padding: 10px 12px 10px 12px;
+  margin-bottom: 10px;
+  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--char);
+  position: relative;
+  transition: border-color .15s;
+}
+.yarrow-annotation:hover { border-left-color: var(--yeld); }
+.yarrow-annotation .meta {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--t3);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.yarrow-annotation .meta button {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--t3);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.yarrow-annotation .meta button:hover { color: var(--danger); }
+.yarrow-annotation textarea {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--char);
+  font: inherit;
+  resize: vertical;
+  min-height: 1.45em;
+}
+.yarrow-annotation.is-editing { border-left-color: var(--accent2); }
+.yarrow-annotation .anchor {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-size: 11.5px;
+  color: var(--t2);
+  border-bottom: 1px dashed var(--bd);
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.yarrow-annotations-add {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--t3);
+  background: transparent;
+  border: 1px dashed var(--bd);
+  border-radius: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.yarrow-annotations-add:hover {
+  border-color: var(--yel);
+  color: var(--yeld);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   2.0 — Where you left off banner
+   ───────────────────────────────────────────────────────────── */
+.yarrow-wilo-banner {
+  position: relative;
+  margin: 10px 14px 0 14px;
+  padding: 14px 18px 12px 20px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--yelp) 68%, transparent), color-mix(in srgb, var(--yelp) 20%, transparent));
+  border: 1px solid color-mix(in srgb, var(--yel) 28%, transparent);
+  border-left: 3px solid var(--yel);
+  border-radius: 8px;
+  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif);
+}
+.yarrow-wilo-banner .l1 {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--yeld);
+  margin-bottom: 4px;
+}
+.yarrow-wilo-banner .l2 {
+  font-family: 'Fraunces', 'Instrument Serif', Georgia, serif;
+  font-style: italic;
+  font-size: 17px;
+  color: var(--char);
+  line-height: 1.35;
+  margin-bottom: 8px;
+}
+.yarrow-wilo-banner .l2 em { font-style: italic; color: var(--yeld); }
+.yarrow-wilo-banner .l3 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--t2);
+  line-height: 1.5;
+  padding-left: 10px;
+  border-left: 1px solid var(--bd);
+  margin-bottom: 8px;
+}
+.yarrow-wilo-banner .actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.yarrow-wilo-banner .actions .hide {
+  margin-left: auto;
+  color: var(--t3);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   2.0 — Keepsake pin on history entries
+   ───────────────────────────────────────────────────────────── */
+.yarrow-keepsake-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--yeld);
+  padding: 1px 6px;
+  background: var(--yelp);
+  border: 1px solid color-mix(in srgb, var(--yel) 40%, transparent);
+  border-radius: 10px;
+  margin-left: 6px;
+}
+.yarrow-keepsake-pin::before {
+  content: "★";
+  font-size: 10px;
+  color: var(--yel);
+}
+

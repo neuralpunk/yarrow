@@ -1,8 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { NewDirectionIcon, StatusDot } from "../../lib/icons";
+import { NewDirectionIcon, StatusDot, JournalIcon } from "../../lib/icons";
 import type { PathCollection } from "../../lib/types";
 import { isGhostPath } from "../../lib/types";
-import { colorForPath, isRoot } from "../../lib/pathAwareness";
+import { buildPathColorMap, colorForPath, isRoot } from "../../lib/pathAwareness";
 
 interface Props {
   /** v2 path collections (source of truth for the switcher). */
@@ -22,10 +22,25 @@ interface Props {
   onBranchFromHere: () => void;
   /** Open the full paths graph (the fullscreen Forking Road). */
   onOpenPaths: () => void;
+  /** Open the side-by-side compare modal. Hidden if there's only one path. */
+  onComparePaths?: () => void;
   /** Open the connection graph (Map overlay). */
   onOpenMap: () => void;
   /** Click the condition pill to set/edit it for the current path. */
   onEditCurrentCondition: () => void;
+  /** Focus/zen mode is on — show an indicator chip + exit button so the
+   *  user always knows they're in it and how to leave. */
+  focusMode?: boolean;
+  onExitFocus?: () => void;
+  /** When the active note is a daily journal (slug starts with "daily/"),
+   *  the toolbar surfaces a label showing which day is open plus a
+   *  button that opens the month calendar — so users can jump to any
+   *  past (or future) day without going back to the sidebar. */
+  dailyDate?: string | null;
+  /** Open the month calendar anchored below the journal pill. Signature
+   *  includes the pill's bounding rect so the consumer can position a
+   *  popover instead of rendering a centred modal. */
+  onOpenJournalCalendar?: (anchor: DOMRect) => void;
 }
 
 /**
@@ -48,9 +63,24 @@ function ToolbarInner({
   onSwitchPath,
   onBranchFromHere,
   onOpenPaths,
+  onComparePaths,
   onOpenMap,
   onEditCurrentCondition,
+  focusMode = false,
+  onExitFocus,
+  dailyDate = null,
+  onOpenJournalCalendar,
 }: Props) {
+  // Human-readable label for the open journal — uses the browser locale so
+  // date formatting matches the rest of the app's "today" pill.
+  const dailyLabel = useMemo(() => {
+    if (!dailyDate) return null;
+    const [y, m, d] = dailyDate.split("-").map(Number);
+    if (!y || !m || !d) return dailyDate;
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      weekday: "short", month: "short", day: "numeric",
+    });
+  }, [dailyDate]);
   const active = currentPath || rootName || "main";
   const byName = useMemo(() => {
     const m = new Map<string, PathCollection>();
@@ -59,7 +89,8 @@ function ToolbarInner({
   }, [collections]);
   const activeCol = byName.get(active) ?? null;
   const condition = (activeCol?.condition || "").trim();
-  const color = colorForPath(active);
+  const colorOverrides = useMemo(() => buildPathColorMap(collections), [collections]);
+  const color = colorForPath(active, { overrides: colorOverrides });
   const root = active === rootName || isRoot(active);
 
   // "Saved just now" flash
@@ -97,10 +128,30 @@ function ToolbarInner({
     };
   }, [open]);
 
+  // Shared pill used in both toolbar variants below. Only renders when the
+  // active note is a daily journal; clicking it opens the month calendar
+  // as a popover anchored right below the pill.
+  const journalPill = dailyDate && onOpenJournalCalendar ? (
+    <button
+      onClick={(e) => {
+        const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+        onOpenJournalCalendar(rect);
+      }}
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12.5px] text-yeld bg-yelp/60 hover:bg-yelp transition border border-yel/25"
+      title="Jump to another day — creates the entry if it doesn't exist yet"
+    >
+      <JournalIcon size={13} />
+      <span className="font-serif">{dailyLabel}</span>
+      <span className="text-t3 text-[11px]">▾</span>
+    </button>
+  ) : null;
+
   if (!mappingEnabled) {
     return (
       <div className="toolbar h-11 flex items-center px-6 gap-2 text-xs border-b border-bd bg-bg">
+        {journalPill}
         <div className="flex-1" />
+        {focusMode && <ZenChip onExit={onExitFocus} />}
         <div className="flex items-center gap-3 text-2xs text-t3 shrink-0 whitespace-nowrap">
           <span className="font-mono">{checkpointCount} checkpoints</span>
           <span className="flex items-center gap-1.5 transition-[color] duration-500">
@@ -217,9 +268,22 @@ function ToolbarInner({
           <GraphIcon />
           <span>Paths</span>
         </button>
+        {onComparePaths && collections.length > 1 && (
+          <button
+            onClick={onComparePaths}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12.5px] text-t2 hover:bg-s2 hover:text-char transition"
+            title="Compare two paths side by side"
+          >
+            <CompareIcon />
+            <span>Compare</span>
+          </button>
+        )}
+        {journalPill}
       </div>
 
       <div className="flex-1" />
+
+      {focusMode && <ZenChip onExit={onExitFocus} />}
 
       {/* ── Save status ── */}
       <div className="flex items-center gap-3 text-2xs text-t3 shrink-0 whitespace-nowrap">
@@ -229,6 +293,41 @@ function ToolbarInner({
           <span className={justSaved && !dirty ? "text-yeld" : ""}>{saveLabel}</span>
         </span>
       </div>
+    </div>
+  );
+}
+
+/** Persistent "you're in zen mode" indicator with an explicit exit.
+ *  Shown in the Toolbar whenever focus/zen mode is active so the user
+ *  always has a way out — the keyboard shortcut alone isn't enough if
+ *  they don't remember they turned it on. */
+function ZenChip({ onExit }: { onExit?: () => void }) {
+  return (
+    <div
+      className="flex items-center gap-2.5 pl-3 pr-1.5 py-1.5 rounded-full bg-yelp border border-yeld/30 shrink-0"
+      title="Zen mode is on — distraction-free writing"
+      // Cranked up on-screen legibility for the small italic serif —
+      // webkit2gtk renders sub-14px italics poorly otherwise.
+      style={{
+        WebkitFontSmoothing: "antialiased",
+        MozOsxFontSmoothing: "grayscale",
+        textRendering: "optimizeLegibility",
+      }}
+    >
+      <span className="relative flex items-center justify-center">
+        <span className="absolute inline-block w-2 h-2 rounded-full bg-yel opacity-60 animate-ping" />
+        <span className="relative inline-block w-1.5 h-1.5 rounded-full bg-yel" />
+      </span>
+      <span className="font-serif italic text-[14px] text-yeld leading-[1.1] tracking-[0.01em]">
+        Zen mode
+      </span>
+      <button
+        onClick={onExit}
+        className="font-mono text-[11px] text-yeld hover:text-char hover:bg-bg px-2 py-1 rounded-full border border-yeld/35 hover:border-yeld transition leading-none"
+        title="Exit zen mode (⌘\)"
+      >
+        exit
+      </button>
     </div>
   );
 }
@@ -263,8 +362,8 @@ function PathSwitcher({
       !q ||
       c.name.toLowerCase().includes(q) ||
       c.condition.toLowerCase().includes(q);
-    const live = collections.filter((c) => !isGhostPath(c, rootName) && match(c));
-    const ghost = collections.filter((c) => isGhostPath(c, rootName) && match(c));
+    const live = collections.filter((c) => !isGhostPath(c, rootName, collections) && match(c));
+    const ghost = collections.filter((c) => isGhostPath(c, rootName, collections) && match(c));
     live.sort((a, b) => {
       if (a.name === current) return -1;
       if (b.name === current) return 1;
@@ -288,6 +387,7 @@ function PathSwitcher({
     return { liveOrdered: live, ghostOrdered: ghost };
   }, [collections, rootName, current, filter]);
 
+  const colorOverrides = useMemo(() => buildPathColorMap(collections), [collections]);
   const onCurrentRoot = current === rootName;
 
   return (
@@ -322,7 +422,9 @@ function PathSwitcher({
         )}
         {liveOrdered.map((c) => {
           const cond = c.condition.trim();
-          const color = c.name === rootName ? "var(--yel)" : colorForPath(c.name);
+          const color =
+            colorOverrides[c.name] ??
+            (c.name === rootName ? "var(--yel)" : colorForPath(c.name));
           const isActive = c.name === current;
           const isRootItem = c.name === rootName;
           return (
@@ -452,6 +554,17 @@ function ConnectionsMapIcon() {
       <circle cx="11" cy="3" r="1.6" />
       <circle cx="7" cy="11" r="1.6" />
       <path d="M4.2 4.1L5.8 9.7M8.2 9.7L9.8 4.1M4.6 3h4.8" />
+    </svg>
+  );
+}
+
+/** Two parallel columns with a divider — reads as "side by side" at a glance. */
+function CompareIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="2" width="4.5" height="10" rx="0.8" />
+      <rect x="8" y="2" width="4.5" height="10" rx="0.8" />
+      <path d="M7 2.5v9" strokeDasharray="1.2 1.3" />
     </svg>
   );
 }

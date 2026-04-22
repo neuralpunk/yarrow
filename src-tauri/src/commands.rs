@@ -13,13 +13,17 @@ use crate::crypto::{self, MasterKey};
 use crate::error::{Result, YarrowError};
 use crate::export;
 use crate::find_replace;
+use crate::foreign_import;
 use crate::git;
 use crate::graph;
 use crate::notes;
 use crate::obsidian_import;
 use crate::path_collections;
+use crate::path_content;
 use crate::path_meta;
+use crate::sample_vault;
 use crate::search;
+use crate::search_index;
 use crate::templates;
 use crate::trash;
 use crate::workspace;
@@ -190,6 +194,35 @@ fn require_key(state: &AppState, root: &std::path::Path) -> Result<MasterKey> {
 
 // ───────── workspace ─────────
 
+/// Create a new workspace populated with the starter vault (~8 connected
+/// notes + a secondary path). Wraps `workspace::init` + `sample_vault::seed`
+/// behind a single call so the Onboarding screen can offer a "Try a sample"
+/// button without choreographing two steps.
+#[tauri::command]
+pub fn cmd_init_sample_workspace(
+    path: String,
+    name: Option<String>,
+    state: State<AppState>,
+) -> Result<workspace::WorkspaceConfig> {
+    let root = PathBuf::from(&path);
+    let ws_name = name.unwrap_or_else(|| {
+        root.file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "Sample vault".into())
+    });
+    let _report = sample_vault::bootstrap(&root, &ws_name)?;
+    // Initial checkpoint so the sample content is git-tracked from the
+    // first open, not ambient working-tree state.
+    let repo = open_repo(&root)?;
+    let _ = git::checkpoint(&repo, "checkpoint: seeded sample vault");
+    let _ = graph::build(&root);
+    let cfg = workspace::read_config(&root)?;
+    let _ = app_config::remember(&root, &cfg.workspace.name);
+    state.set_root(root);
+    Ok(cfg)
+}
+
 #[tauri::command]
 pub fn cmd_init_workspace(
     path: String,
@@ -260,17 +293,22 @@ pub fn cmd_forget_recent_workspace(path: String) -> Result<()> {
 
 #[tauri::command]
 pub fn cmd_active_workspace(state: State<AppState>) -> Option<String> {
-    state
-        .root
-        .lock()
-        .unwrap()
+    // `unpoison` (not bare `.unwrap()`) — if an earlier command panicked
+    // inside a mutex-guarded region, the poisoned state is still a valid
+    // workspace path. Panicking here on every IPC call would take the
+    // whole app down instead of letting the user close and reopen.
+    unpoison(state.root.lock())
         .as_ref()
         .and_then(|p| p.to_str().map(|s| s.to_string()))
 }
 
 #[tauri::command]
 pub fn cmd_close_workspace(state: State<AppState>) {
-    *state.root.lock().unwrap() = None;
+    // Same rationale as `cmd_active_workspace` — closing the workspace
+    // is the recovery path a user reaches for *after* something has
+    // gone wrong. It must never itself panic due to an inherited
+    // poisoned mutex.
+    *unpoison(state.root.lock()) = None;
 }
 
 #[tauri::command]
@@ -456,8 +494,44 @@ pub fn cmd_save_note_full(
         let mut summaries: Vec<notes::NoteSummary> =
             scanned.iter().map(notes::summary_from).collect();
         summaries.sort_by(|a, b| b.modified.cmp(&a.modified));
-        let g = graph::build_from_scan(&root, &scanned);
-        let orphans = graph::orphan_slugs(&g);
+
+        // Mode-aware tail: graph + orphan computation is invisible to a
+        // basic-notes user (the Map / Paths surfaces don't render). Skip
+        // it entirely in that mode — saves a full link walk on every
+        // typed save. Auto-path reconciliation also only matters when
+        // there are paths to keep in sync, so it joins the same gate.
+        let cfg = workspace::read_config(&root).ok();
+        let is_mapped = cfg
+            .as_ref()
+            .map(|c| c.mapping.mode == "mapped")
+            .unwrap_or(true); // unknown config → treat as mapped, safest default
+
+        let (g, orphans) = if is_mapped {
+            // Auto-path reconciliation: if this save changed tags
+            // (common) and any path has `auto_membership_tag` set,
+            // sync membership before we hand fresh summaries back to
+            // the frontend.
+            let mut by_slug: std::collections::HashMap<String, Vec<String>> =
+                std::collections::HashMap::new();
+            for s in &summaries {
+                by_slug.insert(s.slug.clone(), s.tags.clone());
+            }
+            let _ = path_collections::reconcile_auto_membership(&root, &by_slug);
+            let g = graph::build_from_scan(&root, &scanned);
+            let orphans = graph::orphan_slugs(&g);
+            (g, orphans)
+        } else {
+            (
+                graph::Graph {
+                    notes: Vec::new(),
+                    links: Vec::new(),
+                    last_built: String::new(),
+                    tags: Vec::new(),
+                },
+                Vec::new(),
+            )
+        };
+
         Ok(SaveOutcome {
             note,
             notes: summaries,
@@ -468,6 +542,116 @@ pub fn cmd_save_note_full(
     })
 }
 
+/// Read a note as it exists on a specific path. If the path has an override
+/// for this slug, the override's body is returned (and its frontmatter if
+/// present). Otherwise falls back to main's copy. Passing path_name=None or
+/// the workspace root falls through to the regular read.
+#[tauri::command]
+pub fn cmd_read_note_on_path(
+    slug: String,
+    path_name: Option<String>,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    let root = state.require_root()?;
+    let key = maybe_key(&state, &root);
+    // Resolve which path (if any) should look at overrides.
+    let effective = path_name
+        .as_deref()
+        .filter(|n| !n.is_empty())
+        .filter(|n| {
+            // Only non-root paths have overrides.
+            match path_collections::read_all(&root) {
+                Ok(view) => n != &view.root,
+                Err(_) => false,
+            }
+        });
+
+    if let Some(name) = effective {
+        if let Ok(Some(raw)) = path_content::read_override(&root, name, &slug) {
+            // Parse override to yield a Note shape. Overrides are always
+            // plaintext — encryption isn't carried onto path scratch copies.
+            let (fm, body) = notes::parse(&raw);
+            return Ok(notes::Note {
+                slug,
+                frontmatter: fm,
+                body,
+                encrypted: false,
+                locked: false,
+            });
+        }
+    }
+    notes::read_with_key(&root, &slug, key.as_ref())
+}
+
+/// Save a note's body onto a specific path. If path_name is None or equals
+/// the workspace root, this delegates to the regular save (so callers don't
+/// need to branch on which command to use — they can always call this one
+/// and pass the current path). If path_name is a real non-root path, the
+/// body is written to the path's override file and main is never touched.
+/// No graph rebuild, no checkpoint — overrides are scratch space.
+#[tauri::command]
+pub fn cmd_save_note_on_path(
+    slug: String,
+    body: String,
+    path_name: Option<String>,
+    thinking_note: Option<String>,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    let root = state.require_root()?;
+    let view = path_collections::read_all(&root).ok();
+    let is_override = match (path_name.as_deref(), view.as_ref()) {
+        (Some(name), Some(v)) => !name.is_empty() && name != v.root,
+        _ => false,
+    };
+
+    if !is_override {
+        // Fall through to the regular save path — same semantics as
+        // cmd_save_note, including encryption and checkpointing.
+        return cmd_save_note(slug, body, thinking_note, state);
+    }
+
+    let name = path_name.unwrap();
+    // Read main's frontmatter so we can compose a complete override file.
+    // Main's frontmatter becomes the seed for the override's frontmatter;
+    // the user may edit those per-path fields later.
+    let main_note = notes::read_with_key(&root, &slug, None).ok();
+    let fm = main_note.map(|n| n.frontmatter).unwrap_or_default();
+    let full = notes::serialize(&fm, &body);
+    path_content::write_override(&root, &name, &slug, &full)?;
+    state.touch_activity();
+    // Return a Note shape mirroring what the frontend expects on save.
+    Ok(notes::Note {
+        slug,
+        frontmatter: fm,
+        body,
+        encrypted: false,
+        locked: false,
+    })
+}
+
+/// List the slugs that have per-path overrides for a given path.
+#[tauri::command]
+pub fn cmd_list_path_overrides(
+    path_name: String,
+    state: State<AppState>,
+) -> Result<Vec<String>> {
+    let root = state.require_root()?;
+    path_content::list_overridden_slugs(&root, &path_name)
+}
+
+/// Delete one override for a path/slug — lets the user "revert this note's
+/// scratch version to main" without discarding the whole path.
+#[tauri::command]
+pub fn cmd_clear_path_override(
+    path_name: String,
+    slug: String,
+    state: State<AppState>,
+) -> Result<()> {
+    let root = state.require_root()?;
+    path_content::delete_override(&root, &path_name, &slug)
+}
+
+
 #[tauri::command]
 pub fn cmd_create_note(title: String, state: State<AppState>) -> Result<notes::Note> {
     let root = state.require_root()?;
@@ -475,6 +659,9 @@ pub fn cmd_create_note(title: String, state: State<AppState>) -> Result<notes::N
     let repo = open_repo(&root)?;
     git::checkpoint(&repo, &format!("checkpoint: new note \"{}\"", title))?;
     let _ = graph::build(&root);
+    // Keep every full-workspace path's membership in sync — a note created
+    // anywhere should be reachable on any "full copy of main" path too.
+    let _ = path_collections::reconcile_new_note(&root, &note.slug);
     Ok(note)
 }
 
@@ -545,6 +732,50 @@ pub fn cmd_set_tags(
     let repo = open_repo(&root)?;
     git::checkpoint(&repo, &format!("checkpoint: tag \"{}\"", slug))?;
     let _ = graph::build(&root);
+    // Tag change may have just qualified this note for an auto-path —
+    // reconcile immediately so the paths pane reflects it.
+    let _ = reconcile_auto_paths(&root);
+    Ok(saved)
+}
+
+/// Replace the note's margin-ink annotations list. Stored in YAML
+/// frontmatter so external markdown tools round-trip without mangling.
+/// Each save is its own silent checkpoint — annotations ARE versioned
+/// history, so the user can scrub back through the evolving commentary
+/// the same way they can scrub the body.
+#[tauri::command]
+pub fn cmd_set_annotations(
+    slug: String,
+    annotations: Vec<notes::Annotation>,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    let root = state.require_root()?;
+    let mut note = notes::read(&root, &slug)?;
+    // Normalize: drop entries that are *fully* empty (no anchor AND no
+    // body) — those are garbage. Keep empty-body entries that have an
+    // anchor, because that's the state right after the user clicks
+    // "Annotate" and hasn't typed yet. Deletions are the client's job:
+    // `AnnotationsGutter.commitEdit` already removes an entry from the
+    // array when its body is cleared on blur. Stamp `at` on anything
+    // missing it so the gutter can show relative time.
+    let now = chrono::Utc::now().to_rfc3339();
+    let cleaned: Vec<notes::Annotation> = annotations
+        .into_iter()
+        .filter(|a| !(a.body.trim().is_empty() && a.anchor.trim().is_empty()))
+        .map(|mut a| {
+            if a.at.is_empty() {
+                a.at = now.clone();
+            }
+            a
+        })
+        .collect();
+    if note.frontmatter.annotations == cleaned {
+        return Ok(note);
+    }
+    note.frontmatter.annotations = cleaned;
+    let saved = notes::write(&root, &slug, &note.body, Some(note.frontmatter))?;
+    let repo = open_repo(&root)?;
+    git::checkpoint(&repo, &format!("checkpoint: annotations \"{}\"", slug))?;
     Ok(saved)
 }
 
@@ -569,6 +800,8 @@ pub fn cmd_delete_note(slug: String, state: State<AppState>) -> Result<()> {
     let repo = open_repo(&root)?;
     git::checkpoint(&repo, &format!("checkpoint: delete \"{}\"", slug))?;
     let _ = graph::build(&root);
+    // Scrub the slug out of every path's membership so nothing dangles.
+    let _ = path_collections::reconcile_deleted_note(&root, &slug);
     Ok(())
 }
 
@@ -608,20 +841,114 @@ pub fn cmd_empty_trash(state: State<AppState>) -> Result<()> {
 /// inline stylesheet.
 #[tauri::command]
 pub fn cmd_render_note_body_html(slug: String, state: State<AppState>) -> Result<String> {
-    use pulldown_cmark::{html, Options, Parser};
     let root = state.require_root()?;
     let session = state.session.lock().unwrap();
     let note = notes::read_with_key(&root, &slug, session.master_key.as_ref())?;
     drop(session);
+    render_markdown(&note.body)
+}
+
+/// Render an arbitrary markdown string to HTML — same pipeline as
+/// `cmd_render_note_body_html` but without a slug lookup. Used by the
+/// Ley Lines reader: it injects inline `<del>`/`<ins>` tokens into a
+/// synthesized body and renders the whole thing so diff markup lives
+/// inside the prose instead of on top of it.
+#[tauri::command]
+pub fn cmd_render_markdown_html(body: String) -> Result<String> {
+    render_markdown(&body)
+}
+
+fn render_markdown(body: &str) -> Result<String> {
+    use pulldown_cmark::{html, Options, Parser};
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_FOOTNOTES);
     options.insert(Options::ENABLE_TASKLISTS);
-    let parser = Parser::new_ext(&note.body, options);
-    let mut body = String::new();
-    html::push_html(&mut body, parser);
-    Ok(body)
+    let parser = Parser::new_ext(body, options);
+    let mut html_out = String::new();
+    html::push_html(&mut html_out, parser);
+    Ok(rewrite_callouts(&html_out))
+}
+
+/// Transform Obsidian-style `> [!type] Title / > body` blockquotes that
+/// pulldown-cmark emitted as `<blockquote><p>[!type] Title\nbody</p></blockquote>`
+/// into styled `<div class="yarrow-callout yarrow-callout-{type}">…</div>`
+/// blocks. Unknown types are left as-is so arbitrary bracket content
+/// (code examples, etc.) doesn't accidentally get rewritten.
+fn rewrite_callouts(html: &str) -> String {
+    use regex::Regex;
+    // `(?s)` = dotall so `.*?` spans lines inside the blockquote.
+    // Captures: 1 = type, 2 = first paragraph (title + optional body
+    // joined by `\n`), 3 = any subsequent paragraphs still inside the
+    // blockquote.
+    let re = Regex::new(
+        r"(?s)<blockquote>\s*<p>\[!([a-zA-Z][a-zA-Z0-9\-]*)\]\s*(.*?)</p>(.*?)</blockquote>",
+    )
+    .expect("static regex");
+    re.replace_all(html, |caps: &regex::Captures| {
+        let type_ = caps[1].to_ascii_lowercase();
+        if !is_known_callout_type(&type_) {
+            return caps[0].to_string();
+        }
+        let first_para = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+        let rest = caps.get(3).map(|m| m.as_str().trim()).unwrap_or("");
+        // Split the first paragraph on its first newline: before = title,
+        // after = opening body paragraph. If no newline, the whole thing
+        // is just the title.
+        let (title_raw, body_first) = match first_para.split_once('\n') {
+            Some((t, b)) => (t.trim(), b.trim()),
+            None => (first_para.trim(), ""),
+        };
+        let title = if title_raw.is_empty() {
+            pretty_callout_type(&type_)
+        } else {
+            title_raw.to_string()
+        };
+        let mut body_html = String::new();
+        if !body_first.is_empty() {
+            body_html.push_str("<p>");
+            body_html.push_str(body_first);
+            body_html.push_str("</p>");
+        }
+        if !rest.is_empty() {
+            body_html.push_str(rest);
+        }
+        format!(
+            r#"<div class="yarrow-callout yarrow-callout-{t}"><div class="yarrow-callout-title">{title}</div><div class="yarrow-callout-body">{body}</div></div>"#,
+            t = type_,
+            title = title,
+            body = body_html,
+        )
+    })
+    .into_owned()
+}
+
+fn is_known_callout_type(t: &str) -> bool {
+    matches!(
+        t,
+        "note"
+            | "info"
+            | "tip"
+            | "question"
+            | "decision"
+            | "warning"
+            | "danger"
+            | "quote"
+    )
+}
+
+fn pretty_callout_type(t: &str) -> String {
+    let mut chars = t.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => {
+            let mut s = String::new();
+            s.extend(first.to_uppercase());
+            s.push_str(chars.as_str());
+            s
+        }
+    }
 }
 
 /// Render a single note as a self-contained HTML document with print-friendly
@@ -768,7 +1095,7 @@ pub fn cmd_create_workspace_dir(parent: String, name: String) -> Result<String> 
     Ok(target.to_string_lossy().to_string())
 }
 
-// ───────── obsidian import ─────────
+// ───────── foreign imports ─────────
 
 #[tauri::command]
 pub fn cmd_import_obsidian_vault(
@@ -777,19 +1104,66 @@ pub fn cmd_import_obsidian_vault(
 ) -> Result<obsidian_import::ImportReport> {
     let root = state.require_root()?;
     let report = obsidian_import::import_vault(&root, std::path::Path::new(&source))?;
-    if report.imported > 0 {
-        let repo = open_repo(&root)?;
-        git::checkpoint(
-            &repo,
-            &format!(
-                "checkpoint: imported {} note{} from Obsidian",
-                report.imported,
-                if report.imported == 1 { "" } else { "s" },
-            ),
-        )?;
-        let _ = graph::build(&root);
-    }
+    post_import_checkpoint(&root, report.imported, "Obsidian")?;
     Ok(report)
+}
+
+#[tauri::command]
+pub fn cmd_import_bear_vault(
+    source: String,
+    state: State<AppState>,
+) -> Result<obsidian_import::ImportReport> {
+    let root = state.require_root()?;
+    let report = foreign_import::import_bear(&root, std::path::Path::new(&source))?;
+    post_import_checkpoint(&root, report.imported, "Bear")?;
+    Ok(report)
+}
+
+#[tauri::command]
+pub fn cmd_import_logseq_vault(
+    source: String,
+    state: State<AppState>,
+) -> Result<obsidian_import::ImportReport> {
+    let root = state.require_root()?;
+    let report = foreign_import::import_logseq(&root, std::path::Path::new(&source))?;
+    post_import_checkpoint(&root, report.imported, "Logseq")?;
+    Ok(report)
+}
+
+#[tauri::command]
+pub fn cmd_import_notion_vault(
+    source: String,
+    state: State<AppState>,
+) -> Result<obsidian_import::ImportReport> {
+    let root = state.require_root()?;
+    let report = foreign_import::import_notion(&root, std::path::Path::new(&source))?;
+    post_import_checkpoint(&root, report.imported, "Notion")?;
+    Ok(report)
+}
+
+/// Shared post-import bookkeeping: one checkpoint + a graph rebuild so
+/// the user can roll back the whole batch in one step if the import
+/// pulled in something unexpected.
+fn post_import_checkpoint(
+    root: &std::path::Path,
+    imported: usize,
+    app_label: &str,
+) -> Result<()> {
+    if imported == 0 {
+        return Ok(());
+    }
+    let repo = open_repo(root)?;
+    git::checkpoint(
+        &repo,
+        &format!(
+            "checkpoint: imported {} note{} from {}",
+            imported,
+            if imported == 1 { "" } else { "s" },
+            app_label,
+        ),
+    )?;
+    let _ = graph::build(root);
+    Ok(())
 }
 
 // ───────── path comparison ─────────
@@ -801,6 +1175,19 @@ pub fn cmd_compare_paths(
     state: State<AppState>,
 ) -> Result<git::PathComparison> {
     let root = state.require_root()?;
+    // v2: prefer a collection-based comparison when both names are known
+    // collections. In v2, paths are lenses over the same notes — so the
+    // honest diff is membership-based, and the shared content is surfaced
+    // on both sides for slugs that live on both paths. Falls through to
+    // the legacy branch-based diff only when one side has no collection
+    // (e.g. an old workspace still referencing a git branch name).
+    if let Ok(view) = path_collections::read_all(&root) {
+        let has_left = view.collections.iter().any(|c| c.name == left);
+        let has_right = view.collections.iter().any(|c| c.name == right);
+        if has_left && has_right {
+            return path_collections::compare_as_paths(&root, &left, &right);
+        }
+    }
     let repo = open_repo(&root)?;
     git::compare_paths(&repo, &left, &right)
 }
@@ -1283,11 +1670,21 @@ pub fn cmd_open_daily(date_iso: String, state: State<AppState>) -> Result<DailyO
     };
 
     let created_now = !notes::note_path(&root, &notes::daily_slug(&date_iso)).exists();
-    let note = notes::ensure_daily(&root, &date_iso)?;
+    let mut note = notes::ensure_daily(&root, &date_iso)?;
 
-    if created_now {
-        // Only checkpoint on first creation — avoid empty-diff commits for
-        // existing entries the user is merely opening.
+    // Sync the auto-generated "Today's threads" section with every note
+    // modified on this date, so the journal acts as a navigable spine
+    // through the day's work without the user having to hand-link each
+    // edited note. No-op when nothing changed / no edits today.
+    let threads_changed = notes::reconcile_daily_threads(&root, &date_iso).unwrap_or(false);
+    if threads_changed {
+        // Re-read so the response reflects the updated body.
+        note = notes::read(&root, &notes::daily_slug(&date_iso))?;
+    }
+
+    if created_now || threads_changed {
+        // Checkpoint on first creation, or when we just refreshed the
+        // threads section — both are user-visible content changes.
         git::checkpoint(
             &repo,
             &format!("checkpoint: open journal for {}", date_iso),
@@ -1544,7 +1941,83 @@ pub fn cmd_create_path_collection(
 #[tauri::command]
 pub fn cmd_delete_path_collection(name: String, state: State<AppState>) -> Result<()> {
     let root = state.require_root()?;
+    // Also sweep any per-path scratch content when deleting the path, so a
+    // path that's been "thrown away" doesn't leave dangling overrides on
+    // disk that could surface if the user later creates a same-named path.
+    let _ = path_content::delete_overrides_for_path(&root, &name);
     path_collections::delete(&root, &name)
+}
+
+/// Result of promoting a path to main — returned to the frontend so the UI
+/// can summarize what actually happened ("applied 3 edits, archived path").
+#[derive(serde::Serialize)]
+pub struct PromoteOutcome {
+    pub applied_slugs: Vec<String>,
+    pub path_name: String,
+}
+
+/// Promote a path to main: every override the path holds is written back
+/// onto the main note (preserving each note's encryption), the path's
+/// scratch dir is cleared, the path collection is removed, and a single
+/// git checkpoint captures the whole promotion. Returns the list of slugs
+/// that changed so the frontend can flash a summary.
+#[tauri::command]
+pub fn cmd_promote_path_to_main(
+    name: String,
+    thinking_note: Option<String>,
+    state: State<AppState>,
+) -> Result<PromoteOutcome> {
+    let root = state.require_root()?;
+    let plan = path_collections::build_promote_plan(&root, &name)?;
+
+    // If any main note is encrypted, the session must be unlocked so we
+    // don't silently write plaintext over ciphertext. Fail loudly.
+    for (slug, _) in &plan.applied_slugs {
+        if let Ok(n) = notes::read_with_key(&root, slug, None) {
+            if n.encrypted {
+                let _ = require_key(&state, &root)?;
+                break;
+            }
+        }
+    }
+
+    let applied: Vec<String> = state.with_repo_locked(|| -> Result<Vec<String>> {
+        let mut done = Vec::with_capacity(plan.applied_slugs.len());
+        for (slug, body) in &plan.applied_slugs {
+            // Each main note keeps its own encryption status — if it was
+            // encrypted, notes::write_with_key_status uses the session key
+            // to re-seal; if plaintext, body is written as-is. We don't
+            // carry frontmatter from the override (overrides are body-only
+            // at rest), so main's frontmatter (title/tags/etc) stays put.
+            let existing = notes::read_with_key(&root, slug, None).ok();
+            let is_encrypted = existing.as_ref().map(|n| n.encrypted).unwrap_or(false);
+            let key = if is_encrypted {
+                Some(require_key(&state, &root)?)
+            } else {
+                None
+            };
+            notes::write_with_key(&root, slug, body, None, key.as_ref())?;
+            done.push(slug.clone());
+        }
+        let repo = open_repo(&root)?;
+        let mut msg = format!("promote: {} ({} notes updated)", name, plan.override_count);
+        if let Some(t) = thinking_note.as_ref().filter(|s| !s.trim().is_empty()) {
+            msg.push_str("\n\n");
+            msg.push_str(t.trim());
+        }
+        git::checkpoint(&repo, &msg)?;
+        let _ = graph::build(&root);
+        Ok(done)
+    })?;
+
+    // After a successful checkpoint, clean up the path. Done outside the
+    // repo lock because it only touches `.yarrow/`.
+    path_collections::finalize_promote(&root, &name)?;
+
+    Ok(PromoteOutcome {
+        applied_slugs: applied,
+        path_name: name,
+    })
 }
 
 #[tauri::command]
@@ -1565,6 +2038,59 @@ pub fn cmd_set_path_collection_condition(
 ) -> Result<()> {
     let root = state.require_root()?;
     path_collections::set_condition(&root, &name, &condition)
+}
+
+#[tauri::command]
+pub fn cmd_set_path_collection_color(
+    name: String,
+    color: Option<String>,
+    state: State<AppState>,
+) -> Result<()> {
+    let root = state.require_root()?;
+    path_collections::set_color(&root, &name, color.as_deref())
+}
+
+#[tauri::command]
+pub fn cmd_set_path_collection_auto_tag(
+    name: String,
+    tag: Option<String>,
+    state: State<AppState>,
+) -> Result<()> {
+    let root = state.require_root()?;
+    path_collections::set_auto_membership_tag(&root, &name, tag.as_deref())?;
+    // Immediately reconcile with the current workspace state so the
+    // user sees auto-membership kick in before their next save.
+    let _ = reconcile_auto_paths(&root);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cmd_suggest_path_clusters(
+    state: State<AppState>,
+) -> Result<Vec<graph::ClusterSuggestion>> {
+    let root = state.require_root()?;
+    let g = graph::build(&root)?;
+    let view = path_collections::read_all(&root)?;
+    let existing: Vec<std::collections::HashSet<String>> = view
+        .collections
+        .iter()
+        .map(|c| c.members.iter().cloned().collect())
+        .collect();
+    Ok(graph::cluster_suggestions(&g, &existing, 6))
+}
+
+/// Read every note's frontmatter tags and let path_collections reconcile.
+/// Cheap on small/medium vaults; for giant vaults it's O(N) IO per call
+/// but we only invoke after user-visible state-change events, not on
+/// every keystroke.
+fn reconcile_auto_paths(workspace: &std::path::Path) -> Result<usize> {
+    let summaries = notes::list(workspace)?;
+    let mut by_slug: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for s in summaries {
+        by_slug.insert(s.slug, s.tags);
+    }
+    Ok(path_collections::reconcile_auto_membership(workspace, &by_slug)?)
 }
 
 #[tauri::command]
@@ -1638,6 +2164,16 @@ pub fn cmd_note_history(
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
     git::note_history(&repo, &notes::relative_note_path(&slug))
+}
+
+#[tauri::command]
+pub fn cmd_writing_activity(
+    days: u32,
+    state: State<AppState>,
+) -> Result<Vec<git::ActivityDay>> {
+    let root = state.require_root()?;
+    let repo = open_repo(&root)?;
+    git::writing_activity(&repo, days)
 }
 
 #[tauri::command]
@@ -1766,6 +2302,45 @@ pub fn cmd_prune_empty_checkpoints(state: State<AppState>) -> Result<git::PruneR
     })
 }
 
+// ───────── keepsakes (pinned checkpoints) ─────────
+
+#[tauri::command]
+pub fn cmd_pin_checkpoint(
+    slug: String,
+    oid: String,
+    label: String,
+    note: Option<String>,
+    state: State<AppState>,
+) -> Result<git::Keepsake> {
+    let root = state.require_root()?;
+    let repo = open_repo(&root)?;
+    let label = label.trim();
+    if label.is_empty() {
+        return Err(YarrowError::Invalid("keepsake needs a label".into()));
+    }
+    git::pin_checkpoint(
+        &repo,
+        &slug,
+        &oid,
+        label,
+        note.as_deref().unwrap_or("").trim(),
+    )
+}
+
+#[tauri::command]
+pub fn cmd_list_pinned_checkpoints(state: State<AppState>) -> Result<Vec<git::Keepsake>> {
+    let root = state.require_root()?;
+    let repo = open_repo(&root)?;
+    git::list_keepsakes(&repo)
+}
+
+#[tauri::command]
+pub fn cmd_unpin_checkpoint(id: String, state: State<AppState>) -> Result<()> {
+    let root = state.require_root()?;
+    let repo = open_repo(&root)?;
+    git::unpin_checkpoint(&repo, &id)
+}
+
 // ───────── sync ─────────
 
 #[tauri::command]
@@ -1860,7 +2435,46 @@ pub fn cmd_search(
     state: State<AppState>,
 ) -> Result<Vec<search::SearchHit>> {
     let root = state.require_root()?;
-    search::search(&root, &query, limit.unwrap_or(25))
+    // Read the per-workspace toggle. A missing/broken config means the
+    // cache is allowed — the defaulted value is `true` — so users who
+    // never touched Settings still get the fast path.
+    let use_index = workspace::read_config(&root)
+        .map(|c| c.preferences.search_index_enabled)
+        .unwrap_or(true);
+    search::search(&root, &query, limit.unwrap_or(25), use_index)
+}
+
+#[tauri::command]
+pub fn cmd_clear_search_index(state: State<AppState>) -> Result<()> {
+    let root = state.require_root()?;
+    // Wipe the db file. Rebuild happens lazily on the next search if
+    // indexing is still enabled.
+    search_index::clear_file(&root).map_err(|e| e.into())
+}
+
+/// Clear *every* derived cache: the graph index and the search DB.
+/// Notes are untouched; both rebuild on demand (graph on next save,
+/// search on next query). Intended for a user-visible "wipe all caches"
+/// button — nothing permanent is lost.
+#[tauri::command]
+pub fn cmd_clear_all_cache(state: State<AppState>) -> Result<()> {
+    let root = state.require_root()?;
+    // Graph index — derived from frontmatter links. Safe to delete; the
+    // next save rebuilds it via `graph::build`.
+    let graph_path = workspace::index_path(&root);
+    if graph_path.exists() {
+        std::fs::remove_file(&graph_path)?;
+    }
+    // Search cache — also wipes the WAL/SHM sidecars so we don't reopen
+    // a half-committed write-ahead log against a missing main db.
+    search_index::clear_file(&root)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cmd_rebuild_search_index(state: State<AppState>) -> Result<usize> {
+    let root = state.require_root()?;
+    search_index::rebuild(&root).map_err(|e| e.into())
 }
 
 // ───────── branch topology ─────────
@@ -1959,15 +2573,57 @@ pub fn cmd_fetch_url_title(url: String) -> Result<String> {
             return Ok(String::new());
         }
     }
+    // Follow up to 3 redirects, but validate every hop against the
+    // same private-IP / loopback allowlist — otherwise an attacker-
+    // controlled site could 302 us at http://169.254.169.254/… and
+    // bypass the pre-request IP check that only sees the initial URL.
+    //
+    // ureq's `AgentBuilder::redirects(n)` delegates the whole chain to
+    // the agent without giving us a hook on each hop, so we do it by
+    // hand: `redirects(0)` + a manual loop with explicit re-validation.
     let agent = ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(6))
-        .user_agent("Yarrow/1.1 (+title-fetch)")
-        .redirects(5)
+        .user_agent(concat!("Yarrow/", env!("CARGO_PKG_VERSION"), " (+title-fetch)"))
+        .redirects(0)
         .build();
-    let resp = agent
-        .get(&url)
-        .call()
-        .map_err(|e| YarrowError::Other(format!("fetch failed: {e}")))?;
+    const MAX_REDIRECTS: u8 = 3;
+    let mut current = url.clone();
+    let mut hops: u8 = 0;
+    let resp = loop {
+        let r = match agent.get(&current).call() {
+            Ok(r) => r,
+            // ureq classifies 3xx as "errors" when redirects are off —
+            // unwrap the Status error variant and follow manually.
+            Err(ureq::Error::Status(code, r)) if (300..400).contains(&code) => r,
+            Err(e) => {
+                return Err(YarrowError::Other(format!("fetch failed: {e}")));
+            }
+        };
+        if (300..400).contains(&r.status()) {
+            if hops >= MAX_REDIRECTS {
+                return Ok(String::new()); // give up quietly
+            }
+            let next = match r.header("location") {
+                Some(loc) => loc.to_string(),
+                None => return Ok(String::new()),
+            };
+            // Resolve relative redirects against the current URL.
+            let next_abs = match url::Url::parse(&current).and_then(|base| base.join(&next)) {
+                Ok(u) => u,
+                Err(_) => return Ok(String::new()),
+            };
+            // Re-validate scheme and host — same checks as the first hop.
+            let sch = next_abs.scheme().to_ascii_lowercase();
+            if sch != "http" && sch != "https" { return Ok(String::new()); }
+            if let Some(host) = next_abs.host_str() {
+                if is_private_or_loopback(host) { return Ok(String::new()); }
+            }
+            current = next_abs.into();
+            hops += 1;
+            continue;
+        }
+        break r;
+    };
     let mut body = String::new();
     use std::io::Read;
     resp.into_reader()

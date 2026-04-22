@@ -3,25 +3,55 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Yarrow User Guide — every feature, explained from scratch</title>
-<meta name="description" content="A complete, no-prior-knowledge guide to Yarrow 1.1 — notes, links, paths, the map, history, sync, encryption, the decision matrix. With diagrams." />
+<title>Yarrow 2.0 User Guide — every feature, explained from scratch</title>
+<meta name="description" content="A complete, no-prior-knowledge guide to Yarrow 2.0 — notes, links, paths, the map, history, sync, encryption, typewriter mode, margin ink, editorial reading, pinned keepsakes. With diagrams." />
 
-<meta id="meta-theme-color" name="theme-color" content="#F7F5F0" />
+<meta id="meta-theme-color" name="theme-color" content="#F6F2EB" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="apple-touch-icon" href="app-icon-256.png" />
 <link rel="stylesheet" href="style.css" />
 <link rel="stylesheet" href="guide.css" />
 
+<!-- Inline SVG symbol sprite for the Yarrow mark (used in the masthead). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="yarrow-mark" viewBox="0 0 64 64">
+      <line x1="32" y1="56" x2="32" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+      <path d="M 32 46 Q 32 43, 42 40" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+      <path d="M 32 36 Q 32 33, 20 30" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+      <path d="M 32 28 Q 32 25, 44 22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+      <path d="M 32 20 Q 32 17, 22 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+      <path d="M 32 20 Q 32 17, 42 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+      <circle cx="32" cy="56" r="3.2" fill="currentColor"/>
+      <circle cx="42" cy="40" r="3.2" fill="currentColor"/>
+      <circle cx="20" cy="30" r="3.2" fill="currentColor"/>
+      <circle cx="44" cy="22" r="3.2" fill="currentColor"/>
+      <circle cx="22" cy="14" r="3.0" fill="currentColor"/>
+      <circle cx="42" cy="14" r="3.0" fill="currentColor"/>
+      <circle cx="32" cy="12" r="3.6" fill="currentColor"/>
+    </symbol>
+  </defs>
+</svg>
+
 <script>
+  // User Guide defaults to LIGHT theme — documentation reads best on paper.
+  // A reader who has explicitly picked a theme on the marketing site (via
+  // the toggle button, which writes `yarrow.site.theme` to localStorage)
+  // keeps their choice; everyone else, including visitors whose OS is in
+  // dark mode, gets light here. This differs from index.html, which
+  // honours the OS preference as its fallback.
   (function () {
     var valid = { light: 1, dark: 1 };
-    var mode;
-    try { var t = localStorage.getItem('yarrow.site.theme'); if (t && valid[t]) mode = t; } catch (_) {}
-    if (!mode) mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    var mode = 'light';
+    try {
+      var stored = localStorage.getItem('yarrow.site.theme');
+      if (stored && valid[stored]) mode = stored;
+    } catch (_) {}
     document.documentElement.setAttribute('data-theme', mode);
   })();
 </script>
@@ -32,13 +62,14 @@
 <header class="masthead">
   <div class="masthead-inner">
     <a class="wordmark" href="index.html">
+      <span class="mark-svg"><svg><use href="#yarrow-mark"/></svg></span>
       Yarrow
-      <span class="version">User Guide · v1.1</span>
+      <span class="version">User Guide · v2.0</span>
     </a>
     <span></span>
     <div class="mast-nav">
       <a href="index.html#gallery">A look</a>
-      <a href="index.html#whats-new">What's new</a>
+      <a href="#whats-new-2">What's new</a>
       <a href="index.html#features">Features</a>
       <a href="index.html#download">Download</a>
       <span class="sep">·</span>
@@ -52,7 +83,7 @@
       </div>
       <a class="btn-mini" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-        Download 1.1
+        Download 2.0
       </a>
     </div>
   </div>
@@ -70,15 +101,29 @@
       <div class="toc-group">
         <span class="toc-group-h">Start here</span>
         <a href="#what-is-yarrow">What Yarrow is</a>
+        <a href="#whats-new-2">New in 2.0</a>
         <a href="#install">Installing</a>
         <a href="#first-workspace">Your first workspace</a>
         <a href="#first-note">Your first note</a>
+      </div>
+      <div class="toc-group">
+        <span class="toc-group-h">New in 2.0</span>
+        <a href="#typewriter">Typewriter mode</a>
+        <a href="#margin-ink">Margin ink</a>
+        <a href="#editorial">Editorial reading</a>
+        <a href="#caret-tint">Path-tinted caret</a>
+        <a href="#where-left-off">Where you left off</a>
+        <a href="#keepsakes">Pinned keepsakes</a>
+        <a href="#radial-menu">Radial right-click menu</a>
       </div>
       <div class="toc-group">
         <span class="toc-group-h">Writing</span>
         <a href="#editor-layout">The editor at a glance</a>
         <a href="#markdown">Writing in markdown</a>
         <a href="#reading-mode">Reading vs writing mode</a>
+        <a href="#editorial" style="padding-left: 14px; font-size: 12px;">— editorial treatment</a>
+        <a href="#typewriter" style="padding-left: 14px; font-size: 12px;">— typewriter mode</a>
+        <a href="#margin-ink" style="padding-left: 14px; font-size: 12px;">— margin ink</a>
         <a href="#math-code">Math &amp; code</a>
         <a href="#smart-paste">Smart paste</a>
         <a href="#spell-check">Spell-check</a>
@@ -144,14 +189,16 @@
   <main class="guide-main">
 
     <header class="guide-hero">
-      <div class="eyebrow"><span class="dot"></span> User Guide · Yarrow 1.1</div>
+      <div class="eyebrow"><span class="dot"></span> User Guide · Yarrow 2.0</div>
       <h1>Everything Yarrow does, <em>explained from scratch.</em></h1>
       <p class="lede">
         Welcome! This guide is for everyone — whether you've never used
         a notes app before, or you're already comfortable with computers
         and want to dig into the details. Read it from top to bottom if
         you're new, or use the menu on the left to jump to whatever
-        you're curious about.
+        you're curious about. If you're here because you just updated to
+        2.0, the <a href="#whats-new-2">New in 2.0</a> section up front
+        has everything that's different.
       </p>
       <p class="callout">
         <strong>About the keys we mention.</strong> Mac uses the
@@ -190,6 +237,531 @@
         <div class="three-card">
           <h4>Remembers everything</h4>
           <p>Yarrow saves every pause as a tiny snapshot, so you can always scroll back to an older version of a note. Try a different angle on something? Branch into a path; the original waits for you.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════ NEW IN 2.0 ════════════════════ -->
+    <section id="whats-new-2" class="guide-section guide-whats-new">
+      <div class="whats-new-header">
+        <span class="whats-new-kicker">New in 2.0</span>
+        <h2>Seven ways Yarrow now <em>sits under your hands</em></h2>
+        <p class="lede">
+          If you just updated, this is the short version: seven new
+          things, each with its own tiny illustration so you can see
+          what they do before you turn them on. (There's also a whole
+          bunch more — callouts, tables, the connect-mode map, path
+          colours, imports from Bear / Logseq / Notion — covered in
+          the relevant sections later.) Everything old still works
+          the same.
+        </p>
+      </div>
+
+      <!-- 2.0 · 1 — Typewriter mode -->
+      <div class="v2-feature" id="typewriter">
+        <div class="v2-feature-art">
+          <svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A column of text with every line dim except the one in the middle, which sits on a pale plum band with a bright cursor.">
+            <defs>
+              <linearGradient id="v2-tw-fade-top" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stop-color="var(--bg)" stop-opacity="1"/>
+                <stop offset="1" stop-color="var(--bg)" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="v2-tw-fade-bot" x1="0" x2="0" y1="1" y2="0">
+                <stop offset="0" stop-color="var(--bg)" stop-opacity="1"/>
+                <stop offset="1" stop-color="var(--bg)" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <rect x="24" y="16" width="312" height="248" rx="14" fill="var(--s1)" stroke="var(--bd)"/>
+            <!-- dim lines above -->
+            <g fill="var(--t3)" opacity="0.5">
+              <rect x="48" y="48" width="270" height="4" rx="2"/>
+              <rect x="48" y="66" width="248" height="4" rx="2"/>
+              <rect x="48" y="84" width="260" height="4" rx="2"/>
+              <rect x="48" y="102" width="230" height="4" rx="2"/>
+              <rect x="48" y="120" width="252" height="4" rx="2"/>
+            </g>
+            <!-- active band in the middle -->
+            <rect x="36" y="134" width="290" height="22" rx="5" fill="var(--yelp)"/>
+            <rect x="48" y="143" width="200" height="5" rx="2.5" fill="var(--char)"/>
+            <rect x="250" y="139" width="2" height="13" fill="var(--yel)"/>
+            <!-- trailing dim lines -->
+            <g fill="var(--t3)" opacity="0.5">
+              <rect x="48" y="168" width="262" height="4" rx="2"/>
+              <rect x="48" y="186" width="240" height="4" rx="2"/>
+              <rect x="48" y="204" width="258" height="4" rx="2"/>
+              <rect x="48" y="222" width="224" height="4" rx="2"/>
+              <rect x="48" y="240" width="246" height="4" rx="2"/>
+            </g>
+            <rect x="24" y="16" width="312" height="40" fill="url(#v2-tw-fade-top)"/>
+            <rect x="24" y="220" width="312" height="44" fill="url(#v2-tw-fade-bot)"/>
+            <!-- label -->
+            <text x="180" y="30" font-family="JetBrains Mono, monospace" font-size="8" font-weight="600" fill="var(--t3)" text-anchor="middle" letter-spacing="1.5">↕  PAGE SCROLLS · LINE STAYS</text>
+          </svg>
+        </div>
+        <div class="v2-feature-body">
+          <div class="v2-feature-tag">Writing posture</div>
+          <h3>Typewriter mode</h3>
+          <p>
+            Normally, when you write a long note, your eyes drift down the page
+            as you go — by the end of an hour you're hunched over reading the
+            bottom third of the screen. Typewriter mode fixes that. Whatever
+            line your cursor is on, Yarrow keeps it at the vertical middle of
+            the editor; the <em>page</em> scrolls underneath you, not your
+            gaze.
+          </p>
+          <p>
+            <strong>Turn it on:</strong> <kbd>⌘,</kbd> to open Settings →
+            <strong>Writing</strong> → toggle <em>Typewriter mode</em>.
+            You can flip it off anytime.
+          </p>
+          <p class="callout-inline">
+            A small thing, but it's the difference between a long writing
+            session feeling like writing and feeling like a neck exercise.
+          </p>
+        </div>
+      </div>
+
+      <!-- 2.0 · 2 — Margin ink -->
+      <div class="v2-feature reverse" id="margin-ink">
+        <div class="v2-feature-art">
+          <svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two columns: a note on the left with a highlighted phrase, and a card on the right holding a short plum-border annotation connected to the highlight by a dashed line.">
+            <!-- Paper -->
+            <rect x="16" y="16" width="210" height="248" rx="10" fill="var(--s1)" stroke="var(--bd)"/>
+            <!-- Title -->
+            <rect x="34" y="36" width="130" height="7" rx="2" fill="var(--char)" opacity="0.8"/>
+            <!-- Body -->
+            <g fill="var(--t3)" opacity="0.55">
+              <rect x="34" y="58" width="170" height="3" rx="1.5"/>
+              <rect x="34" y="70" width="158" height="3" rx="1.5"/>
+              <rect x="34" y="82" width="168" height="3" rx="1.5"/>
+            </g>
+            <!-- Highlighted anchor phrase -->
+            <rect x="34" y="100" width="120" height="10" rx="2" fill="var(--yelp)"/>
+            <rect x="38" y="104" width="110" height="3" rx="1.5" fill="var(--yel)" opacity="0.75"/>
+            <g fill="var(--t3)" opacity="0.55">
+              <rect x="34" y="120" width="170" height="3" rx="1.5"/>
+              <rect x="34" y="132" width="160" height="3" rx="1.5"/>
+              <rect x="34" y="144" width="156" height="3" rx="1.5"/>
+              <rect x="34" y="162" width="170" height="3" rx="1.5"/>
+              <rect x="34" y="174" width="166" height="3" rx="1.5"/>
+              <rect x="34" y="186" width="158" height="3" rx="1.5"/>
+              <rect x="34" y="204" width="150" height="3" rx="1.5"/>
+              <rect x="34" y="216" width="170" height="3" rx="1.5"/>
+              <rect x="34" y="228" width="162" height="3" rx="1.5"/>
+            </g>
+            <!-- Dashed divider between note and gutter -->
+            <line x1="240" y1="16" x2="240" y2="264" stroke="var(--bd2)" stroke-dasharray="2 4"/>
+            <!-- Annotation card -->
+            <rect x="248" y="86" width="102" height="48" rx="6" fill="var(--yelp)"/>
+            <rect x="248" y="86" width="3" height="48" fill="var(--yel)"/>
+            <text x="258" y="100" font-family="JetBrains Mono, monospace" font-size="8" font-weight="600" fill="var(--yeld)" letter-spacing="1">3 DAYS AGO</text>
+            <text x="258" y="114" font-family="Source Serif 4, serif" font-size="10" font-style="italic" fill="var(--char)">Too precise?</text>
+            <text x="258" y="126" font-family="Source Serif 4, serif" font-size="10" font-style="italic" fill="var(--char)">Try "for hours."</text>
+            <!-- Connector -->
+            <path d="M 154 105 Q 200 105, 248 108" stroke="var(--yel)" stroke-width="1" stroke-dasharray="2 3" fill="none" opacity="0.55"/>
+            <!-- Second card -->
+            <rect x="248" y="152" width="102" height="36" rx="6" fill="var(--yelp)" opacity="0.55"/>
+            <rect x="248" y="152" width="3" height="36" fill="var(--yel)"/>
+            <text x="258" y="166" font-family="JetBrains Mono, monospace" font-size="8" font-weight="600" fill="var(--yeld)" letter-spacing="1">NOW</text>
+            <text x="258" y="180" font-family="Source Serif 4, serif" font-size="10" font-style="italic" fill="var(--char)">Restraint is the point.</text>
+          </svg>
+        </div>
+        <div class="v2-feature-body">
+          <div class="v2-feature-tag">Writing posture</div>
+          <h3>Margin ink — annotate without editing</h3>
+          <p>
+            There's a kind of thinking that's <em>about</em> your writing —
+            "this line is the thesis", "maybe cut this", "keep as-is,
+            restraint is the point". It doesn't belong in the body of the
+            note. It isn't a separate note either. For decades, the answer
+            has been sticky notes on paper. For Yarrow 2.0, it's margin ink.
+          </p>
+          <ol class="numbered-steps">
+            <li>Select a word or phrase in the body of your note.</li>
+            <li>Right-click it and pick <strong>Annotate</strong> from the menu.</li>
+            <li>A card appears in a right-hand gutter, anchored to what you selected. Type your thought. It saves automatically when you click away.</li>
+          </ol>
+          <p>
+            Click any card later to edit it; clear its text and click away
+            to delete it. The anchor excerpt at the top of each card
+            reminds you what it's about — useful when you scroll far from
+            the original phrase.
+          </p>
+          <p class="callout-inline">
+            Annotations live in the note's plain-text header, so any other
+            markdown tool that reads the file will see them and pass them
+            through untouched. Exporting to HTML keeps them in the file,
+            even though we don't render them in the exported site.
+          </p>
+        </div>
+      </div>
+
+      <!-- 2.0 · 3 — Editorial reading -->
+      <div class="v2-feature" id="editorial">
+        <div class="v2-feature-art">
+          <svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A stylised magazine-page layout: a large italic title, a big illuminated initial on the first paragraph, and a pull quote set off with a plum bar.">
+            <rect x="18" y="16" width="324" height="248" rx="12" fill="var(--s1)" stroke="var(--bd)"/>
+            <!-- Title -->
+            <text x="40" y="58" font-family="Newsreader, serif" font-style="italic" font-weight="300" font-size="22" fill="var(--char)">On keeping a notebook</text>
+            <!-- Drop cap + body -->
+            <text x="40" y="122" font-family="Newsreader, serif" font-weight="400" font-size="58" fill="var(--yel)">T</text>
+            <g fill="var(--t3)" opacity="0.6">
+              <rect x="88" y="84" width="218" height="3" rx="1.5"/>
+              <rect x="88" y="96" width="230" height="3" rx="1.5"/>
+              <rect x="88" y="108" width="222" height="3" rx="1.5"/>
+              <rect x="88" y="120" width="218" height="3" rx="1.5"/>
+              <rect x="40" y="138" width="280" height="3" rx="1.5"/>
+              <rect x="40" y="150" width="260" height="3" rx="1.5"/>
+            </g>
+            <!-- Pull quote -->
+            <rect x="40" y="170" width="3" height="52" fill="var(--yel)"/>
+            <text x="54" y="188" font-family="Newsreader, serif" font-style="italic" font-weight="300" font-size="15" fill="var(--yeld)">I have been a writer</text>
+            <text x="54" y="206" font-family="Newsreader, serif" font-style="italic" font-weight="300" font-size="15" fill="var(--yeld)">since I could hold a</text>
+            <text x="54" y="224" font-family="Newsreader, serif" font-style="italic" font-weight="300" font-size="15" fill="var(--yeld)">pencil.</text>
+            <!-- More body below -->
+            <g fill="var(--t3)" opacity="0.55">
+              <rect x="40" y="240" width="282" height="3" rx="1.5"/>
+              <rect x="40" y="252" width="268" height="3" rx="1.5"/>
+            </g>
+          </svg>
+        </div>
+        <div class="v2-feature-body">
+          <div class="v2-feature-tag">Style</div>
+          <h3>Editorial reading mode</h3>
+          <p>
+            When you open a note in reading mode, it now comes with the same
+            typographic care a magazine would give a finished article — a
+            drop cap on the first paragraph, more generous line spacing,
+            and pull quotes you can promote from any blockquote.
+          </p>
+          <h4>Making a pull quote</h4>
+          <p>
+            Write a normal markdown blockquote, but prefix the line with
+            <code>pull:</code>. That's it.
+          </p>
+          <pre><code>&gt; pull: I have been a writer since I could hold a pencil.</code></pre>
+          <p>
+            In editorial reading mode, that blockquote becomes a real
+            oversize pull quote. Without the <code>pull:</code> prefix it
+            renders as a normal quote.
+          </p>
+          <h4>Turning it on and off</h4>
+          <p>
+            At the top of any note, while in reading mode, you'll see a
+            small <strong>editorial / plain</strong> toggle — click to
+            switch between magazine-style and the simpler plain renderer.
+            Your choice applies to every note you open; toggle any time.
+            You can also set the default under Settings → Writing.
+          </p>
+        </div>
+      </div>
+
+      <!-- 2.0 · 4 — Path-tinted caret -->
+      <div class="v2-feature reverse" id="caret-tint">
+        <div class="v2-feature-art">
+          <svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four lines of text, each with its blinking cursor shown in a different colour to match the name of the path — plum for main, rose for darker-ending, sage for rewrite-intro, gold for third-person.">
+            <rect x="18" y="20" width="324" height="240" rx="12" fill="var(--s1)" stroke="var(--bd)"/>
+            <!-- row 1 main -->
+            <g>
+              <text x="40" y="66" font-family="JetBrains Mono, monospace" font-size="10" fill="var(--t3)" letter-spacing="1">MAIN</text>
+              <rect x="94" y="56" width="190" height="3" rx="1.5" fill="var(--t2)" opacity="0.55"/>
+              <rect x="286" y="50" width="2" height="16" fill="var(--yel)"/>
+            </g>
+            <!-- row 2 darker -->
+            <g>
+              <text x="40" y="112" font-family="JetBrains Mono, monospace" font-size="10" fill="var(--t3)" letter-spacing="1">DARKER-ENDING</text>
+              <rect x="148" y="102" width="148" height="3" rx="1.5" fill="var(--t2)" opacity="0.55"/>
+              <rect x="298" y="96" width="2" height="16" fill="#B06074"/>
+            </g>
+            <!-- row 3 rewrite -->
+            <g>
+              <text x="40" y="158" font-family="JetBrains Mono, monospace" font-size="10" fill="var(--t3)" letter-spacing="1">REWRITE-INTRO</text>
+              <rect x="144" y="148" width="160" height="3" rx="1.5" fill="var(--t2)" opacity="0.55"/>
+              <rect x="306" y="142" width="2" height="16" fill="var(--sage)"/>
+            </g>
+            <!-- row 4 third person -->
+            <g>
+              <text x="40" y="204" font-family="JetBrains Mono, monospace" font-size="10" fill="var(--t3)" letter-spacing="1">THIRD-PERSON</text>
+              <rect x="138" y="194" width="172" height="3" rx="1.5" fill="var(--t2)" opacity="0.55"/>
+              <rect x="312" y="188" width="2" height="16" fill="#C69747"/>
+            </g>
+            <!-- caption -->
+            <text x="180" y="242" font-family="Newsreader, serif" font-style="italic" font-size="12" fill="var(--t2)" text-anchor="middle">Your cursor wears the path's colour.</text>
+          </svg>
+        </div>
+        <div class="v2-feature-body">
+          <div class="v2-feature-tag">Accessibility</div>
+          <h3>Path-tinted caret</h3>
+          <p>
+            When you branch into a side path to try a different version of a
+            note, your blinking cursor takes on that path's colour. You
+            always know at a glance <em>which</em> draft you're editing —
+            no need to check the path pill in the toolbar. Ambient
+            information, nothing to read.
+          </p>
+          <p>
+            <strong>Assigning a colour to a path:</strong> open the Paths
+            view (<kbd>⌘K</kbd> → <em>Paths</em>), click into any path,
+            pick a colour from the swatch at the top of the detail panel.
+            If you don't, Yarrow derives a calm hue from the path's name
+            automatically — so you get the feature for free.
+          </p>
+          <p>
+            <strong>Turning it off:</strong> if you prefer the default
+            high-contrast caret (for readability or screen-reader use),
+            toggle <em>Path-tinted caret</em> off under Settings → Writing.
+            It stays on by default because most people find it helpful.
+          </p>
+        </div>
+      </div>
+
+      <!-- 2.0 · 5 — Where you left off -->
+      <div class="v2-feature" id="where-left-off">
+        <div class="v2-feature-art">
+          <svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A warm banner at the top of a mock editor reading 'Welcome back — 22 hr ago', naming the note you paused in and the sentence you paused on, with three buttons: pick up here, start somewhere else, hide next time.">
+            <!-- window frame -->
+            <rect x="18" y="16" width="324" height="248" rx="12" fill="var(--s1)" stroke="var(--bd)"/>
+            <!-- menu bar -->
+            <rect x="18" y="16" width="324" height="26" fill="var(--s2)"/>
+            <circle cx="32" cy="29" r="3.2" fill="#D08985"/>
+            <circle cx="43" cy="29" r="3.2" fill="#D6B25E"/>
+            <circle cx="54" cy="29" r="3.2" fill="#9CBE86"/>
+            <!-- banner -->
+            <rect x="30" y="52" width="300" height="92" rx="7" fill="var(--yelp)" stroke="var(--yel)" stroke-width="1"/>
+            <rect x="30" y="52" width="3" height="92" fill="var(--yel)"/>
+            <text x="44" y="70" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="var(--yeld)" letter-spacing="1.5">WELCOME BACK · 22 HR AGO</text>
+            <text x="44" y="92" font-family="Newsreader, serif" font-style="italic" font-size="15" fill="var(--char)">You paused in</text>
+            <text x="136" y="92" font-family="Newsreader, serif" font-style="italic" font-size="15" fill="var(--yel)">Fog at Pier 39</text>
+            <line x1="44" y1="102" x2="44" y2="124" stroke="var(--bd2)"/>
+            <text x="52" y="118" font-family="Source Serif 4, serif" font-style="italic" font-size="11" fill="var(--t2)">"…she had known, she thought, since Tuesday…"</text>
+            <!-- buttons -->
+            <rect x="44" y="130" width="94" height="22" rx="4" fill="var(--yel)"/>
+            <text x="91" y="145" font-family="Inter, sans-serif" font-size="10" font-weight="500" fill="var(--on-yel)" text-anchor="middle">pick up here →</text>
+            <rect x="144" y="130" width="114" height="22" rx="4" fill="var(--bg)" stroke="var(--bd2)"/>
+            <text x="201" y="145" font-family="Inter, sans-serif" font-size="10" fill="var(--t1)" text-anchor="middle">start somewhere else</text>
+            <text x="328" y="145" font-family="Inter, sans-serif" font-size="9" fill="var(--t3)" text-anchor="end">hide next time</text>
+            <!-- rest of editor dim -->
+            <g fill="var(--t3)" opacity="0.4">
+              <rect x="30" y="172" width="270" height="3" rx="1.5"/>
+              <rect x="30" y="184" width="250" height="3" rx="1.5"/>
+              <rect x="30" y="196" width="258" height="3" rx="1.5"/>
+              <rect x="30" y="208" width="240" height="3" rx="1.5"/>
+              <rect x="30" y="220" width="262" height="3" rx="1.5"/>
+              <rect x="30" y="232" width="232" height="3" rx="1.5"/>
+            </g>
+          </svg>
+        </div>
+        <div class="v2-feature-body">
+          <div class="v2-feature-tag">Comfort</div>
+          <h3>Where you left off</h3>
+          <p>
+            Coming back to a note after a break is a small cost every time —
+            you have to remember what you were thinking, which path you
+            were on, which sentence you were in the middle of.
+          </p>
+          <p>
+            When you reopen a workspace you used in the last three days,
+            Yarrow shows a one-line banner above the editor: the note you
+            paused in, the path you were on, and the line you were at
+            last. Three buttons, nothing complicated:
+          </p>
+          <ul class="bullet-list">
+            <li><strong>pick up here →</strong> jumps to that note on that path, right where you were.</li>
+            <li><strong>start somewhere else</strong> hides the banner for this session, without touching your bookmark.</li>
+            <li><strong>hide next time</strong> turns the banner off forever for this workspace.</li>
+          </ul>
+          <p class="callout-inline">
+            After three days without touching a workspace, the bookmark
+            quietly expires — so if you come back to an old workspace a
+            month later, you aren't greeted with stale context from
+            something you've already moved past.
+          </p>
+        </div>
+      </div>
+
+      <!-- 2.0 · 6 — Keepsakes -->
+      <div class="v2-feature reverse" id="keepsakes">
+        <div class="v2-feature-art">
+          <svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A history timeline: small grey dots for ordinary checkpoints, two larger plum-ringed stars marking pinned keepsakes with their labels below. A dashed red line on the left marks a prune boundary older checkpoints would normally be removed at — but pinned ones stay.">
+            <!-- timeline axis -->
+            <line x1="30" y1="130" x2="330" y2="130" stroke="var(--bd2)" stroke-width="1.5"/>
+            <!-- ordinary checkpoints -->
+            <g fill="var(--t3)" opacity="0.65">
+              <circle cx="50"  cy="130" r="4"/>
+              <circle cx="80"  cy="130" r="4"/>
+              <circle cx="140" cy="130" r="4"/>
+              <circle cx="170" cy="130" r="4"/>
+              <circle cx="200" cy="130" r="4"/>
+              <circle cx="260" cy="130" r="4"/>
+              <circle cx="290" cy="130" r="4"/>
+              <circle cx="320" cy="130" r="4"/>
+            </g>
+            <!-- pinned #1 -->
+            <g>
+              <circle cx="110" cy="130" r="8" fill="var(--yel)"/>
+              <circle cx="110" cy="130" r="14" fill="none" stroke="var(--yel)" stroke-width="1" opacity="0.35"/>
+              <circle cx="110" cy="130" r="20" fill="none" stroke="var(--yel)" stroke-width="1" opacity="0.15"/>
+              <rect x="58" y="54" width="104" height="50" rx="6" fill="var(--yelp)" stroke="var(--yel)" stroke-width="1"/>
+              <text x="68" y="70" font-family="JetBrains Mono, monospace" font-size="8" font-weight="700" fill="var(--yeld)" letter-spacing="1.5">★ KEPT</text>
+              <text x="68" y="86" font-family="Newsreader, serif" font-style="italic" font-size="11" fill="var(--char)">before the prologue</text>
+              <text x="68" y="98" font-family="Newsreader, serif" font-style="italic" font-size="11" fill="var(--char)">cut</text>
+              <line x1="110" y1="104" x2="110" y2="122" stroke="var(--yel)" stroke-dasharray="2 2"/>
+            </g>
+            <!-- pinned #2 -->
+            <g>
+              <circle cx="230" cy="130" r="8" fill="var(--yel)"/>
+              <circle cx="230" cy="130" r="14" fill="none" stroke="var(--yel)" stroke-width="1" opacity="0.35"/>
+              <rect x="184" y="156" width="104" height="42" rx="6" fill="var(--yelp)" stroke="var(--yel)" stroke-width="1"/>
+              <text x="194" y="172" font-family="JetBrains Mono, monospace" font-size="8" font-weight="700" fill="var(--yeld)" letter-spacing="1.5">★ KEPT</text>
+              <text x="194" y="188" font-family="Newsreader, serif" font-style="italic" font-size="11" fill="var(--char)">v1 cold read</text>
+              <line x1="230" y1="138" x2="230" y2="156" stroke="var(--yel)" stroke-dasharray="2 2"/>
+            </g>
+            <!-- prune boundary -->
+            <line x1="60" y1="40" x2="60" y2="260" stroke="var(--danger)" stroke-width="1" stroke-dasharray="4 4" opacity="0.5"/>
+            <text x="64" y="52" font-family="JetBrains Mono, monospace" font-size="8" font-weight="600" fill="var(--danger)" opacity="0.7" letter-spacing="1">PRUNE LINE</text>
+            <!-- labels -->
+            <text x="30" y="258" font-family="JetBrains Mono, monospace" font-size="9" fill="var(--t3)" letter-spacing="1.5">OLDER</text>
+            <text x="320" y="258" font-family="JetBrains Mono, monospace" font-size="9" fill="var(--t3)" letter-spacing="1.5" text-anchor="end">TODAY</text>
+            <text x="180" y="230" font-family="Newsreader, serif" font-style="italic" font-size="11" fill="var(--t2)" text-anchor="middle">Pinned ones survive.</text>
+          </svg>
+        </div>
+        <div class="v2-feature-body">
+          <div class="v2-feature-tag">History</div>
+          <h3>Pinned keepsakes — versions you want to keep forever</h3>
+          <p>
+            Yarrow's deal has always been "nothing you write is ever lost."
+            But over a long time, a single note might have a thousand tiny
+            saves behind it — and if you ever tidy up (say, prune
+            checkpoints older than six months), the normal rules apply:
+            old ones go away.
+          </p>
+          <p>
+            Keepsakes are the exception. They're the checkpoints you've
+            <em>explicitly</em> told Yarrow to keep, with a little note to
+            your future self about why.
+          </p>
+          <h4>Pinning a checkpoint</h4>
+          <ol class="numbered-steps">
+            <li>Open the note, then open History (the little clock icon in the right rail, or <kbd>⌘K</kbd> → <em>Show history</em>).</li>
+            <li>Click a checkpoint in the timeline to preview it.</li>
+            <li>At the bottom of the preview panel, click <strong>☆ pin this</strong>.</li>
+            <li>Give it a short label (<em>"before the prologue cut"</em>, <em>"v1 cold read"</em>) and, if you want, a longer note about why it mattered.</li>
+            <li>Done. It now has a <strong>kept</strong> badge next to it in the timeline, and will never be touched by pruning.</li>
+          </ol>
+          <h4>Unpinning</h4>
+          <p>
+            Select the pinned checkpoint in History and click
+            <strong>★ unpin</strong>. The version is still there — it's
+            just no longer protected, and will be fair game for the next
+            history prune if you choose to run one.
+          </p>
+          <p class="callout-inline">
+            Technical detail for the curious: behind the scenes, each
+            keepsake is a git ref pointing to that version, stored at
+            <code>.git/refs/yarrow/keepsakes/&lt;id&gt;</code>. That ref is
+            what keeps git from ever garbage-collecting the object. The
+            human-readable metadata (label, note, when you pinned it)
+            lives in <code>.yarrow/keepsakes.json</code>.
+          </p>
+        </div>
+      </div>
+
+      <!-- 2.0 · 7 — Radial right-click menu -->
+      <div class="v2-feature" id="radial-menu">
+        <div class="v2-feature-art">
+          <svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A donut-shaped radial menu with six labelled wedges around a central compass-rose disc. Five gesture labels sit to the side listing tap, long-press, double-click, drag-out, and scroll-wheel behaviours.">
+            <!-- donut -->
+            <g transform="translate(140 140)">
+              <circle r="96" fill="color-mix(in srgb, var(--yelp) 70%, var(--bg))" stroke="var(--yel)" stroke-width="1" stroke-opacity="0.35"/>
+              <circle r="40" fill="var(--bg)" stroke="var(--yel)" stroke-width="1"/>
+              <!-- divider lines at 60° intervals -->
+              <g stroke="var(--yel)" stroke-width="0.7" stroke-opacity="0.38">
+                <line x1="40" y1="0"  x2="96" y2="0"/>
+                <line x1="20" y1="34" x2="48" y2="83"/>
+                <line x1="-20" y1="34" x2="-48" y2="83"/>
+                <line x1="-40" y1="0" x2="-96" y2="0"/>
+                <line x1="-20" y1="-34" x2="-48" y2="-83"/>
+                <line x1="20" y1="-34" x2="48" y2="-83"/>
+              </g>
+              <!-- wedge labels -->
+              <g font-family="Inter, sans-serif" font-size="10" font-weight="600" fill="var(--yeld)" text-anchor="middle" letter-spacing="0.4">
+                <text x="0" y="-62">CODE</text>
+                <text x="54" y="-32">CALLOUT</text>
+                <text x="66" y="8">TABLE</text>
+                <text x="54" y="48">WIKILINK</text>
+                <text x="-54" y="48">TASK</text>
+                <text x="-66" y="8">HEADING</text>
+              </g>
+              <!-- compass-rose centre -->
+              <circle r="5" fill="var(--yel)"/>
+              <g stroke="var(--yel)" stroke-width="1" fill="none" opacity="0.5">
+                <circle r="26"/>
+                <line x1="0" y1="-32" x2="0" y2="-26"/>
+                <line x1="0" y1="32" x2="0" y2="26"/>
+                <line x1="-32" y1="0" x2="-26" y2="0"/>
+                <line x1="32" y1="0" x2="26" y2="0"/>
+              </g>
+            </g>
+            <!-- gesture legend on the right -->
+            <g>
+              <text x="254" y="42" font-family="JetBrains Mono, monospace" font-size="9" font-weight="700" fill="var(--yeld)" letter-spacing="1.5">GESTURES</text>
+              <line x1="254" y1="48" x2="346" y2="48" stroke="var(--bd2)"/>
+              <g font-family="JetBrains Mono, monospace" font-size="9" fill="var(--t2)" letter-spacing="0.8">
+                <text x="254" y="68">tap</text>
+                <text x="254" y="96">long</text>
+                <text x="254" y="124">dbl</text>
+                <text x="254" y="152">drag</text>
+                <text x="254" y="180">wheel</text>
+              </g>
+              <g font-family="Newsreader, serif" font-style="italic" font-size="11" fill="var(--t2)">
+                <text x="290" y="68">palette</text>
+                <text x="290" y="96">map rail</text>
+                <text x="290" y="124">zen mode</text>
+                <text x="290" y="152">commit wedge</text>
+                <text x="290" y="180">rotate hover</text>
+              </g>
+            </g>
+            <text x="140" y="258" font-family="Newsreader, serif" font-style="italic" font-size="12" fill="var(--t2)" text-anchor="middle">Right-click anywhere in the editor.</text>
+          </svg>
+        </div>
+        <div class="v2-feature-body">
+          <div class="v2-feature-tag">Editor surface</div>
+          <h3>Radial right-click menu</h3>
+          <p>
+            Right-click anywhere in the editor and a donut-shaped pie menu
+            opens at your cursor. Six wedges, arranged around a central
+            disc — no matter where you clicked, every wedge is within a
+            short flick of the pointer.
+          </p>
+          <h4>What's on the wedges</h4>
+          <ul class="bullet-list">
+            <li><strong>When no text is selected</strong> — inserts: <em>Wikilink</em>, <em>Table</em>, <em>Task</em>, <em>Code</em>, <em>Callout</em>, <em>Heading</em>.</li>
+            <li><strong>When text is selected</strong> — transforms: <em>Wikilink</em>, <em>New path</em>, <em>Bold</em>, <em>Italic</em>, <em>Annotate</em>, <em>Scratchpad</em>, <em>Copy</em>.</li>
+          </ul>
+          <h4>The Still Point (the centre disc)</h4>
+          <p>
+            The small compass rose in the middle is gesture-aware — five
+            different actions depending on how you touch it:
+          </p>
+          <ul class="bullet-list">
+            <li><strong>Tap</strong> — opens the command palette.</li>
+            <li><strong>Long-press</strong> (about a third of a second, with a plum ring that fills as you hold) — opens the Map rail.</li>
+            <li><strong>Double-click</strong> — toggles Zen mode (focus mode).</li>
+            <li><strong>Drag-out</strong> — press the centre, drag onto any wedge, release. That wedge commits without a second click.</li>
+            <li><strong>Scroll wheel</strong> — rotates which wedge is hovered by ±1, useful if you opened the menu with a keyboard and want to pick by feel.</li>
+          </ul>
+          <h4>Keyboard</h4>
+          <p>
+            <kbd>Tab</kbd> / <kbd>Shift-Tab</kbd> cycle wedges, <kbd>Enter</kbd>
+            commits the hovered one, <kbd>Esc</kbd> cancels. The menu is
+            rendered into <code>document.body</code> as a portal so nested
+            scroll containers can't clip it.
+          </p>
+          <p class="callout-inline">
+            Prefer a plain vertical drop-down? Settings → Writing Extras →
+            <em>Radial right-click menu</em> → off. Same item contract,
+            same keyboard nav, just laid out as a list.
+          </p>
         </div>
       </div>
     </section>
@@ -334,8 +906,8 @@
       </p>
       <figure class="diagram screenshot">
         <div class="screenshot-frame">
-          <img src="main-light.png" alt="A screenshot of the main Yarrow window — sidebar on the left, editor in the middle, tool-rail on the right." class="shot-light shown" />
-          <img src="main-dark.png" alt="The same window in the dark theme." class="shot-dark hidden-shot" />
+          <img src="editor-light.png" alt="A screenshot of the main Yarrow window — sidebar on the left, editor in the middle, tool-rail on the right." class="shot-light shown" />
+          <img src="editor-dark.png" alt="The same window in the dark theme." class="shot-dark hidden-shot" />
           <!-- Callout overlay. Coords are percentages of the image so the
                numbered pins line up no matter the rendered size. -->
           <svg class="callouts" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -397,6 +969,14 @@
           </div>
         </li>
       </ol>
+      <p class="callout">
+        <strong>New in 2.0:</strong> the editor has a new posture option —
+        <a href="#typewriter">Typewriter mode</a> keeps the line you're
+        writing centered on screen. You can also annotate the body in a
+        right-hand gutter with <a href="#margin-ink">Margin ink</a>, and
+        your cursor can wear the current path's colour via the
+        <a href="#caret-tint">Path-tinted caret</a>.
+      </p>
     </section>
 
     <!-- ═══ markdown ═══ -->
@@ -478,6 +1058,12 @@
         </svg>
         <figcaption>Same content, two surfaces. Hover the wikilink in reading mode to preview the target note; click to open it.</figcaption>
       </figure>
+      <p class="callout">
+        <strong>New in 2.0:</strong> reading mode now has an
+        <em>editorial</em> treatment with drop caps, pull quotes, and
+        generous line spacing — see
+        <a href="#editorial">Editorial reading mode</a>.
+      </p>
     </section>
 
     <!-- ═══ math + code ═══ -->
@@ -1034,6 +1620,11 @@ def hello():
         creates a <em>new</em> checkpoint with the older content. Your
         path forward continues; the old version is still in the timeline.
       </p>
+      <p class="callout">
+        <strong>New in 2.0:</strong> any checkpoint in the timeline can be
+        pinned so history pruning can never touch it —
+        see <a href="#keepsakes">Pinned keepsakes</a>.
+      </p>
     </section>
 
     <!-- ═══ trash ═══ -->
@@ -1312,8 +1903,8 @@ def hello():
         purpose:
       </p>
       <ul class="bullet-list">
-        <li><strong>Appearance</strong> — light / dark / auto theme; UI font picker (Merriweather is the new default in 1.1); UI scale (compact / cozy / roomy).</li>
-        <li><strong>Writing</strong> — editor font and size; raw markdown vs reading mode default; debounce-save interval; "what were you thinking?" prompt on close.</li>
+        <li><strong>Appearance</strong> — light / dark / auto theme; UI font picker; UI scale (compact / cozy / roomy).</li>
+        <li><strong>Writing</strong> — editor font and size; raw markdown vs reading mode default; debounce-save interval; "what were you thinking?" prompt on close; <strong>new in 2.0:</strong> <a href="#typewriter">Typewriter mode</a>, <a href="#editorial">Editorial reading</a>, and <a href="#caret-tint">Path-tinted caret</a>.</li>
         <li><strong>Templates</strong> — edit, add, delete templates. The <code>daily.md</code> template is always present.</li>
         <li><strong>Sync</strong> — remote URL, access token; manual sync trigger.</li>
         <li><strong>Security</strong> — encryption setup, password change, recovery phrase regeneration, idle timeout, disable encryption.</li>
@@ -1436,7 +2027,7 @@ def hello():
       <div class="cta-row">
         <a class="btn primary" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download 1.1
+          Download 2.0
         </a>
         <a class="btn ghost" href="index.html">
           ← Back to the home page

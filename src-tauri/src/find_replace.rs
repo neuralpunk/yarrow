@@ -21,11 +21,34 @@ pub struct ApplyReport {
     pub total_replacements: usize,
 }
 
+/// Maximum pattern length we'll accept. 2 KB is generous for any real
+/// find-replace intent; anything longer is either a paste mistake or a
+/// DoS attempt (catastrophic-backtracking patterns can run thousands
+/// of bytes).
+const MAX_PATTERN_LEN: usize = 2048;
+/// Compiled-NFA size caps (bytes). The `regex` crate guarantees linear-
+/// time matching thanks to its automaton construction — it does NOT
+/// backtrack — but pathological patterns can balloon the *compiled*
+/// size. Setting explicit caps keeps build() from allocating arbitrary
+/// memory on a hostile pattern. Real-world regexes compile well under
+/// these limits.
+const REGEX_SIZE_LIMIT: usize = 10 * 1024 * 1024; // 10 MB NFA
+const REGEX_DFA_SIZE_LIMIT: usize = 20 * 1024 * 1024; // 20 MB DFA cache
+
 fn build_regex(pattern: &str, regex_mode: bool, case_insensitive: bool) -> Result<Regex> {
+    if pattern.len() > MAX_PATTERN_LEN {
+        return Err(YarrowError::Invalid(format!(
+            "pattern too long ({} chars, limit {})",
+            pattern.len(),
+            MAX_PATTERN_LEN
+        )));
+    }
     let pat = if regex_mode { pattern.to_string() } else { regex::escape(pattern) };
     RegexBuilder::new(&pat)
         .case_insensitive(case_insensitive)
         .multi_line(true)
+        .size_limit(REGEX_SIZE_LIMIT)
+        .dfa_size_limit(REGEX_DFA_SIZE_LIMIT)
         .build()
         .map_err(|e| YarrowError::Invalid(format!("bad pattern: {e}")))
 }

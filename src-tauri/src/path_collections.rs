@@ -55,6 +55,26 @@ pub struct PathCollection {
     pub members: Vec<String>,
     #[serde(default)]
     pub created_at: i64,
+    /// User-assigned accent, as a CSS color string (e.g. `#dc8a4a`). When
+    /// `None`, the UI falls back to the derived hue from the path name so
+    /// upgraded workspaces keep their existing look without any migration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// When set, this path auto-includes every note whose frontmatter
+    /// `tags` contains this value. The reconciler runs on save / tag
+    /// change / path edit and keeps `members` in sync. Notes added
+    /// manually stay in `members` even if they don't carry the tag —
+    /// the reconciler only adds, it never subtracts manual additions
+    /// (we record each set so we can remove only what we added).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_membership_tag: Option<String>,
+    /// `true` for paths that represent a **full copy of the workspace** —
+    /// every existing note is a member at creation time, and newly-created
+    /// notes are auto-added to keep the "I can edit any note on this path"
+    /// invariant alive as the workspace grows. Defaults to `false` on load
+    /// so legacy collections keep their curated memberships unchanged.
+    #[serde(default)]
+    pub full_workspace: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -142,12 +162,7 @@ pub struct CollectionsView {
 }
 
 fn seed(workspace: &Path) -> Result<CollectionsView> {
-    let notes_dir = crate::workspace::notes_dir(workspace);
-    let mut members = Vec::new();
-    if notes_dir.exists() {
-        collect_slugs(&notes_dir, "", &mut members)?;
-    }
-    members.sort();
+    let members = list_workspace_slugs(workspace)?;
     let main = PathCollection {
         name: "main".into(),
         condition: "The trunk of your thinking.".into(),
@@ -155,6 +170,9 @@ fn seed(workspace: &Path) -> Result<CollectionsView> {
         main_note: members.first().cloned(),
         members,
         created_at: Utc::now().timestamp(),
+        color: None,
+        auto_membership_tag: None,
+        full_workspace: true,
     };
     let view = CollectionsView {
         root: "main".into(),
@@ -162,6 +180,20 @@ fn seed(workspace: &Path) -> Result<CollectionsView> {
     };
     write_view(workspace, &view)?;
     Ok(view)
+}
+
+/// Enumerate every `.md` slug currently in the workspace's `notes/` dir.
+/// Shared by `seed`, `create`, and the auto-add reconciler so new paths
+/// and new notes stay in sync without duplicated walk logic.
+pub(crate) fn list_workspace_slugs(workspace: &Path) -> Result<Vec<String>> {
+    let notes_dir = crate::workspace::notes_dir(workspace);
+    let mut out = Vec::new();
+    if notes_dir.exists() {
+        collect_slugs(&notes_dir, "", &mut out)?;
+    }
+    out.sort();
+    out.dedup();
+    Ok(out)
 }
 
 fn collect_slugs(dir: &Path, prefix: &str, out: &mut Vec<String>) -> Result<()> {
@@ -206,7 +238,7 @@ pub fn create(
     workspace: &Path,
     name: &str,
     condition: &str,
-    _parent: &str,
+    parent: &str,
     main_note: Option<&str>,
 ) -> Result<PathCollection> {
     let mut view = read_all(workspace)?;
@@ -217,13 +249,32 @@ pub fn create(
     if view.collections.iter().any(|c| c.name == name) {
         return Err(YarrowError::Other(format!("A path named '{}' already exists.", name)));
     }
-    // The permanent trunk is the current root — whatever path the user is
-    // branching off right now, that's this path's forever-home. Promoting
-    // will never touch this value again. The `_parent` arg is ignored for
-    // call-site compatibility.
-    let parent = view.root.clone();
+    // Honour the requested parent so the user can build genuine nested
+    // chains (main → trip → budget → ...), not just a flat fan off the
+    // root. Empty string or a name that doesn't match any existing
+    // collection falls back to the current root as a safety net. The
+    // chosen parent is still permanent: once stamped, it never changes
+    // (promotion is still a pointer-flip on `view.root`).
+    let parent = if parent.is_empty() {
+        view.root.clone()
+    } else if view.collections.iter().any(|c| c.name == parent) {
+        parent.to_string()
+    } else {
+        view.root.clone()
+    };
     let main_note = main_note.map(|s| s.to_string());
-    let members: Vec<String> = main_note.iter().cloned().collect();
+    // Seed the new path with a **full copy of the workspace** — every note
+    // that currently exists on main is also a member of this path at
+    // creation time. That lets the user edit any note on the path without
+    // hitting "this note isn't on this path" dead-ends, and makes the
+    // "compare paths" view meaningful (every slug lines up). Members stay
+    // in sync as new notes are created, via the `full_workspace` flag.
+    let mut members = list_workspace_slugs(workspace)?;
+    if let Some(ref mn) = main_note {
+        if !members.contains(mn) {
+            members.insert(0, mn.clone());
+        }
+    }
     let new = PathCollection {
         name: name.clone(),
         condition: condition.trim().to_string(),
@@ -231,6 +282,9 @@ pub fn create(
         main_note,
         members,
         created_at: Utc::now().timestamp(),
+        color: None,
+        auto_membership_tag: None,
+        full_workspace: true,
     };
     view.collections.push(new.clone());
     write_view(workspace, &view)?;
@@ -293,6 +347,164 @@ pub fn set_condition(workspace: &Path, name: &str, condition: &str) -> Result<()
     };
     c.condition = condition.trim().to_string();
     write_view(workspace, &view)
+}
+
+/// Set (or clear, when passing `None` / empty) the tag that drives this
+/// path's auto-membership. Persisted alongside the rest of the path's
+/// fields; reconciliation is invoked by the caller after this returns.
+/// Append a prebuilt collection to the on-disk view. Used by the
+/// sample-vault bootstrap — the normal `create()` flow derives its
+/// members/main-note from the seed slug; here the caller has every
+/// field ready and just wants them written.
+pub fn append(workspace: &Path, new: PathCollection) -> Result<()> {
+    let mut view = read_all(workspace)?;
+    if view.collections.iter().any(|c| c.name == new.name) {
+        return Err(YarrowError::Other(format!(
+            "Path '{}' already exists.",
+            new.name
+        )));
+    }
+    view.collections.push(new);
+    write_view(workspace, &view)
+}
+
+pub fn set_auto_membership_tag(
+    workspace: &Path,
+    name: &str,
+    tag: Option<&str>,
+) -> Result<()> {
+    let mut view = read_all(workspace)?;
+    let Some(c) = view.collections.iter_mut().find(|c| c.name == name) else {
+        return Err(YarrowError::Other(format!("Path '{}' not found.", name)));
+    };
+    c.auto_membership_tag = match tag.map(|s| s.trim().trim_start_matches('#')) {
+        Some("") | None => None,
+        Some(v) => Some(v.to_string()),
+    };
+    write_view(workspace, &view)
+}
+
+/// Add a newly-created or newly-renamed slug to every `full_workspace`
+/// path, so "the path is a full copy of main" stays true as the workspace
+/// grows. Paths that are NOT marked full_workspace (legacy curated lenses
+/// and tag-driven paths) are left alone. Idempotent.
+pub fn reconcile_new_note(workspace: &Path, slug: &str) -> Result<()> {
+    let mut view = read_all(workspace)?;
+    let mut changed = false;
+    for c in view.collections.iter_mut() {
+        if !c.full_workspace {
+            continue;
+        }
+        if c.members.iter().any(|s| s == slug) {
+            continue;
+        }
+        c.members.push(slug.to_string());
+        changed = true;
+    }
+    if changed {
+        write_view(workspace, &view)?;
+    }
+    Ok(())
+}
+
+/// Remove a slug from every path's membership — called after a hard delete
+/// so the membership lists don't dangle. Returns Ok even when nothing
+/// matched. Does NOT touch per-path overrides (caller should clean those
+/// up separately if desired).
+pub fn reconcile_deleted_note(workspace: &Path, slug: &str) -> Result<()> {
+    let mut view = read_all(workspace)?;
+    let mut changed = false;
+    for c in view.collections.iter_mut() {
+        let before = c.members.len();
+        c.members.retain(|s| s != slug);
+        if c.main_note.as_deref() == Some(slug) {
+            c.main_note = c.members.first().cloned();
+            changed = true;
+        }
+        if c.members.len() != before {
+            changed = true;
+        }
+    }
+    if changed {
+        write_view(workspace, &view)?;
+    }
+    Ok(())
+}
+
+/// Reconcile every path's membership with its `auto_membership_tag`.
+///
+/// Pure additive: if a path has `auto_membership_tag = Some("x")`, then
+/// every note whose frontmatter tags contain `"x"` must be a member.
+/// Notes added by the user that don't match the tag are left alone —
+/// the reconciler never subtracts. Callers should invoke this after
+/// any note save or tag edit so auto-paths stay fresh.
+///
+/// Returns the count of notes that were added across all paths, so
+/// callers can decide whether a checkpoint/graph-rebuild is warranted.
+pub fn reconcile_auto_membership(
+    workspace: &Path,
+    note_tags_by_slug: &HashMap<String, Vec<String>>,
+) -> Result<usize> {
+    let mut view = read_all(workspace)?;
+    let mut added_total = 0usize;
+    let mut changed = false;
+    for c in view.collections.iter_mut() {
+        let Some(tag) = c.auto_membership_tag.as_deref() else {
+            continue;
+        };
+        if tag.is_empty() {
+            continue;
+        }
+        let member_set: HashSet<String> = c.members.iter().cloned().collect();
+        for (slug, tags) in note_tags_by_slug {
+            if !tags.iter().any(|t| t == tag) {
+                continue;
+            }
+            if member_set.contains(slug) {
+                continue;
+            }
+            c.members.push(slug.clone());
+            added_total += 1;
+            changed = true;
+        }
+    }
+    if changed {
+        write_view(workspace, &view)?;
+    }
+    Ok(added_total)
+}
+
+/// Set (or clear, when passing an empty string) the user-assigned accent
+/// color for a path. Lightly validates the input: must be a CSS hex color
+/// (#rgb, #rrggbb, or #rrggbbaa). We refuse anything else so a malformed
+/// value can't smuggle arbitrary CSS into `style=` attributes downstream.
+pub fn set_color(workspace: &Path, name: &str, color: Option<&str>) -> Result<()> {
+    let mut view = read_all(workspace)?;
+    let Some(c) = view.collections.iter_mut().find(|c| c.name == name) else {
+        return Err(YarrowError::Other(format!("Path '{}' not found.", name)));
+    };
+    c.color = match color.map(|s| s.trim()) {
+        Some("") | None => None,
+        Some(v) => {
+            if !is_hex_color(v) {
+                return Err(YarrowError::Other(
+                    "Color must be a CSS hex value like #cc8844.".to_string(),
+                ));
+            }
+            Some(v.to_string())
+        }
+    };
+    write_view(workspace, &view)
+}
+
+fn is_hex_color(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.first() != Some(&b'#') {
+        return false;
+    }
+    let rest = &bytes[1..];
+    matches!(rest.len(), 3 | 4 | 6 | 8)
+        && rest.iter().all(|b| b.is_ascii_hexdigit())
 }
 
 pub fn set_main_note(workspace: &Path, name: &str, slug: Option<&str>) -> Result<()> {
@@ -416,4 +628,163 @@ fn sanitize_name(name: &str) -> String {
 /// loading the whole file twice.
 pub fn map_by_name(collections: &[PathCollection]) -> HashMap<String, PathCollection> {
     collections.iter().map(|c| (c.name.clone(), c.clone())).collect()
+}
+
+/// Result of promoting a path — tells the caller which slugs need to be
+/// saved back into main (with encryption re-applied if the main version is
+/// encrypted), and how many overrides total were applied.
+pub struct PromoteResult {
+    pub applied_slugs: Vec<(String, String)>, // (slug, new_body)
+    pub override_count: usize,
+}
+
+/// Build the promotion plan — for each override the path has, pair the
+/// slug with its (plaintext) body so the caller can run the save that
+/// preserves encryption per-note. Doesn't mutate anything: the caller is
+/// responsible for writing via `notes::write` and then calling
+/// `delete_overrides_for_path` + `delete` on this module to finish.
+pub fn build_promote_plan(workspace: &Path, path_name: &str) -> Result<PromoteResult> {
+    let view = read_all(workspace)?;
+    if view.root == path_name {
+        return Err(YarrowError::Invalid(
+            "That path is already the current main.".into(),
+        ));
+    }
+    if !view.collections.iter().any(|c| c.name == path_name) {
+        return Err(YarrowError::PathNotFound(path_name.to_string()));
+    }
+    let overridden = crate::path_content::list_overridden_slugs(workspace, path_name)?;
+    let mut applied = Vec::with_capacity(overridden.len());
+    for slug in &overridden {
+        if let Some(raw) = crate::path_content::read_override(workspace, path_name, slug)? {
+            // Skip frontmatter — the promote step re-serializes through
+            // notes::write so the caller preserves encryption and
+            // modified-timestamps correctly.
+            let (_fm, body) = crate::notes::parse(&raw);
+            applied.push((slug.clone(), body));
+        }
+    }
+    Ok(PromoteResult {
+        applied_slugs: applied,
+        override_count: overridden.len(),
+    })
+}
+
+/// After a successful promote, wipe the path's scratch content and remove
+/// the collection entry. Keeps the root's name intact — we don't rename
+/// the root here; "promoting" means "take this path's changes as truth,"
+/// not "rename the root."
+pub fn finalize_promote(workspace: &Path, path_name: &str) -> Result<()> {
+    crate::path_content::delete_overrides_for_path(workspace, path_name)?;
+    delete(workspace, path_name)?;
+    Ok(())
+}
+
+/// Compare two v2 path collections by membership, producing a shape
+/// compatible with the existing `git::PathComparison` so the frontend
+/// doesn't need a second render path.
+///
+/// In v2, notes are lenses, not branches — their content is shared across
+/// paths. So this compare is honest about what's being measured: which
+/// notes a user has grouped into each path. When a note is a member of
+/// both paths it's marked "same" (same content, by construction). When
+/// it's only in one side, it's "added"/"removed" relative to that side.
+pub fn compare_as_paths(
+    workspace: &Path,
+    left_name: &str,
+    right_name: &str,
+) -> Result<crate::git::PathComparison> {
+    use std::collections::BTreeSet;
+    let view = read_all(workspace)?;
+    let left = view
+        .collections
+        .iter()
+        .find(|c| c.name == left_name)
+        .ok_or_else(|| YarrowError::PathNotFound(left_name.to_string()))?;
+    let right = view
+        .collections
+        .iter()
+        .find(|c| c.name == right_name)
+        .ok_or_else(|| YarrowError::PathNotFound(right_name.to_string()))?;
+
+    let left_set: HashSet<String> = left.members.iter().cloned().collect();
+    let right_set: HashSet<String> = right.members.iter().cloned().collect();
+    let all: BTreeSet<String> = left_set.union(&right_set).cloned().collect();
+
+    let mut entries: Vec<crate::git::PathDiffEntry> = Vec::with_capacity(all.len());
+    let mut summary = crate::git::PathCompareSummary {
+        added: 0,
+        removed: 0,
+        modified: 0,
+        same: 0,
+    };
+
+    // Resolve a side's effective body for this slug: override if the path
+    // has one, else main's current body. Returns None when the slug isn't
+    // present on that side at all.
+    let resolve = |path_name: &str, slug: &str, present: bool| -> Option<String> {
+        if !present {
+            return None;
+        }
+        if path_name != view.root {
+            if let Ok(Some(raw)) = crate::path_content::read_override(workspace, path_name, slug) {
+                // Override file: parse frontmatter off, return body only.
+                let (_, body) = crate::notes::parse(&raw);
+                return Some(body);
+            }
+        }
+        crate::notes::read(workspace, slug).ok().map(|n| n.body)
+    };
+
+    for slug in all {
+        let in_left = left_set.contains(&slug);
+        let in_right = right_set.contains(&slug);
+        let left_body = resolve(left_name, &slug, in_left);
+        let right_body = resolve(right_name, &slug, in_right);
+        let l_lines = left_body.as_ref().map(|b| b.lines().count()).unwrap_or(0);
+        let r_lines = right_body.as_ref().map(|b| b.lines().count()).unwrap_or(0);
+        // Structure-preserving excerpts: keep blank lines and formatting so
+        // the frontend can compute a meaningful line-level diff. 4000 chars
+        // is enough for most real notes.
+        let l_ex = left_body.as_deref().and_then(|b| crate::git::long_excerpt(b, 4000));
+        let r_ex = right_body.as_deref().and_then(|b| crate::git::long_excerpt(b, 4000));
+
+        let status: &'static str = match (in_left, in_right) {
+            (true, true) => {
+                // With overrides, content can legitimately differ even in v2.
+                if left_body == right_body {
+                    summary.same += 1;
+                    "same"
+                } else {
+                    summary.modified += 1;
+                    "modified"
+                }
+            }
+            (true, false) => {
+                summary.removed += 1;
+                "removed"
+            }
+            (false, true) => {
+                summary.added += 1;
+                "added"
+            }
+            (false, false) => continue,
+        };
+
+        entries.push(crate::git::PathDiffEntry {
+            slug,
+            status,
+            left_excerpt: l_ex,
+            right_excerpt: r_ex,
+            left_lines: l_lines,
+            right_lines: r_lines,
+        });
+    }
+
+    Ok(crate::git::PathComparison {
+        left: left_name.to_string(),
+        right: right_name.to_string(),
+        entries,
+        summary,
+    })
 }

@@ -114,24 +114,28 @@ export default function DecisionMatrix({
       });
   }, [notes, filter, tagFilter, showOnlyStarred, starred, sortBy, memberSets]);
 
-  // Per-path scorecard counted across only the rows currently visible —
-  // updates live as the user filters. "All starred satisfied?" is the
-  // headline number for must-have decisions.
-  const scoreForPath = (path: string) => {
-    const set = memberSets.get(path);
-    if (!set) return { hits: 0, mustHits: 0, totalMust: 0 };
-    let hits = 0;
-    let mustHits = 0;
-    let totalMust = 0;
-    for (const r of rows) {
-      const inPath = set.has(r.slug);
-      if (inPath) hits++;
-      if (starred.has(r.slug)) {
-        totalMust++;
-        if (inPath) mustHits++;
-      }
+  // Pre-compute the highest must-have hit count so we can paint a quiet
+  // gold wash on winning columns. With no stars set there is no winner;
+  // ties light up every tied column.
+  const maxMustHits = useMemo(() => {
+    if (starred.size === 0) return 0;
+    let m = 0;
+    for (const c of collections) {
+      const set = memberSets.get(c.name);
+      if (!set) continue;
+      let h = 0;
+      for (const slug of starred) if (set.has(slug)) h++;
+      if (h > m) m = h;
     }
-    return { hits, mustHits, totalMust };
+    return m;
+  }, [collections, starred, memberSets]);
+  const isWinnerCol = (name: string) => {
+    if (maxMustHits === 0) return false;
+    const set = memberSets.get(name);
+    if (!set) return false;
+    let h = 0;
+    for (const slug of starred) if (set.has(slug)) h++;
+    return h === maxMustHits;
   };
 
   if (!open) return null;
@@ -188,49 +192,55 @@ export default function DecisionMatrix({
         )}
 
         <div className="flex-1 overflow-auto">
-          <table className="w-full border-collapse text-sm">
+          <table className="border-collapse text-sm" style={{ tableLayout: "fixed" }}>
             <thead className="sticky top-0 bg-bg z-10">
               <tr>
-                <th className="text-left px-3 py-2 border-b border-bd font-serif font-normal text-yeld text-xs sticky left-0 bg-yelp z-10 min-w-[260px]">
-                  Note
+                <th
+                  className="text-left px-3 align-bottom border-b border-bd font-serif font-normal text-yeld text-xs sticky left-0 bg-yelp z-10 min-w-[260px]"
+                  style={{ height: 150 }}
+                >
+                  <span className="inline-block pb-2">Note</span>
                 </th>
                 {collections.map((c) => {
-                  const { hits, mustHits, totalMust } = scoreForPath(c.name);
                   const isCurrent = c.name === currentPathName;
+                  const isWinner = isWinnerCol(c.name);
                   const sortActive = sortBy?.path === c.name;
-                  const arrow = sortActive
-                    ? (sortBy!.dir === "in-first" ? "▼" : "▲")
-                    : "⇅";
+                  // Diagonal header: names at -45° so each column can collapse
+                  // to a narrow tick-width and still fit long path names. The
+                  // <th> is given a fixed tall height so the rotated text has
+                  // room to reach upward; padding-bottom aligns the baseline
+                  // of the rotated name to the column's top edge.
                   return (
                     <th
                       key={c.name}
-                      className={`text-center px-2 py-2 border-b border-bd font-serif font-normal align-top min-w-[110px] ${
-                        isCurrent ? "bg-yelp/40" : ""
+                      className={`p-0 align-bottom border-b relative ${
+                        isWinner
+                          ? "bg-yel/8 border-b-yel/45"
+                          : isCurrent ? "bg-yelp/40 border-bd" : "border-bd"
                       }`}
+                      style={{ minWidth: 44, width: 44, height: 150 }}
                     >
                       <button
                         onClick={() => cycleColumnSort(c.name)}
-                        className="w-full flex flex-col items-center gap-0.5 group"
-                        title="Click to sort rows by membership in this path · click again to flip · click again to clear"
+                        className="absolute left-1/2 bottom-2 origin-bottom-left group"
+                        style={{
+                          transform: "translateX(6px) rotate(-45deg)",
+                          transformOrigin: "bottom left",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={`${c.name} — click to sort rows by membership · click again to flip · click again to clear`}
                       >
-                        <div className="flex items-center gap-1 text-char text-sm truncate max-w-full">
-                          <span className="truncate" title={c.name}>{c.name}</span>
-                          <span className={`text-[10px] font-mono ${sortActive ? "text-yeld" : "text-t3 opacity-0 group-hover:opacity-100"}`}>
-                            {arrow}
+                        <span
+                          className={`font-serif text-[13px] leading-none ${
+                            isWinner ? "text-yeld italic" : sortActive ? "text-yeld" : "text-char"
+                          }`}
+                        >
+                          {c.name}
+                        </span>
+                        {sortActive && (
+                          <span className="ml-1 text-[10px] font-mono text-yeld">
+                            {sortBy!.dir === "in-first" ? "▼" : "▲"}
                           </span>
-                        </div>
-                        <div className="text-2xs text-t3 font-mono">
-                          {hits}/{rows.length}
-                        </div>
-                        {totalMust > 0 && (
-                          <div className={`text-2xs font-mono ${mustHits === totalMust ? "text-yeld" : "text-danger"}`}>
-                            ★ {mustHits}/{totalMust}
-                          </div>
-                        )}
-                        {isCurrent && (
-                          <div className="text-2xs text-yeld font-mono uppercase tracking-wider">
-                            you
-                          </div>
                         )}
                       </button>
                     </th>
@@ -247,20 +257,23 @@ export default function DecisionMatrix({
                 </tr>
               ) : rows.map((n) => {
                 const isStar = starred.has(n.slug);
+                // Starred rows float on a quiet warm wash so they read as
+                // elevated even before you scan the cells.
+                const rowBg = isStar ? "bg-yel/[0.04] hover:bg-yel/[0.07]" : "hover:bg-s1/60";
                 return (
-                  <tr key={n.slug} className="hover:bg-s1/60">
-                    <td className="px-3 py-1.5 border-b border-bd/40 sticky left-0 bg-yelp">
+                  <tr key={n.slug} className={rowBg}>
+                    <td className={`px-3 py-1.5 border-b border-bd/40 sticky left-0 ${isStar ? "bg-yelp/90" : "bg-yelp"}`}>
                       <div className="flex items-center gap-2 min-w-0">
                         <button
                           onClick={() => toggleStar(n.slug)}
-                          className={`shrink-0 text-base leading-none ${isStar ? "text-yeld" : "text-t3 hover:text-yel"}`}
+                          className={`shrink-0 text-base leading-none transition-colors ${isStar ? "text-yeld" : "text-t3 hover:text-yel"}`}
                           title={isStar ? "Unstar (no longer must-have)" : "Mark as must-have"}
                         >
                           {isStar ? "★" : "☆"}
                         </button>
                         <button
                           onClick={() => onOpenNote(n.slug)}
-                          className="text-left text-yeld hover:text-char truncate flex-1 font-serif font-medium"
+                          className={`text-left hover:text-char truncate flex-1 font-serif ${isStar ? "text-yeld font-medium" : "text-ch2"}`}
                           title={n.title || n.slug}
                         >
                           {n.title || n.slug}
@@ -277,12 +290,15 @@ export default function DecisionMatrix({
                     {collections.map((c) => {
                       const inPath = memberSets.get(c.name)?.has(n.slug) ?? false;
                       const isCurrent = c.name === currentPathName;
+                      const isWinner = isWinnerCol(c.name);
+                      // Winner columns take precedence over the "current"
+                      // tint so the decision-answer visual stays loudest.
+                      const cellBg = isWinner ? "bg-yel/[0.05]" : isCurrent ? "bg-yelp/20" : "";
                       return (
                         <td
                           key={c.name}
-                          className={`text-center border-b border-bd/40 px-2 py-1.5 ${
-                            isCurrent ? "bg-yelp/20" : ""
-                          }`}
+                          className={`text-center border-b border-bd/40 px-1 py-1.5 ${cellBg}`}
+                          style={{ width: 44 }}
                         >
                           <CellMark inPath={inPath} isStar={isStar} />
                         </td>

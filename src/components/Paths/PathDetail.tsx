@@ -21,6 +21,11 @@ interface Props {
   onEditCondition: () => void;
   onRename: () => void;
   onDelete: () => void;
+  /** Persist a user-assigned accent color (CSS hex). Pass `null` to clear
+   *  and fall back to the derived palette hue. */
+  onSetColor: (color: string | null) => Promise<void> | void;
+  /** Set (or clear with `null`) the tag that auto-populates this path. */
+  onSetAutoTag: (tag: string | null) => Promise<void> | void;
   onSetMainNote: (slug: string | null) => Promise<void> | void;
   onAddNote: (slug: string) => Promise<void> | void;
   onRemoveNote: (slug: string) => Promise<void> | void;
@@ -50,6 +55,8 @@ export default function PathDetail({
   onEditCondition,
   onRename,
   onDelete,
+  onSetColor,
+  onSetAutoTag,
   onSetMainNote,
   onAddNote,
   onRemoveNote,
@@ -224,7 +231,7 @@ export default function PathDetail({
           <span>·</span>
           <span>created {relativeTime(collection.created_at)}</span>
         </div>
-        <div className="mt-2.5">
+        <div className="mt-2.5 flex items-center gap-3 flex-wrap">
           <button
             onClick={() => onOpenMap(collection.main_note || undefined)}
             className="text-xs px-2.5 py-1 rounded-md border border-bd text-t2 hover:bg-s2 hover:text-char inline-flex items-center gap-1.5"
@@ -232,7 +239,16 @@ export default function PathDetail({
           >
             <MapIcon /> Open the map for this path
           </button>
+          <ColorPicker
+            current={collection.color ?? null}
+            onPick={onSetColor}
+          />
         </div>
+        <AutoTagRow
+          current={collection.auto_membership_tag ?? null}
+          memberCount={collection.members.length}
+          onSet={onSetAutoTag}
+        />
       </header>
 
       <div className="flex-1 overflow-y-auto">
@@ -549,5 +565,156 @@ function MapIcon() {
       <circle cx="11" cy="7" r="1.5"/>
       <path d="M3 4.5v5M4.3 3.7l5.4 2.6M4.3 10.3l5.4-2.6"/>
     </svg>
+  );
+}
+
+// Eight presets picked to read well on both light and dark themes. Users
+// who want something custom can override via the color input underneath.
+const COLOR_PRESETS = [
+  "#c97a3a", // amber
+  "#c43d5b", // crimson
+  "#a85cc9", // plum
+  "#5c6dc9", // indigo
+  "#3a91c9", // azure
+  "#3aa890", // teal
+  "#68a83a", // moss
+  "#7a6b5c", // taupe
+];
+
+function AutoTagRow({
+  current,
+  memberCount,
+  onSet,
+}: {
+  current: string | null;
+  memberCount: number;
+  onSet: (tag: string | null) => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(current ?? "");
+  useEffect(() => {
+    setDraft(current ?? "");
+  }, [current]);
+  const commit = async () => {
+    const t = draft.trim().replace(/^#/, "");
+    setEditing(false);
+    await onSet(t ? t : null);
+  };
+  if (!editing && !current) {
+    return (
+      <div className="mt-2">
+        <button
+          onClick={() => { setEditing(true); setDraft(""); }}
+          className="text-2xs text-t3 hover:text-char italic font-serif transition"
+          title="Auto-add every note tagged with a given value to this path"
+        >
+          + auto-include notes by tag
+        </button>
+      </div>
+    );
+  }
+  if (!editing && current) {
+    return (
+      <div className="mt-2 flex items-center gap-2 flex-wrap text-2xs">
+        <span className="font-serif italic text-t3">auto-includes</span>
+        <span className="px-2 py-0.5 rounded-full bg-yelp text-yeld font-mono text-[10px]">
+          #{current}
+        </span>
+        <span className="font-serif italic text-t3">
+          · {memberCount} note{memberCount === 1 ? "" : "s"} match
+        </span>
+        <button
+          onClick={() => setEditing(true)}
+          className="text-t3 hover:text-char transition"
+        >
+          change
+        </button>
+        <button
+          onClick={() => onSet(null)}
+          className="text-t3 hover:text-danger transition"
+        >
+          clear
+        </button>
+      </div>
+    );
+  }
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        commit();
+      }}
+      className="mt-2 flex items-center gap-1.5"
+    >
+      <span className="text-2xs font-serif italic text-t3">auto-include notes tagged</span>
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="tag name"
+        className="px-2 py-0.5 bg-s1 border border-bd rounded text-char text-2xs focus:outline-none focus:border-yeld w-[140px]"
+      />
+      <button
+        type="submit"
+        className="px-2 py-0.5 bg-char text-bg rounded text-2xs hover:bg-yeld transition"
+      >
+        save
+      </button>
+      <button
+        type="button"
+        onClick={() => { setEditing(false); setDraft(current ?? ""); }}
+        className="text-2xs text-t3 hover:text-char transition"
+      >
+        cancel
+      </button>
+    </form>
+  );
+}
+
+function ColorPicker({
+  current,
+  onPick,
+}: {
+  current: string | null;
+  onPick: (color: string | null) => Promise<void> | void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <span className="text-2xs font-serif italic text-t3">accent</span>
+      <button
+        onClick={() => onPick(null)}
+        title="Clear accent — use the default palette hue"
+        className={`w-5 h-5 rounded-full border border-bd flex items-center justify-center text-t3 text-[10px] transition ${
+          !current ? "ring-2 ring-yeld ring-offset-1 ring-offset-bg" : "hover:border-t2"
+        }`}
+      >
+        ∅
+      </button>
+      {COLOR_PRESETS.map((c) => (
+        <button
+          key={c}
+          onClick={() => onPick(c)}
+          style={{ background: c }}
+          title={c}
+          className={`w-5 h-5 rounded-full border border-bd/40 transition ${
+            current?.toLowerCase() === c.toLowerCase()
+              ? "ring-2 ring-yeld ring-offset-1 ring-offset-bg"
+              : "hover:scale-110"
+          }`}
+          aria-label={`Set accent to ${c}`}
+        />
+      ))}
+      <label className="w-5 h-5 rounded-full border border-dashed border-bd flex items-center justify-center text-t3 cursor-pointer hover:border-t2" title="Pick a custom color">
+        <input
+          type="color"
+          value={current ?? "#c97a3a"}
+          onChange={(e) => onPick(e.target.value)}
+          className="sr-only"
+        />
+        <svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+          <path d="M7 2v10M2 7h10"/>
+        </svg>
+      </label>
+    </div>
   );
 }

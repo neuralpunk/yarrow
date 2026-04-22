@@ -27,8 +27,15 @@ export default {
         link:     "var(--link)",
       },
       fontFamily: {
-        serif: ['"Source Serif 4"', 'ui-serif', 'Georgia', 'serif'],
-        sans:  ['Merriweather', 'ui-serif', 'Georgia', 'serif'],
+        // Tailwind's `font-serif` and `font-sans` both route through the
+        // `--ui-font-family` CSS var so the Settings → Appearance picker
+        // cascades to every component (sidebar, modals, compare view,
+        // decision matrix). Unresolved vars fall through to Merriweather.
+        serif: ['var(--ui-font-family)', 'Merriweather', 'ui-serif', 'Georgia', 'serif'],
+        sans:  ['var(--ui-font-family)', 'Merriweather', 'ui-serif', 'Georgia', 'serif'],
+        // The editor body is a separate universe — CodeMirror reads
+        // `--editor-font-family` directly. Mono stays hard-wired so
+        // metadata (timestamps, slugs, keybindings) always reads as code.
         mono:  ['"JetBrains Mono"', 'ui-monospace', 'Menlo', 'monospace'],
       },
       fontSize: {

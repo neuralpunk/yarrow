@@ -13,7 +13,11 @@ const schedule: Idle =
     : (cb) => window.setTimeout(cb, 1200);
 
 let fired = false;
-export function prefetchHeavyChunks() {
+/** Pre-warm idle-time chunks. The `mappingEnabled` flag (defaults true)
+ *  gates the map / paths / decision-matrix surfaces — in basic-notes
+ *  mode those screens are never reachable, so warming them is pure
+ *  waste (parse cost + memory + mobile bandwidth). */
+export function prefetchHeavyChunks(mappingEnabled: boolean = true) {
   if (fired) return;
   fired = true;
   // Highest-priority idle warm: the editor. Its CodeMirror bundle is the
@@ -25,7 +29,12 @@ export function prefetchHeavyChunks() {
   schedule(() => {
     void import("../components/CommandPalette");
     void import("../components/Settings");
-    void import("../components/RightSidebar/ConnectionGraph");
+    if (mappingEnabled) {
+      // Map view exists only in mapped workspaces — skipping the
+      // ConnectionGraph chunk in basic mode trims a non-trivial amount
+      // of D3 + force-graph parse work from cold start.
+      void import("../components/RightSidebar/ConnectionGraph");
+    }
   });
   schedule(() => {
     void import("../components/Editor/HistorySlider");
@@ -38,7 +47,10 @@ export function prefetchHeavyChunks() {
   // into it is a common interaction.
   schedule(() => {
     void import("../components/Editor/NoteReader");
-    void import("../components/DecisionMatrix");
+    if (mappingEnabled) {
+      // DecisionMatrix is a paths-only surface — skip in basic mode.
+      void import("../components/DecisionMatrix");
+    }
     void import("../components/FindReplace");
     void import("../components/Trash");
   });

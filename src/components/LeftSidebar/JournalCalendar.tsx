@@ -7,6 +7,11 @@ interface Props {
   onClose: () => void;
   onPick: (dateIso: string) => void;
   activeDate?: string;
+  /** Optional: when supplied, the calendar renders as a popover anchored
+   *  just below this rect (captured via `getBoundingClientRect()` at the
+   *  moment the trigger was clicked). Without an anchor it falls back to
+   *  a centred modal — which is what the left-sidebar trigger wants. */
+  anchor?: DOMRect | null;
 }
 
 function isoOf(y: number, m: number, d: number): string {
@@ -20,7 +25,7 @@ function parseIso(iso: string): Date {
   return new Date(y, m - 1, d);
 }
 
-export default function JournalCalendar({ open, onClose, onPick, activeDate }: Props) {
+export default function JournalCalendar({ open, onClose, onPick, activeDate, anchor }: Props) {
   const [dates, setDates] = useState<Set<string>>(new Set());
   const [cursor, setCursor] = useState<{ y: number; m: number }>(() => {
     const d = activeDate ? parseIso(activeDate) : new Date();
@@ -68,13 +73,44 @@ export default function JournalCalendar({ open, onClose, onPick, activeDate }: P
     });
   };
 
+  // Popover geometry: align the card's left edge with the anchor's left,
+  // drop it 6px below the anchor's bottom, and clamp inside the viewport
+  // so it never spills off the right edge or below the fold.
+  const CARD_W = 320;
+  const CARD_H_ESTIMATE = 380;
+  const GAP = 6;
+  const PAD = 8;
+  let popoverStyle: React.CSSProperties | null = null;
+  if (anchor) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = anchor.left;
+    if (left + CARD_W > vw - PAD) left = vw - CARD_W - PAD;
+    if (left < PAD) left = PAD;
+    let top = anchor.bottom + GAP;
+    // If there isn't room below, flip above the trigger.
+    if (top + CARD_H_ESTIMATE > vh - PAD) {
+      top = Math.max(PAD, anchor.top - CARD_H_ESTIMATE - GAP);
+    }
+    popoverStyle = { position: "fixed", left, top, width: CARD_W };
+  }
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center"
+      className={
+        anchor
+          ? "fixed inset-0 z-50"
+          : "fixed inset-0 z-50 bg-char/30 flex items-center justify-center"
+      }
       onMouseDown={onClose}
     >
       <div
-        className="bg-bg border border-bd rounded-xl shadow-2xl p-4 w-[320px]"
+        className={
+          anchor
+            ? "bg-bg border border-bd rounded-xl shadow-2xl p-4"
+            : "bg-bg border border-bd rounded-xl shadow-2xl p-4 w-[320px]"
+        }
+        style={popoverStyle ?? undefined}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center mb-3">

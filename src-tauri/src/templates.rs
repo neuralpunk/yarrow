@@ -161,6 +161,7 @@ pub fn bundled() -> Vec<(&'static str, &'static str)> {
         ("daily", DAILY),
         ("meeting", MEETING),
         ("book", BOOK),
+        ("recipe", RECIPE),
         ("vacation", VACATION),
         ("project-brief", PROJECT_BRIEF),
         ("morning-pages", MORNING_PAGES),
@@ -240,6 +241,30 @@ const BOOK: &str = r#"<!-- label: Book notes -->
 ## Questions I'm still sitting with
 
 ??
+"#;
+
+const RECIPE: &str = r#"<!-- label: Recipe -->
+# {{title}}
+
+**Source:**
+**Servings:**
+**Active time:**  ·  **Total time:**
+
+## Ingredients
+
+-
+
+## Method
+
+1. {{cursor}}
+
+## Notes from last time
+
+-
+
+## Variations worth trying
+
+-
 "#;
 
 const VACATION: &str = r#"<!-- label: Vacation planner -->

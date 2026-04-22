@@ -80,11 +80,27 @@ pub fn attach_bytes(root: &Path, display_name: &str, bytes: &[u8]) -> Result<Att
             MAX_ATTACHMENT_BYTES / (1024 * 1024),
         )));
     }
-    let ext = Path::new(display_name)
+    // Pull the extension off the user's display name, then sanitise:
+    //   * ASCII alphanumeric only — no path separators, no NULs, no
+    //     control chars that could confuse downstream shells or the
+    //     browser's attachment viewer.
+    //   * max 10 chars — real extensions top out at ~5 (`.tiff`,
+    //     `.jpeg`, `.webp`, `.xlsx`); anything longer is a crafted
+    //     filename and we swap it for `bin`.
+    //   * non-empty — `bin` is a safe default for "I don't know".
+    let raw_ext = Path::new(display_name)
         .extension()
         .and_then(|s| s.to_str())
-        .unwrap_or("bin")
+        .unwrap_or("")
         .to_ascii_lowercase();
+    let ext = if raw_ext.is_empty()
+        || raw_ext.len() > 10
+        || !raw_ext.chars().all(|c| c.is_ascii_alphanumeric())
+    {
+        "bin".to_string()
+    } else {
+        raw_ext
+    };
 
     // 16-hex (64 bits) is ample dedupe headroom for hand-scale vaults.
     let mut hasher = Sha256::new();

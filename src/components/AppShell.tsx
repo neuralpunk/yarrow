@@ -5,7 +5,7 @@ import { openQuestions } from "../lib/forkDetection";
 import { todayIso } from "../lib/format";
 import { prefetchHeavyChunks } from "../lib/prefetch";
 import { getCachedOrReadNote, invalidateAllNotes, invalidateNote } from "../lib/notePrefetch";
-import { SearchIcon, StatusDot, ScratchpadIcon, ChevronDownIcon, DeleteIcon } from "../lib/icons";
+import { SearchIcon, StatusDot, ChevronDownIcon, DeleteIcon, JournalIcon, ActivityIcon } from "../lib/icons";
 import { useShowRawMarkdown, useEditorFont } from "../lib/editorPrefs";
 // Imported for its module-level side effect: applies the saved UI font
 // and UI scale to the document before first paint, so chrome doesn't
@@ -15,6 +15,14 @@ import { SK } from "../lib/platform";
 import { workspaceAccent } from "../lib/workspaceAccent";
 import RightRail, { type RailOverlay } from "./RightRail";
 import FloatingDirectionCTA from "./Editor/FloatingDirectionCTA";
+import RadialMenu from "./Editor/RadialMenu";
+import LinearContextMenu from "./Editor/LinearContextMenu";
+import {
+  buildRadialInsertItems,
+  buildRadialSelectionItems,
+  type RadialCallbacks,
+} from "./Editor/radialItems";
+import { useExtraRadialMenu } from "../lib/extraPrefs";
 import MainNotePrompt from "./MainNotePrompt";
 import type {
   BranchTopo,
@@ -29,15 +37,26 @@ import type {
   WorkspaceConfig,
 } from "../lib/types";
 import NoteList from "./LeftSidebar/NoteList";
-import JournalList from "./LeftSidebar/JournalList";
-import PathMinimap from "./LeftSidebar/PathMinimap";
-import TagList from "./LeftSidebar/TagList";
+import JournalCalendar from "./LeftSidebar/JournalCalendar";
 import Toolbar from "./Editor/Toolbar";
 import LinkedNotesList from "./RightSidebar/LinkedNotesList";
 import OpenQuestions from "./RightSidebar/OpenQuestions";
 import Transclusions from "./RightSidebar/Transclusions";
 import Modal from "./Modal";
 import ForkMoment from "./ForkMoment";
+import GuidanceHost from "./Guidance/GuidanceHost";
+import PathRibbon from "./Guidance/PathRibbon";
+import { useGuidance } from "../lib/guidanceStore";
+import {
+  forgetLeftOff,
+  isHiddenLeftOff,
+  readLeftOff,
+  saveLeftOff,
+  setHideLeftOff,
+  snippetFromBody,
+  type LeftOffState,
+} from "../lib/leftOff";
+import WhereYouLeftOffBanner from "./WhereYouLeftOffBanner";
 
 // Heavy or rarely-used screens: lazy so they're not in the first paint.
 const HistorySlider    = lazy(() => import("./Editor/HistorySlider"));
@@ -58,12 +77,18 @@ const PathDiff         = lazy(() => import("./PathDiff"));
 const PathsPane        = lazy(() => import("./PathsPane"));
 const ConditionEditor  = lazy(() => import("./Paths/ConditionEditor"));
 const UnlockPrompt     = lazy(() => import("./UnlockPrompt"));
+const WikilinkPicker   = lazy(() => import("./WikilinkPicker"));
+const ActivityHeatmap  = lazy(() => import("./ActivityHeatmap"));
+const TagGraph         = lazy(() => import("./TagGraph"));
+const TableInsertModal = lazy(() => import("./TableInsertModal"));
+const CalloutInsertModal = lazy(() => import("./CalloutInsertModal"));
 const WorkspaceSwitcher = lazy(() => import("./WorkspaceSwitcher"));
 // The editor ships its own CodeMirror chunk. Keeping it lazy + idle-warmed
 // shaves the CM parse cost out of first paint without hurting time-to-edit.
 const NoteEditor       = lazy(() => import("./Editor/NoteEditor"));
 const NoteReader       = lazy(() => import("./Editor/NoteReader"));
 const OnboardingHints  = lazy(() => import("./OnboardingHints"));
+const InlineDiffPane   = lazy(() => import("./InlineDiffPane"));
 
 /**
  * Tiny Suspense wrapper for lazy-loaded modals. Each overlay gets its own
@@ -107,6 +132,14 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [orphanSet, setOrphanSet] = useState<Set<string>>(new Set());
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
   const [activeNote, setActiveNote] = useState<Note | null>(null);
+  // "Where you left off" — one-line bookmark captured on unmount, shown
+  // on first open until the user resumes / dismisses / hides-always.
+  // Picked up synchronously from localStorage so it lands with the first
+  // paint. `null` for "nothing to show" (fresh install, stale bookmark,
+  // or user has hidden it on this workspace).
+  const [leftOff, setLeftOff] = useState<LeftOffState | null>(() =>
+    isHiddenLeftOff(workspacePath) ? null : readLeftOff(workspacePath),
+  );
   const [currentBody, setCurrentBody] = useState<string>("");
   const [focusMode, setFocusMode] = useState(false);
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
@@ -119,9 +152,30 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [obsidianImportOpen, setObsidianImportOpen] = useState(false);
   const [pathCompareOpen, setPathCompareOpen] = useState(false);
   const [decisionMatrixOpen, setDecisionMatrixOpen] = useState(false);
+  // Opened from the editor's toolbar when the active note is a daily
+  // journal — reuses the same JournalCalendar the left sidebar does, so
+  // picking a day creates-or-opens that day's journal.
+  // Tracks both open state and the trigger's bounding rect so the
+  // calendar can render as a popover anchored below the toolbar pill
+  // instead of as a centred modal. `anchor: null` → fall back to
+  // centred-modal behaviour (used when the left-sidebar "calendar" link
+  // opens it, where there's no single button to anchor to).
+  const [journalCalendar, setJournalCalendar] = useState<{
+    open: boolean;
+    anchor: DOMRect | null;
+  }>({ open: false, anchor: null });
   const [renamePrompt, setRenamePrompt] = useState<
     { slug: string; nextTitle: string; refs: number } | null
   >(null);
+  // Bumped whenever the user dismisses the rename prompt (Cancel /
+  // backdrop / Escape) so the editor can revert its local title input
+  // back to the canonical frontmatter value. Without this, the field
+  // stays on the edited text even though no rename happened.
+  const [titleRevertNonce, setTitleRevertNonce] = useState(0);
+  const cancelRename = useCallback(() => {
+    setRenamePrompt(null);
+    setTitleRevertNonce((n) => n + 1);
+  }, []);
   const [findReplaceResult, setFindReplaceResult] = useState<
     { changed: number; total: number } | null
   >(null);
@@ -143,11 +197,27 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyPreview, setHistoryPreview] = useState<string | null>(null);
+  // Pinned-checkpoint metadata for the currently open note. Loaded alongside
+  // `history`, re-fetched after each pin / unpin so the star badge reflects
+  // state. Empty when the feature hasn't been used yet.
+  const [keepsakes, setKeepsakes] = useState<import("../lib/types").Keepsake[]>([]);
   const [restoreNonce, setRestoreNonce] = useState(0);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("pending");
   const [, setSyncMessage] = useState<string>("");
   const [dirty, setDirty] = useState(false);
   const [jumpSignal, setJumpSignal] = useState<{ line: number; nonce: number } | undefined>();
+  // Path-view ley pill → editor line jump. The path pane fires this
+  // after it navigates to the target note; we translate it into the
+  // same `jumpSignal` the existing jump-to-line plumbing consumes.
+  useEffect(() => {
+    const onJump = (ev: Event) => {
+      const d = (ev as CustomEvent<{ line: number }>).detail;
+      if (!d || typeof d.line !== "number") return;
+      setJumpSignal({ line: d.line, nonce: Date.now() });
+    };
+    window.addEventListener("yarrow:jump-to-line", onJump as EventListener);
+    return () => window.removeEventListener("yarrow:jump-to-line", onJump as EventListener);
+  }, []);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -170,7 +240,10 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     onConfirm: () => void;
   } | null>(null);
   const [forkMoment, setForkMoment] = useState<string | null>(null);
-  const [dailyEntries, setDailyEntries] = useState<NoteSummary[]>([]);
+  const guidance = useGuidance();
+  // Toggles the InlineDiffPane for the active note — only applies on a
+  // non-root path. Auto-resets whenever the user changes path or note.
+  const [inlineDiffOpen, setInlineDiffOpen] = useState(false);
   const [toast, setToast] = useState<
     | string
     | { text: string; action: { label: string; run: () => void }; ttlMs?: number }
@@ -213,6 +286,15 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [editorCtxMenu, setEditorCtxMenu] = useState<
     { text: string; x: number; y: number } | null
   >(null);
+  // Which context-menu style to show on right-click. Controlled from
+  // Settings → Writing Extras; defaults on, flip off for the old
+  // linear drop-down with the same items.
+  const [radialMenuOn] = useExtraRadialMenu();
+  const [wikilinkPickerOpen, setWikilinkPickerOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [tagGraphOpen, setTagGraphOpen] = useState(false);
+  const [tableInsertOpen, setTableInsertOpen] = useState(false);
+  const [calloutInsertOpen, setCalloutInsertOpen] = useState(false);
   const [scratchpadReloadNonce, setScratchpadReloadNonce] = useState(0);
   /** When non-null, renders the global ConditionEditor focused on this
    *  branch. Used by the path pill in the toolbar and the paths graph. */
@@ -221,43 +303,117 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
    *  named path-collection's member slugs. Null = show the full vault. */
   const [mapFilter, setMapFilter] = useState<{ collectionName: string } | null>(null);
 
+  /** Derived mode flag — read from config. Recomputed every render so any
+   *  Settings flip (`mapped` ↔ `basic`) takes effect immediately. While
+   *  `config` is null on first mount we default to `mapped`, which lets
+   *  the very first refreshAll fetch the full payload. After config
+   *  loads, every subsequent fetch through the wrappers below skips the
+   *  IPC roundtrip in basic mode. */
+  const mappingEnabledRef = useRef(true);
+  mappingEnabledRef.current = (config?.mapping?.mode ?? "mapped") === "mapped";
+
+  /* eslint-disable react-hooks/exhaustive-deps */
+  // Mode-aware IPC wrappers — the rest of the component calls these
+  // instead of `api.getGraph()` / `api.orphans()` / `api.branchTopology()`
+  // / `api.listPaths()` / `api.listPathCollections()`. In basic-notes
+  // mode they short-circuit to a stub Promise — no IPC, no backend
+  // git/graph work, no wasted CPU. The `Ref`-driven gate avoids
+  // recreating these callbacks every time the config changes (which
+  // would invalidate downstream `useCallback`s that depend on them).
+  const EMPTY_GRAPH: Graph = useMemo(() => ({ notes: [], links: [], last_built: "", tags: [] }), []);
+  const fetchGraph = useCallback((): Promise<Graph> => {
+    if (!mappingEnabledRef.current) return Promise.resolve(EMPTY_GRAPH);
+    return api.getGraph();
+  }, []);
+  const fetchOrphans = useCallback((): Promise<string[]> => {
+    if (!mappingEnabledRef.current) return Promise.resolve([]);
+    return api.orphans();
+  }, []);
+  const fetchTopology = useCallback((): Promise<BranchTopo[]> => {
+    if (!mappingEnabledRef.current) return Promise.resolve([]);
+    return api.branchTopology();
+  }, []);
+  const fetchPaths = useCallback((): Promise<PathInfo[]> => {
+    if (!mappingEnabledRef.current) return Promise.resolve([]);
+    return api.listPaths();
+  }, []);
+  const fetchPathCollections = useCallback(() => {
+    if (!mappingEnabledRef.current) {
+      return Promise.resolve({ root: "main", collections: [] as never[] }) as ReturnType<typeof api.listPathCollections>;
+    }
+    return api.listPathCollections();
+  }, []);
+  /* eslint-enable react-hooks/exhaustive-deps */
+
   const refreshAll = useCallback(async () => {
-    const [cfg, list, pathList, cur, g, topo, orphansList, merging, daily, tpls, encStatus] =
-      await Promise.all([
-        api.readConfig(),
-        api.listNotes(),
-        api.listPaths(),
-        api.currentPath(),
-        api.getGraph(),
-        api.branchTopology(),
-        api.orphans(),
-        api.mergeState(),
-        api.listDaily(6),
-        api.listTemplates().catch(() => []),
-        api.encryptionStatus().catch(() => ({ enabled: false, unlocked: false, idle_timeout_secs: 900 })),
-      ]);
+    // Phase 1: read config first (cheap) so we know whether to pay for
+    // the mapping-only fetches in phase 2. On first mount config is
+    // null, so the wrappers above default to "mapped" and we get the
+    // full payload — exactly what we want for the initial load of a
+    // mapped workspace.
+    const cfg = await api.readConfig();
+    const isMapped = (cfg?.mapping?.mode ?? "mapped") === "mapped";
+
+    // Phase 2a: always-needed core. Notes, templates, encryption — these
+    // power the sidebar and editor regardless of mode.
+    const corePromises = Promise.all([
+      api.listNotes(),
+      api.listTemplates().catch(() => []),
+      api.encryptionStatus().catch(() => ({ enabled: false, unlocked: false, idle_timeout_secs: 900 })),
+    ]);
+
+    // Phase 2b: mapping-only — graph, paths, topology, orphans, merge
+    // state. Skipped entirely in basic mode (no IPC, no backend work).
+    const mappingPromises = isMapped
+      ? Promise.all([
+          api.listPaths(),
+          api.currentPath(),
+          api.getGraph(),
+          api.branchTopology(),
+          api.orphans(),
+          api.mergeState(),
+        ])
+      : Promise.resolve(null);
+
+    const [coreResults, mappingResults] = await Promise.all([corePromises, mappingPromises]);
+    const [list, tpls, encStatus] = coreResults;
+
+    setConfig(cfg);
     setTemplates(tpls);
     setEncryption(encStatus);
-    setConfig(cfg);
     setNotes(list);
-    setPaths(pathList);
-    setCurrentPath(cur);
-    setGraph(g);
-    setTopology(topo);
-    setOrphanSet(new Set(orphansList));
-    setDailyEntries(daily);
     setSyncStatus(cfg.sync.remote_url ? "pending" : "no-remote");
     setFocusMode(cfg.preferences.focus_mode_default);
-    if (merging) {
-      const relpaths = await api.listConflicts();
-      if (relpaths.length > 0) {
-        setConflictSession({
-          relpaths,
-          currentPath: cur,
-          otherPath: "incoming",
-        });
+
+    if (mappingResults) {
+      const [pathList, cur, g, topo, orphansList, merging] = mappingResults;
+      setPaths(pathList);
+      setCurrentPath(cur);
+      setGraph(g);
+      setTopology(topo);
+      setOrphanSet(new Set(orphansList));
+      if (merging) {
+        const relpaths = await api.listConflicts();
+        if (relpaths.length > 0) {
+          setConflictSession({
+            relpaths,
+            currentPath: cur,
+            otherPath: "incoming",
+          });
+        }
       }
+    } else {
+      // Basic mode — set sensible empty defaults so any code that
+      // happens to read these fields gets a no-op view rather than
+      // stale state from a previous session.
+      setPaths([]);
+      setCurrentPath("main");
+      setGraph(EMPTY_GRAPH);
+      setTopology([]);
+      setOrphanSet(new Set());
     }
+    // EMPTY_GRAPH is a stable useMemo so it doesn't widen the dep set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { refreshAll(); }, [refreshAll]);
@@ -267,12 +423,12 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   // path chip, and the toolbar. Refreshed after any membership change.
   const refreshPathAwareness = useCallback(async () => {
     try {
-      const v = await api.listPathCollections();
+      const v = await fetchPathCollections();
       setCollectionsView(v);
     } catch (e) {
       console.warn("path awareness refresh failed", e);
     }
-  }, []);
+  }, [fetchPathCollections]);
 
   useEffect(() => { refreshPathAwareness(); }, [refreshPathAwareness]);
 
@@ -289,12 +445,51 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     }
   }, [collectionsView, currentPath]);
 
+  // Drop the inline-diff toggle whenever the active note or path changes.
+  // Keeping it on would load a stale pairing (e.g. you diff'd Budget on
+  // path A, then switched to note Hotels on path A — the pane would still
+  // think it's Budget without this reset).
+  useEffect(() => {
+    setInlineDiffOpen(false);
+  }, [activeSlug, currentPath]);
+
+  // Detect the "returned to main" transition so Guided mode can offer the
+  // compare modal. Fires every time the user switches from a non-main
+  // path back to main — re-teaches the compare flow each time, per the
+  // guided-mode philosophy.
+  const prevPathRef = useRef<string>("");
+  useEffect(() => {
+    const prev = prevPathRef.current;
+    const cur = currentPath;
+    prevPathRef.current = cur;
+    if (!prev || !cur || prev === cur) return;
+    const root = collectionsView?.root ?? "main";
+    const isMain = (p: string) => p === root || p === "main" || p === "master";
+    if (!isMain(prev) && isMain(cur)) {
+      guidance.trigger("path.returnedToMain", {
+        onPrimary: () => setPathCompareOpen(true),
+      });
+    }
+  }, [currentPath, collectionsView, guidance]);
+
   /** Flatten collections to the `pathNotes` shape the wikilink popover
    *  expected from the v1 model — keeps that component unchanged. */
   const pathNotes = useMemo(() => {
     const out: Record<string, string[]> = {};
     if (!collectionsView) return out;
     for (const c of collectionsView.collections) out[c.name] = [...c.members];
+    return out;
+  }, [collectionsView]);
+
+  /** Collections → `{ path_name: user_hex_color }`. Feeds the path-tinted
+   *  caret (and any other chrome that needs user-assigned accents) without
+   *  leaking the collection objects into components that just need a
+   *  colour. */
+  const pathColorOverrides = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const c of collectionsView?.collections ?? []) {
+      if (c.color) out[c.name] = c.color;
+    }
     return out;
   }, [collectionsView]);
 
@@ -319,8 +514,18 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     setNewPathFrom(rootName);
   }, [newPathOpen, newPathFrom, collectionsView]);
 
-  // Warm heavy modal chunks during idle time so they're instant on first open.
-  useEffect(() => { prefetchHeavyChunks(); }, []);
+  // Warm heavy modal chunks during idle time so they're instant on first
+  // open. Gated on the workspace mode — basic-notes workspaces never
+  // reach the map / decision-matrix / paths surfaces, so warming those
+  // chunks would burn parse time for nothing. We wait one tick so
+  // `config` has a chance to load (it usually has by the time idle
+  // fires anyway, but the explicit gate makes the basic-mode guarantee
+  // hard rather than racy).
+  useEffect(() => {
+    if (config === null) return;
+    const isMapped = (config.mapping?.mode ?? "mapped") === "mapped";
+    prefetchHeavyChunks(isMapped);
+  }, [config]);
 
   // Keep the editor font-size CSS variable in sync with the user's preference.
   useEffect(() => {
@@ -358,12 +563,49 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     return () => { alive = false; };
   }, [activeSlug, currentPath, restoreNonce]);
 
+  // Main's body for the active note, only when we're on a non-root path.
+  // Feeds the Ley Lines diff rendering in the editor, reader, and path
+  // view — null when we're on main (nothing to diff against) *or* when
+  // the workspace is in Basic-notes mode (user doesn't want to see
+  // path/branching machinery at all).
+  const [mainBody, setMainBody] = useState<string | null>(null);
+  useEffect(() => {
+    if (!activeSlug) { setMainBody(null); return; }
+    const modeMapped = (config?.mapping?.mode ?? "mapped") === "mapped";
+    if (!modeMapped) { setMainBody(null); return; }
+    const rootName = collectionsView?.root ?? "main";
+    const onMain =
+      !currentPath ||
+      currentPath === rootName ||
+      currentPath === "main" ||
+      currentPath === "master";
+    if (onMain) { setMainBody(null); return; }
+    let alive = true;
+    getCachedOrReadNote(activeSlug)
+      .then((n) => { if (alive) setMainBody(n.body); })
+      .catch(() => { if (alive) setMainBody(null); });
+    return () => { alive = false; };
+  }, [activeSlug, currentPath, collectionsView, config]);
+
   useEffect(() => {
     if (!activeSlug) { setActiveNote(null); return; }
     // Guard against fast slug-switches landing a stale note into state: if the
     // user clicked away before this read resolved, drop the result on the floor.
     let alive = true;
-    getCachedOrReadNote(activeSlug).then((n) => {
+    const rootName = collectionsView?.root ?? "main";
+    const onMain =
+      !currentPath ||
+      currentPath === rootName ||
+      currentPath === "main" ||
+      currentPath === "master";
+    // On a non-root path, bypass the main-only cache and ask the backend
+    // for the path-scoped view (override if present, else falls back to
+    // main). This is what makes a note show its path-local edits while
+    // you're "on" that path.
+    const promise = onMain
+      ? getCachedOrReadNote(activeSlug)
+      : api.readNoteOnPath(activeSlug, currentPath);
+    promise.then((n) => {
       if (!alive) return;
       setActiveNote(n);
       setCurrentBody(n.body);
@@ -377,7 +619,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       setActiveNote(null);
     });
     return () => { alive = false; };
-  }, [activeSlug, currentPath, encryption.unlocked]);
+  }, [activeSlug, currentPath, collectionsView, encryption.unlocked]);
 
   // Load the workspace's custom dictionary into the spell-checker once per
   // workspace open. Best-effort — a missing dictionary just means the
@@ -486,13 +728,12 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         if (myEpoch !== asyncEpoch.current) return;
 
         if (switched_from) {
-          const [cur, pathList, topo, g, list, daily] = await Promise.all([
+          const [cur, pathList, topo, g, list] = await Promise.all([
             api.currentPath(),
-            api.listPaths(),
-            api.branchTopology(),
-            api.getGraph(),
+            fetchPaths(),
+            fetchTopology(),
+            fetchGraph(),
             api.listNotes(),
-            api.listDaily(6),
           ]);
           if (myEpoch !== asyncEpoch.current) return;
           setCurrentPath(cur);
@@ -500,12 +741,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           setTopology(topo);
           setGraph(g);
           setNotes(list);
-          setDailyEntries(daily);
           setToast(`Journal lives on main — jumped there from "${switched_from}"`);
-        } else {
-          const daily = await api.listDaily(6);
-          if (myEpoch !== asyncEpoch.current) return;
-          setDailyEntries(daily);
         }
         setActiveSlug(note.slug);
         setActiveNote(note);
@@ -680,8 +916,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       const list = await api.listNotes();
       setNotes(list);
       setActiveSlug(n.slug);
-      setGraph(await api.getGraph());
-      setOrphanSet(new Set(await api.orphans()));
+      setGraph(await fetchGraph());
+      setOrphanSet(new Set(await fetchOrphans()));
     } catch (e) {
       console.error("create from template failed", e);
       setToast(`Couldn't create note from template: ${e}`);
@@ -701,8 +937,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     const list = await api.listNotes();
     setNotes(list);
     setActiveSlug(n.slug);
-    setGraph(await api.getGraph());
-    setOrphanSet(new Set(await api.orphans()));
+    setGraph(await fetchGraph());
+    setOrphanSet(new Set(await fetchOrphans()));
   }, [newNoteTitle, newNoteTemplate]);
 
   useEffect(() => {
@@ -817,6 +1053,50 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     return () => clearTimeout(t);
   }, [toast]);
 
+  // "Where you left off" persistence. Debounced: every time the active
+  // note, path, or body changes, we update the bookmark after a short
+  // idle. On workspace close (unmount), we flush whatever we have so
+  // the next open can greet the user with it. Hidden-always respects
+  // the user's pref — if they clicked "hide next time" we stop writing.
+  const leftOffWriteTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (!activeNote || !activeSlug) return;
+    if (isHiddenLeftOff(workspacePath)) return;
+    if (leftOffWriteTimer.current) window.clearTimeout(leftOffWriteTimer.current);
+    const slug = activeSlug;
+    const title = activeNote.frontmatter.title || activeNote.slug;
+    const path = currentPath;
+    const body = currentBody || activeNote.body;
+    leftOffWriteTimer.current = window.setTimeout(() => {
+      saveLeftOff(workspacePath, {
+        slug,
+        title,
+        path,
+        snippet: snippetFromBody(body),
+        at: Date.now(),
+      });
+    }, 900);
+    return () => {
+      if (leftOffWriteTimer.current) window.clearTimeout(leftOffWriteTimer.current);
+    };
+  }, [activeSlug, activeNote, currentPath, currentBody, workspacePath]);
+  // Flush on unmount — the active-change effect debounces, which would
+  // lose the final state when the user closes the workspace mid-wait.
+  useEffect(() => {
+    return () => {
+      if (!activeNote || !activeSlug) return;
+      if (isHiddenLeftOff(workspacePath)) return;
+      saveLeftOff(workspacePath, {
+        slug: activeSlug,
+        title: activeNote.frontmatter.title || activeNote.slug,
+        path: currentPath,
+        snippet: snippetFromBody(currentBody || activeNote.body),
+        at: Date.now(),
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Listen for editor selection changes so the status bar can show
   // "238 selected" while the user has a range highlighted. Emitted by
   // NoteEditor's update listener.
@@ -830,31 +1110,61 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     return () => window.removeEventListener("yarrow:selection-changed", onSel as EventListener);
   }, []);
 
-  // Right-click-with-selection in the editor: NoteEditor fires this event
-  // with the selected text + pointer position. We host the menu at shell
-  // level so it can reach the scratchpad API and sidebar state.
+  // Right-click in the editor: NoteEditor fires this event with the
+  // selected text (if any) + pointer position. We host the menu at shell
+  // level so it can reach the scratchpad API, the wikilink picker, and
+  // sidebar state. An empty `text` means the click was on an empty
+  // selection — the menu still opens with just the "Insert wikilink…"
+  // option.
   useEffect(() => {
     const onMenu = (e: Event) => {
       const d = (e as CustomEvent<{ text: string; x: number; y: number }>).detail;
-      if (d?.text) setEditorCtxMenu(d);
+      if (d) setEditorCtxMenu(d);
     };
     window.addEventListener("yarrow:editor-contextmenu", onMenu as EventListener);
     return () => window.removeEventListener("yarrow:editor-contextmenu", onMenu as EventListener);
   }, []);
-  // Dismiss the ctx menu on any click or resize; rendered below as a
-  // portal-less fixed element, a quick outside-click close is enough.
+  // Dismiss the radial menu on window resize / editor scroll — its
+  // coordinates were captured at right-click time and would otherwise
+  // detach from the cursor as the layout shifts.
   useEffect(() => {
     if (!editorCtxMenu) return;
     const close = () => setEditorCtxMenu(null);
-    window.addEventListener("click", close);
     window.addEventListener("resize", close);
     window.addEventListener("scroll", close, true);
     return () => {
-      window.removeEventListener("click", close);
       window.removeEventListener("resize", close);
       window.removeEventListener("scroll", close, true);
     };
   }, [editorCtxMenu]);
+
+  // Centre-button gestures on the radial fire a `yarrow:center-action`
+  // event with a stable id. The five gestures:
+  //   · tap           → "palette"       → open command palette
+  //   · long-press    → "constellation" → open the map rail overlay
+  //   · double-click  → "focus"         → toggle focus/zen mode
+  //   · drag-out      → commits a wedge directly (handled in RadialMenu)
+  //   · scroll wheel  → rotates hover   (handled in RadialMenu)
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id;
+      if (!id) return;
+      switch (id) {
+        case "palette":
+          setPaletteOpen(true);
+          break;
+        case "constellation":
+          setRailOverlay("map");
+          break;
+        case "focus":
+          setFocusMode((f) => !f);
+          break;
+      }
+    };
+    window.addEventListener("yarrow:center-action", onAction as EventListener);
+    return () =>
+      window.removeEventListener("yarrow:center-action", onAction as EventListener);
+  }, []);
 
   // Note switch resets selection — the new editor instance starts with
   // an empty selection but doesn't dispatch a change event for it.
@@ -871,25 +1181,56 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const queueTopologyRefresh = useCallback(() => {
     if (topologyRefreshTimer.current) window.clearTimeout(topologyRefreshTimer.current);
     topologyRefreshTimer.current = window.setTimeout(async () => {
-      try { setTopology(await api.branchTopology()); } catch {}
+      try { setTopology(await fetchTopology()); } catch {}
     }, 1500);
   }, []);
 
   const handleSave = useCallback(
-    async (slug: string, body: string, thinking?: string) => {
+    async (slug: string, body: string, thinking?: string, path?: string) => {
       // Use the slug the editor was mounted on, not `activeSlug`. They can
       // diverge when a note switch fires while the debounce is pending —
       // saving against `activeSlug` in that window would write the old
       // note's body into the new note's file (the cross-note swap bug).
       if (!slug) return;
+      // Use the path the editor was mounted on when provided, not
+      // `currentPath`. Without this, a flush fired by a path switch (via
+      // the editor's unmount cleanup) sees the *new* currentPath in
+      // closure and writes the departing path's edits onto the incoming
+      // path — corrupting main with what-if content or vice versa, and
+      // creating a spurious checkpoint every time.
+      const rootName = collectionsView?.root ?? "main";
+      const pathIsMain = (p: string) =>
+        !p || p === rootName || p === "main" || p === "master";
+      const effectivePath = path ?? currentPath;
+      const onMain = pathIsMain(effectivePath);
+      // Whether *this render's* currentPath still matches the save's
+      // path. Used to gate activeNote setState: if the user has already
+      // switched away, we shouldn't slam the previous path's note back
+      // into the visible editor.
+      const stillOnSavePath =
+        effectivePath === currentPath ||
+        (pathIsMain(effectivePath) && pathIsMain(currentPath));
       try {
+        if (!onMain) {
+          // On a non-root path: write a per-path override instead of
+          // touching main. No graph rebuild, no checkpoint — this is
+          // scratch content scoped to the active path.
+          const note = await api.saveNoteOnPath(slug, body, effectivePath, thinking);
+          if (slug === activeSlug && stillOnSavePath) {
+            setActiveNote(note);
+            setCurrentBody(note.body);
+            setDirty(false);
+          }
+          setLastSavedAt(Date.now());
+          return;
+        }
         // ONE IPC instead of four. The backend reads the notes dir once
         // and returns the saved note + summaries + graph + orphans in
         // one round-trip. Cuts post-save IPC chatter from ~5N to ~N
         // file reads on big workspaces.
         const out = await api.saveNoteFull(slug, body, thinking);
         invalidateNote(slug);
-        if (slug === activeSlug) {
+        if (slug === activeSlug && stillOnSavePath) {
           setActiveNote(out.note);
           setCurrentBody(out.note.body);
           setDirty(false);
@@ -911,7 +1252,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         console.error("save failed", e);
       }
     },
-    [activeSlug, queueTopologyRefresh],
+    [activeSlug, currentPath, collectionsView, queueTopologyRefresh],
   );
 
   const performRename = useCallback(
@@ -921,12 +1262,15 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         const list = await api.listNotes();
         setNotes(list);
         if (activeSlug === slug) setActiveSlug(n.slug);
-        setGraph(await api.getGraph());
+        setGraph(await fetchGraph());
         // If we rewrote wikilinks across the workspace, every other note's
         // body may have changed too — invalidate cached reads.
         if (rewriteWikilinks) invalidateAllNotes();
       } catch (e) {
         setToast(`Couldn't rename: ${e}`);
+        // Rename failed — tell the editor to put the old title back so
+        // the input isn't showing a name the file doesn't have.
+        setTitleRevertNonce((n) => n + 1);
       }
     },
     [activeSlug],
@@ -978,8 +1322,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             const list = await api.listNotes();
             setNotes(list);
             if (activeSlug === slug) setActiveSlug(list[0]?.slug ?? null);
-            setGraph(await api.getGraph());
-            setOrphanSet(new Set(await api.orphans()));
+            setGraph(await fetchGraph());
+            setOrphanSet(new Set(await fetchOrphans()));
             setConfirmState(null);
           },
         });
@@ -990,8 +1334,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       const list = await api.listNotes();
       setNotes(list);
       if (activeSlug === slug) setActiveSlug(list[0]?.slug ?? null);
-      setGraph(await api.getGraph());
-      setOrphanSet(new Set(await api.orphans()));
+      setGraph(await fetchGraph());
+      setOrphanSet(new Set(await fetchOrphans()));
 
       // Offer undo. The action re-creates the note with its original title
       // and body — the slug may differ from the original if the user spent
@@ -1007,8 +1351,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               await api.saveNote(fresh.slug, snapshot.body);
               const next = await api.listNotes();
               setNotes(next);
-              setGraph(await api.getGraph());
-              setOrphanSet(new Set(await api.orphans()));
+              setGraph(await fetchGraph());
+              setOrphanSet(new Set(await fetchOrphans()));
               setActiveSlug(fresh.slug);
             } catch (e) {
               setToast(`Couldn't undo delete: ${String(e)}`);
@@ -1077,8 +1421,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           if (activeSlug && slugs.includes(activeSlug)) {
             setActiveSlug(list[0]?.slug ?? null);
           }
-          setGraph(await api.getGraph());
-          setOrphanSet(new Set(await api.orphans()));
+          setGraph(await fetchGraph());
+          setOrphanSet(new Set(await fetchOrphans()));
           setConfirmState(null);
         },
       });
@@ -1116,27 +1460,73 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     try {
       await api.createPathCollection(name, cond, parent, seedSlug);
       await refreshPathAwareness();
+      // Step into the new path IMMEDIATELY, before the animation and the
+      // teaching modal. This is the fix for the "edits went to main"
+      // surprise — the user's next keystroke is now routed to the new
+      // path, not main, regardless of whether they dismiss the guidance.
+      setCurrentPath(name);
       setForkMoment(name);
+      setTimeout(() => {
+        guidance.trigger("path.create", {
+          // Already on the path; primary is just an acknowledgement.
+          onPrimary: () => {},
+          // Secondary = "oops, take me back to main."
+          onSecondary: () => setCurrentPath(rootName),
+        });
+      }, 1400);
     } catch (e) {
       console.error("create path failed", e);
     }
-  }, [newPathName, newPathCondition, newPathFrom, activeSlug, collectionsView, refreshPathAwareness]);
+  }, [newPathName, newPathCondition, newPathFrom, activeSlug, collectionsView, refreshPathAwareness, guidance]);
 
   // v2 "path switching" is a pure UI/navigation action. Paths are collections
   // (lenses), not git branches — every note is always readable on every path,
   // so switching never has to save-and-checkout. Setting `currentPath` updates
   // the toolbar context; if the target collection has a main note and the
   // user isn't already on one of its members, we jump there.
+  //
+  // Pre-fetch the target note *before* flipping currentPath. Without this,
+  // the NoteEditor's key (slug + currentPath) remounts immediately on the
+  // setCurrentPath, but activeNote still holds the departing path's
+  // content — so for a tick the editor renders the wrong body until the
+  // 416-effect re-fetch lands. React 18 automatic batching collapses the
+  // post-await setState calls into a single commit, so the remount sees
+  // fresh content with no visual blip.
   const handleSwitchPath = useCallback(
-    (name: string) => {
-      setCurrentPath(name);
+    async (name: string) => {
       const cols = collectionsView?.collections ?? [];
       const col = cols.find((c) => c.name === name);
-      if (!col) return;
-      const alreadyOnMember = activeSlug ? col.members.includes(activeSlug) : false;
-      if (alreadyOnMember) return;
-      const target = col.main_note || col.members[0];
-      if (target) selectSlug(target);
+      const rootName = collectionsView?.root ?? "main";
+      const onMain =
+        !name || name === rootName || name === "main" || name === "master";
+      const alreadyOnMember = activeSlug && col ? col.members.includes(activeSlug) : false;
+      const targetSlug = col && !alreadyOnMember
+        ? (col.main_note || col.members[0] || activeSlug)
+        : activeSlug;
+      if (!targetSlug) {
+        setCurrentPath(name);
+        return;
+      }
+      try {
+        const note = onMain
+          ? await api.readNote(targetSlug)
+          : await api.readNoteOnPath(targetSlug, name);
+        // Batched: one render → one key change → one remount with fresh body.
+        if (targetSlug !== activeSlug) {
+          asyncEpoch.current++;
+          setActiveSlug(targetSlug);
+        }
+        setActiveNote(note);
+        setCurrentBody(note.body);
+        setCurrentPath(name);
+      } catch (e) {
+        // Fall back to the old behaviour on fetch failure so the user
+        // isn't stranded: the 416 effect will retry once currentPath
+        // updates.
+        console.error("switch path prefetch failed", e);
+        setCurrentPath(name);
+        if (targetSlug !== activeSlug) selectSlug(targetSlug);
+      }
     },
     // selectSlug is a stable callback (defined above); deliberate dep list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1152,8 +1542,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     setConnectTarget("");
     const [note, g, orphansList] = await Promise.all([
       api.readNote(activeSlug),
-      api.getGraph(),
-      api.orphans(),
+      fetchGraph(),
+      fetchOrphans(),
     ]);
     setActiveNote(note);
     setCurrentBody(note.body);
@@ -1161,14 +1551,76 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     setOrphanSet(new Set(orphansList));
   }, [activeSlug, connectTarget, connectType]);
 
+  // Drag-to-connect in the graph: source → target with the chosen typed
+  // link. Refreshes graph/orphan state so the new edge renders instantly.
+  const handleGraphAddLink = useCallback(
+    async (from: string, to: string, type: LinkType) => {
+      try {
+        await api.addLink(from, to, type);
+        const [g, orphansList] = await Promise.all([fetchGraph(), fetchOrphans()]);
+        setGraph(g);
+        setOrphanSet(new Set(orphansList));
+        if (from === activeSlug) {
+          const note = await api.readNote(activeSlug);
+          setActiveNote(note);
+          setCurrentBody(note.body);
+        }
+      } catch (e) {
+        console.error("graph add link failed", e);
+      }
+    },
+    [activeSlug],
+  );
+
+  // Lasso bulk tag: append the given tag to every selected slug that
+  // doesn't already have it. Each call is one IPC — this isn't the
+  // hot path, so we keep it simple.
+  const handleGraphBulkTag = useCallback(
+    async (slugs: string[], tag: string) => {
+      const trimmed = tag.trim();
+      if (!trimmed || slugs.length === 0) return;
+      try {
+        for (const slug of slugs) {
+          const n = await api.readNote(slug);
+          const existing = n.frontmatter.tags ?? [];
+          if (existing.includes(trimmed)) continue;
+          await api.setTags(slug, [...existing, trimmed]);
+        }
+        const [list, g] = await Promise.all([api.listNotes(), fetchGraph()]);
+        setNotes(list);
+        setGraph(g);
+      } catch (e) {
+        console.error("bulk tag failed", e);
+      }
+    },
+    [],
+  );
+
+  // Lasso bulk add-to-path: adds each selected slug to the target path's
+  // members list. Safe re-adds (`add_member` is idempotent on dup).
+  const handleGraphBulkAddToPath = useCallback(
+    async (slugs: string[], pathName: string) => {
+      if (!pathName || slugs.length === 0) return;
+      try {
+        for (const slug of slugs) {
+          await api.addNoteToPathCollection(pathName, slug);
+        }
+        setCollectionsView(await fetchPathCollections());
+      } catch (e) {
+        console.error("bulk add-to-path failed", e);
+      }
+    },
+    [],
+  );
+
   const handleRemoveConnection = useCallback(
     async (to: string) => {
       if (!activeSlug) return;
       await api.removeLink(activeSlug, to);
       const [note, g, orphansList] = await Promise.all([
         api.readNote(activeSlug),
-        api.getGraph(),
-        api.orphans(),
+        fetchGraph(),
+        fetchOrphans(),
       ]);
       setActiveNote(note);
       setCurrentBody(note.body);
@@ -1196,11 +1648,44 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
 
   const openHistory = useCallback(async () => {
     if (!activeSlug) return;
-    const h = await api.noteHistory(activeSlug);
+    const [h, ks] = await Promise.all([
+      api.noteHistory(activeSlug),
+      api.listPinnedCheckpoints().catch(() => []),
+    ]);
     setHistory(h);
+    setKeepsakes(ks.filter((k) => k.slug === activeSlug));
     setHistoryPreview(null);
     setHistoryOpen(true);
   }, [activeSlug]);
+
+  const pinHistoryCheckpoint = useCallback(
+    async (oid: string, label: string, note?: string) => {
+      if (!activeSlug) return;
+      try {
+        await api.pinCheckpoint(activeSlug, oid, label, note);
+        const all = await api.listPinnedCheckpoints();
+        setKeepsakes(all.filter((k) => k.slug === activeSlug));
+        setToast(`Kept — "${label}" will survive future pruning`);
+      } catch (e) {
+        setToast(`Couldn't pin: ${e}`);
+      }
+    },
+    [activeSlug],
+  );
+
+  const unpinHistoryCheckpoint = useCallback(
+    async (id: string) => {
+      try {
+        await api.unpinCheckpoint(id);
+        const all = await api.listPinnedCheckpoints();
+        setKeepsakes((activeSlug ? all.filter((k) => k.slug === activeSlug) : all));
+        setToast("Unpinned — this checkpoint is no longer protected from pruning");
+      } catch (e) {
+        setToast(`Couldn't unpin: ${e}`);
+      }
+    },
+    [activeSlug],
+  );
 
   const previewAtCheckpoint = useCallback(
     async (oid: string) => {
@@ -1285,6 +1770,91 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   }, [activeNote, currentBody]);
 
   const pathCount = paths.length;
+
+  // Promote the current non-root path to main: every override becomes real,
+  // the path is archived, the workspace checkpoints. Confirmation is
+  // handled by the `confirmState` modal — the UI calls this after the user
+  // agrees. We refresh paths, flip currentPath back to root, and surface a
+  // guidance modal summarizing what happened.
+  const handlePromotePath = useCallback(async () => {
+    if (!currentPath) return;
+    const rootName = collectionsView?.root ?? "main";
+    if (currentPath === rootName || currentPath === "main" || currentPath === "master") {
+      return;
+    }
+    const promotedName = currentPath;
+    try {
+      // Count overrides so the confirmation summary is accurate.
+      const overrides = await api.listPathOverrides(promotedName).catch(() => [] as string[]);
+      const count = overrides.length;
+      setConfirmState({
+        title: `Promote “${promotedName}” to main?`,
+        body:
+          count === 0
+            ? "This path has no edits yet, so promoting it just archives it. Continue?"
+            : `${count} note${count === 1 ? "" : "s"} edited on this path will be applied to main. The path itself will be archived. This cannot be undone automatically (older versions stay in history).`,
+        onConfirm: async () => {
+          setConfirmState(null);
+          try {
+            await api.promotePathToMain(promotedName);
+            await refreshPathAwareness();
+            // Main content on disk has just changed; drop caches so the next
+            // read/editor render picks up the applied bodies.
+            invalidateAllNotes();
+            // Reload notes/graph/orphans to reflect the new main.
+            setNotes(await api.listNotes());
+            try { setGraph(await fetchGraph()); } catch {}
+            try { setOrphanSet(new Set(await fetchOrphans())); } catch {}
+            setCurrentPath(rootName);
+            setInlineDiffOpen(false);
+            // Re-read the active note against main — its body may have
+            // changed if it was one of the overrides.
+            if (activeSlug) {
+              try {
+                const refreshed = await api.readNote(activeSlug);
+                setActiveNote(refreshed);
+                setCurrentBody(refreshed.body);
+              } catch {}
+            }
+            guidance.trigger("path.promoted");
+          } catch (e) {
+            setToast(`Couldn't promote: ${e}`);
+          }
+        },
+      });
+    } catch (e) {
+      console.error("promote failed", e);
+    }
+  }, [currentPath, collectionsView, activeSlug, refreshPathAwareness, guidance]);
+
+  const handleThrowAwayPath = useCallback(async () => {
+    if (!currentPath) return;
+    const rootName = collectionsView?.root ?? "main";
+    if (currentPath === rootName || currentPath === "main" || currentPath === "master") {
+      return;
+    }
+    const discarded = currentPath;
+    const overrides = await api.listPathOverrides(discarded).catch(() => [] as string[]);
+    const count = overrides.length;
+    setConfirmState({
+      title: `Throw away “${discarded}”?`,
+      body:
+        count === 0
+          ? "This path has no edits yet. Discarding just removes the path entry."
+          : `${count} edited note${count === 1 ? "" : "s"} on this path will be lost. Main is unaffected. Continue?`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          await api.deletePathCollection(discarded);
+          await refreshPathAwareness();
+          setCurrentPath(rootName);
+          setInlineDiffOpen(false);
+        } catch (e) {
+          setToast(`Couldn't discard: ${e}`);
+        }
+      },
+    });
+  }, [currentPath, collectionsView, refreshPathAwareness]);
 
   const filteredNotes = useMemo(() => {
     if (!tagFilter) return notes;
@@ -1388,7 +1958,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                 <span>Find anything</span>
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="flex-1 min-h-0 flex flex-col">
               <NoteList
                 notes={filteredNotes}
                 activeSlug={activeSlug}
@@ -1410,47 +1980,34 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                 onDecryptNote={handleDecryptNoteBySlug}
                 onReveal={handleRevealNote}
                 onCopyAsMarkdown={handleCopyNoteAsMarkdown}
+                pathCount={stableCollections.filter((c) => c.name !== stableRootName).length}
               />
-              <TagList
-                tags={tagCounts}
-                activeTag={tagFilter}
-                onSelect={setTagFilter}
-              />
-              <JournalList
-                entries={dailyEntries}
-                activeSlug={activeSlug}
-                onOpenDaily={handleOpenDaily}
-              />
-              {mappingEnabled && (
-                <PathMinimap
-                  view={collectionsView}
-                  onOpen={() => {
-                    if (needsMainNote) { setMainNotePromptOpen(true); return; }
-                    setRailOverlay("paths");
-                  }}
-                  onNewPath={() => {
-                    if (needsMainNote) { setMainNotePromptOpen(true); return; }
-                    setNewPathOpen(true);
-                  }}
-                />
-              )}
-              <div className="mt-3 border-t border-bd/20 mx-3" />
-              <button
-                onClick={() => setScratchpadOpen(true)}
-                className="mt-2 mx-3 w-[calc(100%-1.5rem)] text-left px-3 py-2 text-xs text-t2 hover:bg-s2 hover:text-char rounded transition flex items-center gap-2"
-                title="A place to jot without saving"
+            </div>
+            {/* Bottom utility row — Journal / Activity / Trash. Scratchpad
+                was removed from the sidebar; it's already reachable from
+                the right-sidebar tab. */}
+            <div className="shrink-0 border-t border-bd/60 px-3 py-2 flex items-center gap-1">
+              <SidebarUtilityButton
+                onClick={() => handleOpenDaily()}
+                title="Today's journal entry"
+                label="Journal"
               >
-                <ScratchpadIcon />
-                <span>Scratchpad</span>
-              </button>
-              <button
+                <JournalIcon size={13} />
+              </SidebarUtilityButton>
+              <SidebarUtilityButton
+                onClick={() => setActivityOpen(true)}
+                title="Writing activity heatmap"
+                label="Activity"
+              >
+                <ActivityIcon size={13} />
+              </SidebarUtilityButton>
+              <SidebarUtilityButton
                 onClick={() => setTrashOpen(true)}
-                className="mx-3 mb-3 w-[calc(100%-1.5rem)] text-left px-3 py-2 text-xs text-t2 hover:bg-s2 hover:text-char rounded transition flex items-center gap-2"
                 title="Restore or permanently remove deleted notes"
+                label="Trash"
               >
-                <DeleteIcon />
-                <span>Trash</span>
-              </button>
+                <DeleteIcon size={13} />
+              </SidebarUtilityButton>
             </div>
           </aside>
         )}
@@ -1488,9 +2045,59 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             onSwitchPath={handleSwitchPath}
             onBranchFromHere={tbBranchFromHere}
             onOpenPaths={tbOpenPaths}
+            onComparePaths={() => setPathCompareOpen(true)}
             onOpenMap={tbOpenMap}
             onEditCurrentCondition={tbEditCurrentCondition}
+            focusMode={focusMode}
+            onExitFocus={() => setFocusMode(false)}
+            dailyDate={activeSlug?.startsWith("daily/") ? activeSlug.slice("daily/".length) : null}
+            onOpenJournalCalendar={(anchor) => setJournalCalendar({ open: true, anchor })}
           />
+          {mappingEnabled && (
+            <PathRibbon
+              pathName={currentPath}
+              condition={stableCollections.find((c) => c.name === currentPath)?.condition || null}
+              rootName={stableRootName}
+              pathColorOverrides={pathColorOverrides}
+              onSwitchPath={handleSwitchPath}
+              onToggleInlineDiff={() => setInlineDiffOpen((x) => !x)}
+              inlineDiffActive={inlineDiffOpen}
+              onOpenCompare={() => setPathCompareOpen(true)}
+              onPromote={handlePromotePath}
+              onThrowAway={handleThrowAwayPath}
+            />
+          )}
+          {leftOff && (
+            <WhereYouLeftOffBanner
+              state={leftOff}
+              onResume={() => {
+                // Switch to the stored path first if it still exists,
+                // then jump to the slug. If the note has been deleted we
+                // silently just clear the banner — no toast: the user
+                // clicked "pick up here," an error there would feel rude.
+                const target = notes.find((n) => n.slug === leftOff.slug);
+                if (!target) {
+                  setLeftOff(null);
+                  forgetLeftOff(workspacePath);
+                  return;
+                }
+                if (leftOff.path && leftOff.path !== currentPath) {
+                  const exists = (collectionsView?.collections ?? []).some(
+                    (c) => c.name === leftOff.path,
+                  );
+                  if (exists) handleSwitchPath(leftOff.path);
+                }
+                selectSlug(leftOff.slug);
+                setLeftOff(null);
+              }}
+              onDismiss={() => setLeftOff(null)}
+              onHideAlways={() => {
+                setHideLeftOff(workspacePath, true);
+                forgetLeftOff(workspacePath);
+                setLeftOff(null);
+              }}
+            />
+          )}
           <div className="flex-1 overflow-hidden flex flex-col relative">
             {activeNote ? (
               activeNote.locked ? (
@@ -1499,6 +2106,19 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                   onUnlock={() => requestUnlock()}
                   onUnlocked={onUnlocked}
                 />
+              ) : inlineDiffOpen &&
+                !!currentPath &&
+                currentPath !== stableRootName &&
+                currentPath !== "main" &&
+                currentPath !== "master" ? (
+                <Suspense fallback={<EditorSkeleton />}>
+                  <InlineDiffPane
+                    slug={activeNote.slug}
+                    mainName={stableRootName}
+                    pathName={currentPath}
+                    onExit={() => setInlineDiffOpen(false)}
+                  />
+                </Suspense>
               ) : !showRawMarkdown ? (
                 // Reading mode: full markdown render via pulldown-cmark on the
                 // backend, themed with `.yarrow-reading` CSS so code blocks,
@@ -1511,6 +2131,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                     pathNotes={pathNotes}
                     currentPath={currentPath}
                     currentBody={currentBody}
+                    mainBody={mainBody}
                     onNavigate={selectSlug}
                     onBranchFromWikilink={(slug) => {
                       const target = notes.find((n) => n.slug === slug);
@@ -1537,13 +2158,24 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                         invalidateNote(slug);
                         if (slug === activeSlug) setActiveNote(updated);
                         setNotes(await api.listNotes());
-                        try { setGraph(await api.getGraph()); } catch {}
+                        try { setGraph(await fetchGraph()); } catch {}
                       } catch (e) {
                         setToast(`Couldn't update tags: ${e}`);
                       }
                     }}
                     tagSuggestions={tagCounts.map((t) => t.tag)}
+                    pathColorOverrides={pathColorOverrides}
+                    onAnnotationsChange={async (slug, annotations) => {
+                      try {
+                        const updated = await api.setAnnotations(slug, annotations);
+                        invalidateNote(slug);
+                        if (slug === activeSlug) setActiveNote(updated);
+                      } catch (e) {
+                        setToast(`Couldn't save annotation: ${e}`);
+                      }
+                    }}
                     onTitleChange={(title) => handleRenameNote(activeNote.slug, title)}
+                    titleRevertNonce={titleRevertNonce}
                     onDirtyChange={setDirty}
                     onNavigate={selectSlug}
                     onBodyChange={setCurrentBody}
@@ -1582,8 +2214,11 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                   preview={historyPreview}
                   currentBody={currentBody}
                   noteTitle={activeNote.frontmatter.title}
+                  keepsakes={keepsakes}
                   onHover={previewAtCheckpoint}
                   onRestore={restoreAtCheckpoint}
+                  onPin={pinHistoryCheckpoint}
+                  onUnpin={unpinHistoryCheckpoint}
                   onClose={() => { setHistoryOpen(false); setRailOverlay(null); }}
                 />
               </L>
@@ -1609,8 +2244,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               onChanged={async () => {
                 invalidateAllNotes();
                 setNotes(await api.listNotes());
-                try { setGraph(await api.getGraph()); } catch {}
-                try { setOrphanSet(new Set(await api.orphans())); } catch {}
+                try { setGraph(await fetchGraph()); } catch {}
+                try { setOrphanSet(new Set(await fetchOrphans())); } catch {}
               }}
             />
           </L>
@@ -1619,7 +2254,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         {renamePrompt && (
           <div
             className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
-            onClick={() => setRenamePrompt(null)}
+            onClick={cancelRename}
           >
             <div
               onClick={(e) => e.stopPropagation()}
@@ -1638,7 +2273,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               </div>
               <div className="px-5 py-3 border-t border-bd flex justify-end gap-2 flex-wrap">
                 <button
-                  onClick={() => setRenamePrompt(null)}
+                  onClick={cancelRename}
                   className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char"
                 >
                   Cancel
@@ -1714,13 +2349,31 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           </L>
         )}
 
+        <JournalCalendar
+          open={journalCalendar.open}
+          anchor={journalCalendar.anchor}
+          onClose={() => setJournalCalendar({ open: false, anchor: null })}
+          onPick={(iso) => { setJournalCalendar({ open: false, anchor: null }); void handleOpenDaily(iso); }}
+          activeDate={activeSlug?.startsWith("daily/") ? activeSlug.slice("daily/".length) : undefined}
+        />
+
         {pathCompareOpen && (
           <L>
             <PathCompare
               open={pathCompareOpen}
               onClose={() => setPathCompareOpen(false)}
               paths={(collectionsView?.collections ?? []).map((c) => c.name)}
-              initialLeft={currentPath}
+              pathConditions={Object.fromEntries(
+                (collectionsView?.collections ?? []).map((c) => [c.name, c.condition]),
+              )}
+              initialLeft={currentPath && currentPath !== stableRootName ? currentPath : stableRootName}
+              initialRight={
+                // Prefer a non-root path on the right so the default view is
+                // "main vs your latest try" — matches the scenario we guide.
+                (collectionsView?.collections ?? [])
+                  .map((c) => c.name)
+                  .find((n) => n !== stableRootName && n !== currentPath)
+              }
             />
           </L>
         )}
@@ -1735,7 +2388,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               onChanged={async (report) => {
                 invalidateAllNotes();
                 setNotes(await api.listNotes());
-                try { setGraph(await api.getGraph()); } catch {}
+                try { setGraph(await fetchGraph()); } catch {}
                 if (activeSlug) {
                   try {
                     const fresh = await api.readNote(activeSlug);
@@ -1757,8 +2410,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               onChanged={async () => {
                 invalidateAllNotes();
                 setNotes(await api.listNotes());
-                try { setGraph(await api.getGraph()); } catch {}
-                try { setOrphanSet(new Set(await api.orphans())); } catch {}
+                try { setGraph(await fetchGraph()); } catch {}
+                try { setOrphanSet(new Set(await fetchOrphans())); } catch {}
               }}
             />
           </L>
@@ -1775,8 +2428,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               onPromoted={async (newSlug) => {
                 const list = await api.listNotes();
                 setNotes(list);
-                setGraph(await api.getGraph());
-                setOrphanSet(new Set(await api.orphans()));
+                setGraph(await fetchGraph());
+                setOrphanSet(new Set(await fetchOrphans()));
                 // Jump straight to the freshly-kept note so the user sees
                 // that "Keep as note" actually produced something tangible.
                 selectSlug(newSlug);
@@ -1873,6 +2526,10 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                 mainNoteSlug={config?.mapping?.main_note ?? null}
                 onSelect={(slug) => { selectSlug(slug); setRailOverlay(null); setMapFilter(null); }}
                 fillHeight
+                onAddLink={handleGraphAddLink}
+                onBulkTag={handleGraphBulkTag}
+                onBulkAddToPath={handleGraphBulkAddToPath}
+                pathNames={collectionsView?.collections.map((c) => c.name) ?? []}
               />
             </L>
           </div>
@@ -1915,61 +2572,153 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         </Modal>
       )}
 
-      {editorCtxMenu && (
-        <div
-          // Clamp to viewport so a click near the right edge doesn't push
-          // the menu off-screen. Width/height are small, so the simple
-          // max is plenty.
-          style={{
-            left: Math.min(editorCtxMenu.x, window.innerWidth - 220),
-            top: Math.min(editorCtxMenu.y, window.innerHeight - 120),
+      {editorCtxMenu && (() => {
+        // Build callback bag — the radial items file owns labels and
+        // icons; AppShell owns the state these callbacks mutate.
+        const close = () => setEditorCtxMenu(null);
+        const callbacks: RadialCallbacks = {
+          mappingEnabled,
+          openWikilinkPicker: () => {
+            close();
+            setWikilinkPickerOpen(true);
+          },
+          openTableInsert: () => {
+            close();
+            setTableInsertOpen(true);
+          },
+          openCalloutInsert: () => {
+            close();
+            setCalloutInsertOpen(true);
+          },
+          startPathFrom: (seed) => {
+            // Reshape selection into an "If …" condition so the path
+            // dialog isn't blank — the user can accept, edit, or clear.
+            const trimmed = seed.trim().slice(0, 120);
+            const lower = trimmed.toLowerCase();
+            const prefilled = /^(if|what if)\b/.test(lower)
+              ? trimmed
+              : `If ${lower.replace(/\.$/, "")}`;
+            setNewPathCondition(prefilled);
+            close();
+            setNewPathOpen(true);
+          },
+          sendSelectionToScratchpad: (text) => {
+            handleSendSelectionToScratchpad(text);
+            close();
+          },
+          insertRaw: (text, opts) => {
+            window.dispatchEvent(
+              new CustomEvent("yarrow:editor-insert-raw", {
+                detail: { text, ...opts },
+              }),
+            );
+            close();
+          },
+          annotateSelection: (anchor) => {
+            close();
+            if (!activeNote) return;
+            // Cap the stored anchor so a huge selection doesn't bloat the
+            // gutter — 160 chars comfortably fits one line of context.
+            const trimmed = anchor.trim().replace(/\s+/g, " ").slice(0, 160);
+            const next = [
+              ...(activeNote.frontmatter.annotations ?? []),
+              { anchor: trimmed, body: "", at: new Date().toISOString() },
+            ];
+            (async () => {
+              try {
+                const updated = await api.setAnnotations(activeNote.slug, next);
+                invalidateNote(activeNote.slug);
+                if (activeNote.slug === activeSlug) setActiveNote(updated);
+              } catch (e) {
+                setToast(`Couldn't add annotation: ${e}`);
+              }
+            })();
+          },
+        };
+        const selection = editorCtxMenu.text.trim();
+        const items = selection
+          ? buildRadialSelectionItems(editorCtxMenu.text, callbacks)
+          : buildRadialInsertItems(callbacks);
+        const Menu = radialMenuOn ? RadialMenu : LinearContextMenu;
+        return (
+          <Menu
+            open
+            x={editorCtxMenu.x}
+            y={editorCtxMenu.y}
+            items={items}
+            onClose={close}
+          />
+        );
+      })()}
+
+      <Suspense fallback={null}>
+        <WikilinkPicker
+          open={wikilinkPickerOpen}
+          onClose={() => setWikilinkPickerOpen(false)}
+          notes={notes}
+          currentSlug={activeSlug ?? undefined}
+          onInsert={(text) => {
+            window.dispatchEvent(
+              new CustomEvent("yarrow:editor-insert-raw", { detail: { text } }),
+            );
+            // Every wikilink insertion: re-explain reciprocal links + the
+            // graph. The user can silence this one modal via its opt-out
+            // button, or all guidance via Settings → Guidance.
+            setTimeout(() => guidance.trigger("wikilink.inserted"), 300);
           }}
-          className="fixed z-50 w-[210px] bg-bg border border-bd2 rounded-md shadow-xl text-xs py-1 animate-fadeIn"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="w-full px-3 py-1.5 text-left hover:bg-s2 flex items-center gap-2 text-char"
-            onClick={() => {
-              // Use the selection as the "if…" seed so the user doesn't have
-              // to retype what they highlighted — very fast branch-from-idea.
-              const seed = editorCtxMenu.text.trim().slice(0, 120);
-              const lower = seed.toLowerCase();
-              const prefilled =
-                /^(if|what if)\b/.test(lower) ? seed : `If ${lower.replace(/\.$/, "")}`;
-              setNewPathCondition(prefilled);
-              setEditorCtxMenu(null);
-              setNewPathOpen(true);
+        />
+      </Suspense>
+
+      {activityOpen && (
+        <Suspense fallback={null}>
+          <ActivityHeatmap open={activityOpen} onClose={() => setActivityOpen(false)} />
+        </Suspense>
+      )}
+
+      {tagGraphOpen && (
+        <Suspense fallback={null}>
+          <TagGraph
+            open={tagGraphOpen}
+            onClose={() => setTagGraphOpen(false)}
+            graph={graph}
+            onPickTag={(tag) => {
+              setTagFilter(tag);
+              setTagGraphOpen(false);
             }}
-          >
-            <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="3" cy="3" r="1.5"/>
-              <circle cx="3" cy="11" r="1.5"/>
-              <circle cx="11" cy="7" r="1.5"/>
-              <path d="M3 4.5v5M4.3 3.7l5.4 2.6"/>
-            </svg>
-            <span>Start a path from this</span>
-          </button>
-          <button
-            className="w-full px-3 py-1.5 text-left hover:bg-s2 flex items-center gap-2 text-t2"
-            onClick={() => {
-              handleSendSelectionToScratchpad(editorCtxMenu.text);
-              setEditorCtxMenu(null);
+          />
+        </Suspense>
+      )}
+
+      {tableInsertOpen && (
+        <Suspense fallback={null}>
+          <TableInsertModal
+            open={tableInsertOpen}
+            onClose={() => setTableInsertOpen(false)}
+            onInsert={(markdown) => {
+              window.dispatchEvent(
+                new CustomEvent("yarrow:editor-insert-raw", {
+                  detail: { text: markdown },
+                }),
+              );
             }}
-          >
-            <ScratchpadIcon size={11} />
-            <span>Send to scratchpad</span>
-          </button>
-          <button
-            className="w-full px-3 py-1.5 text-left hover:bg-s2 flex items-center gap-2 text-t2"
-            onClick={() => {
-              navigator.clipboard?.writeText(editorCtxMenu.text).catch(() => {});
-              setEditorCtxMenu(null);
+          />
+        </Suspense>
+      )}
+
+      {calloutInsertOpen && (
+        <Suspense fallback={null}>
+          <CalloutInsertModal
+            open={calloutInsertOpen}
+            onClose={() => setCalloutInsertOpen(false)}
+            onInsert={(markdown) => {
+              window.dispatchEvent(
+                new CustomEvent("yarrow:editor-insert-raw", {
+                  detail: { text: markdown, atLineStart: true },
+                }),
+              );
             }}
-          >
-            <span className="w-3 inline-block text-center">⧉</span>
-            <span>Copy</span>
-          </button>
-        </div>
+          />
+        </Suspense>
       )}
 
       {toast && (
@@ -2075,6 +2824,9 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             onImportObsidian={() => setObsidianImportOpen(true)}
             onComparePaths={() => setPathCompareOpen(true)}
             onOpenDecisionMatrix={() => setDecisionMatrixOpen(true)}
+            onOpenActivity={() => setActivityOpen(true)}
+            onOpenTagGraph={() => setTagGraphOpen(true)}
+            onInsertTable={() => setTableInsertOpen(true)}
             mappingEnabled={mappingEnabled}
           />
         </L>
@@ -2112,6 +2864,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         onDone={() => setForkMoment(null)}
       />
 
+      <GuidanceHost />
+
       <MainNotePrompt
         open={mainNotePromptOpen}
         onClose={() => setMainNotePromptOpen(false)}
@@ -2130,7 +2884,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               if (!name) return;
               try {
                 await api.setPathCondition(name, next);
-                const topo = await api.branchTopology();
+                const topo = await fetchTopology();
                 setTopology(topo);
                 await refreshPathAwareness();
               } catch (e) {
@@ -2156,8 +2910,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               // orphan index so the Map reflects it; also re-read the
               // active note in case its frontmatter just changed.
               const [g, orphansList] = await Promise.all([
-                api.getGraph(),
-                api.orphans(),
+                fetchGraph(),
+                fetchOrphans(),
               ]);
               setGraph(g);
               setOrphanSet(new Set(orphansList));
@@ -2826,4 +3580,30 @@ function syncStatusPresentation(s: SyncStatus): {
     case "error":     return { color: "var(--danger)", label: "sync failed", pulse: false };
     case "no-remote": return { color: "var(--t3)",     label: "not synced anywhere", pulse: false };
   }
+}
+
+/** Compact left-sidebar footer action — small icon + label, quiet until
+ *  hover. Used for Journal / Activity / Trash so they stay one click away
+ *  without cluttering the note list scroll area. */
+function SidebarUtilityButton({
+  onClick,
+  title,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-[11px] text-t3 hover:text-char hover:bg-s2 transition"
+    >
+      {children}
+      <span>{label}</span>
+    </button>
+  );
 }

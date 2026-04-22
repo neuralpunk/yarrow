@@ -54,7 +54,13 @@ export default function FindReplace({
       } finally {
         setLoading(false);
       }
-    }, 200);
+    // 300ms debounce — long enough that fast typing doesn't fire a
+    // preview per character (each preview walks every note in scope),
+    // short enough that the user sees results before they've forgotten
+    // the query. Backend-side caps (size_limit / dfa_size_limit / max
+    // pattern length) guard against pathological patterns even if the
+    // preview does fire on an in-progress regex.
+    }, 300);
     return () => clearTimeout(t);
   }, [pattern, caseInsensitive, scope, open, currentPathSlugs]);
 

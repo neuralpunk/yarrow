@@ -40,6 +40,18 @@ export default defineConfig(async () => ({
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
           if (id.includes("d3")) return "vendor-d3";
+          // Carve the per-language grammars out of vendor-codemirror so
+          // they land in their own chunk — only fetched when the "Code
+          // syntax highlighting" Writing Extra is on.
+          const isCmLanguage =
+            id.includes("@codemirror/language-data") ||
+            id.includes("@codemirror/lang-") ||
+            (id.includes("@lezer/") &&
+              !id.includes("@lezer/common") &&
+              !id.includes("@lezer/highlight") &&
+              !id.includes("@lezer/lr") &&
+              !id.includes("@lezer/markdown"));
+          if (isCmLanguage) return "vendor-cm-languages";
           if (
             id.includes("@codemirror") ||
             id.includes("@lezer") ||
