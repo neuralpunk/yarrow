@@ -6,6 +6,23 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.1.2] — 2026-04-25
+
+macOS window-positioning fix. The 2.1.1 CSS-only attempt closed the document-scroll path but didn't address the underlying issue: with `decorations: false`, Tauri's borderless `NSWindow` was being positioned past the visible bottom of the screen on macOS Tahoe, so the bottom of the app (status bar, sidebar utility row) was physically off-screen. CSS can't recover from a window that's larger than its display.
+
+### Fixed
+
+- **macOS borderless-window positioning.** Switched `decorations: false` → `decorations: true` and added `titleBarStyle: "Overlay"` + `hiddenTitle: true` in `tauri.conf.json`. macOS now draws the standard traffic-light controls as an overlay at the top-left of the webview (no native title bar text/area), and — crucially — the OS's window manager has the standard chrome it needs to position the window correctly relative to the menu bar and the screen's safe areas. The bottom of the app stays inside the visible region in normal, maximized, and full-screen modes alike. On macOS Tahoe specifically, this is the documented Tauri 2 pattern for "looks custom but native window behaviour."
+- **Custom window controls now platform-conditional.** On macOS the OS-drawn traffic lights cover min / max / close, and on Windows the native title bar provides them — so our custom buttons are hidden on those platforms (rendering them was a duplicate-controls footgun). On Linux they stay, because GNOME Mutter (the default on Fedora 43 and most modern GNOME setups) declines to draw server-side decorations even with `decorations: true`, leaving the window otherwise unclosable except by keyboard shortcut. KDE / XFCE / other Linux WMs that do draw native chrome will see a small redundancy (native bar above + our buttons below) — cheap insurance against the no-chrome case.
+- **Custom resize edges removed.** With `decorations: true`, native window borders handle resize on every platform that draws them; the custom `<WindowResizeEdges>` overlay was redundant and could intercept events along the window edge.
+- **Titlebar wordmark padded clear of the traffic lights** on macOS only (`pl-[80px]`), so "Yarrow v2.1.2 · workspace name" no longer renders underneath the traffic-light overlay region.
+
+### Platform-specific UX note
+
+- **macOS**: traffic lights at top-left (overlay), no native title-bar text, our identity strip with the wordmark / version / workspace name carries the rest.
+- **Windows**: native title bar with standard min / max / close in the OS's expected place; our identity strip sits just below as a slim wordmark band.
+- **Linux**: behaviour depends on your window manager. GNOME / Mutter users see no native chrome — our custom buttons handle close / minimize / maximize. KDE / XFCE / other WMs that paint server-side decorations will see those plus our identity strip below.
+
 ## [2.1.1] — 2026-04-25
 
 macOS scroll fix. Same-day patch on top of 2.1.0.

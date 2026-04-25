@@ -3,7 +3,6 @@ import { api } from "./lib/tauri";
 import Onboarding from "./components/Onboarding";
 import AppShell from "./components/AppShell";
 import Titlebar from "./components/Titlebar";
-import WindowResizeEdges from "./components/WindowResizeEdges";
 import ExternalUrlFallbackModal from "./components/ExternalUrlFallbackModal";
 import { useTheme } from "./lib/theme";
 import { GuidanceProvider } from "./lib/guidanceStore";
@@ -34,7 +33,9 @@ export default function App() {
   return (
     <GuidanceProvider>
       <div className="h-full flex flex-col relative">
-        <WindowResizeEdges />
+        {/* WindowResizeEdges removed in 2.1.2 — with the new
+            `decorations: true` setup, native window borders handle
+            resize on every platform. */}
         <Titlebar />
         <div className="flex-1 min-h-0">
           {loading ? (
