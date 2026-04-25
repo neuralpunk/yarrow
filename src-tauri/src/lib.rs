@@ -99,7 +99,18 @@ pub fn run() {
         .manage(commands::AppState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // 2.1.4: removed `tauri_plugin_window_state`. The plugin has
+        // multiple unfixed macOS bugs (issues #14822, #3289, #1097 in
+        // tauri-apps): random resizes to half the min width, broken
+        // size restore, hangs with `decorations: false`, and a habit
+        // of restoring positions saved on a now-disconnected monitor
+        // unchanged. Across 2.1.0 → 2.1.3 it kept poisoning the saved
+        // window state so each "fix" inherited the previous version's
+        // bad coords. We give up on cross-launch position memory for
+        // now in exchange for reliable startup behaviour; every launch
+        // opens at the config default (1400 × 900) centered on the
+        // primary monitor. We can re-introduce position restoration
+        // later via custom logic that doesn't have these macOS bugs.
         .setup(|app| {
             use tauri::Manager;
             if let Some(win) = app.get_webview_window("main") {

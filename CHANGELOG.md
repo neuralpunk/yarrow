@@ -6,6 +6,32 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.1.4] — 2026-04-25
+
+macOS rebuild from the ground up, after web research surfaced two upstream Tauri bugs that were the actual cause of every 2.1.x macOS regression.
+
+### What was actually broken
+
+Two compounding upstream issues, both confirmed in the official Tauri / plugins-workspace issue trackers:
+
+1. **`tauri-plugin-window-state` is broken on macOS.** Multiple unfixed bugs: random resize to ~half the min width on launch (issue #3289), broken size restore (issue #926), hangs the app when used with `decorations: false` (issue #14822), restores positions saved on a now-disconnected monitor without revalidating (issue #1097). The plugin was poisoning saved state across every 2.1.x release — each "fix" inherited the previous broken release's coordinates and the user only ever saw the middle slice of the app.
+2. **`titleBarStyle: "Overlay"` requires `trafficLightPosition`.** Tauri 2.4.0+ supports custom traffic-light coordinates with Overlay style, but without an explicit `trafficLightPosition` the lights default to (0, 0) which renders directly under our custom Titlebar wordmark — invisible. Combined with `hiddenTitle: true` (which I'd added for cosmetics), the user saw no controls at all.
+
+### Fixed
+
+- **Removed `tauri-plugin-window-state` entirely.** The plugin's macOS bugs make it net-negative for our use case. Every launch now opens at the config default (1400 × 900 centered on the primary monitor); we lose cross-launch position memory but gain reliable startup behaviour. We can re-introduce position restoration via custom logic later — one that doesn't have the upstream macOS bugs.
+- **Re-enabled `titleBarStyle: "Overlay"` with explicit `trafficLightPosition: { x: 12, y: 12 }`.** Traffic lights now render at the proper position on the top-left of the webview, sized to fit our 32px Titlebar. `hiddenTitle: true` is gone.
+- **Restored the macOS `pl-[80px]` on the Titlebar** so the wordmark sits clear of the traffic-light overlay region.
+- **The `rescue_offscreen_window()` setup hook** from 2.1.3 stays in place — defensive code is cheap, and even without the broken plugin we still want a safety net against any future window-positioning edge case.
+
+### What macOS users will see in 2.1.4
+
+A standard macOS app: traffic lights at the top-left of the window, no native title-bar text, our custom Titlebar carrying "Yarrow v2.1.4 · workspace name" with the wordmark cleared past the traffic lights. Window opens at 1400 × 900 centered on primary monitor (no inherited bad state from previous releases). Bottom of the app — status bar with notes count, sync pill, off-server pill — visible and within the screen.
+
+### One-time clean slate (optional)
+
+If you want to wipe the stale state file from earlier 2.1.x releases on macOS — purely cosmetic since 2.1.4 doesn't read it anyway — delete `~/Library/Application Support/com.yarrow.desktop/.window-state.json` (path may vary slightly).
+
 ## [2.1.3] — 2026-04-25
 
 macOS deep-fix. The 2.1.2 attempt traded one half-fix for another: `titleBarStyle: "Overlay"` failed to position the window correctly on macOS Tahoe, AND the `tauri-plugin-window-state` plugin was still restoring stale, off-screen window coordinates inherited from the borderless 2.1.0 / 2.1.1 setup. Result: traffic lights ended up above the menu bar (invisible) and the status bar ended up below the dock (invisible). Same bug, deeper diagnosis.

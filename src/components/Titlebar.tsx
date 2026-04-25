@@ -9,14 +9,16 @@ interface Props {
 // Platform detection at module load. The window-control story differs
 // per OS:
 //
-//   · macOS — `decorations: true` (no titleBarStyle override in
-//     2.1.3+) paints the standard NSWindow title bar with traffic
-//     lights at top-left and the window title text. Our custom
-//     Titlebar is the identity strip *below* it; we don't render
-//     our own controls because the OS's traffic lights already cover
-//     close / minimize / zoom.
-//   · Windows — same idea: native title bar above, our identity
-//     strip below, no custom controls.
+//   · macOS — `titleBarStyle: "Overlay"` + `trafficLightPosition: {x:
+//     12, y: 12}` paints the OS-drawn traffic lights overlaid on the
+//     top-left of the webview, with no native title-bar text. Our
+//     custom Titlebar shares that strip, so we pad the wordmark
+//     `pl-[80px]` clear of the traffic-light region. We skip our own
+//     min/max/close because the OS-drawn buttons already handle them.
+//   · Windows — `decorations: true` paints a standard native title
+//     bar with min/max/close in the OS's expected place. Our Titlebar
+//     is the identity strip *below* it; rendering our own buttons
+//     would be a confusing duplicate.
 //   · Linux — even with `decorations: true`, GNOME Mutter (and some
 //     other Wayland compositors) decline to draw server-side
 //     decorations. Apps without their own controls become unclosable
@@ -35,6 +37,7 @@ const PLATFORM: "mac" | "windows" | "linux" | "unknown" = (() => {
   return "unknown";
 })();
 
+const IS_MAC = PLATFORM === "mac";
 const SHOW_CUSTOM_CONTROLS = PLATFORM === "linux" || PLATFORM === "unknown";
 
 export default function Titlebar({ workspaceName }: Props) {
@@ -43,7 +46,9 @@ export default function Titlebar({ workspaceName }: Props) {
   return (
     <div
       data-tauri-drag-region
-      className="h-8 shrink-0 flex items-center gap-2 bg-bg-soft border-b border-bd select-none px-3"
+      className={`h-8 shrink-0 flex items-center gap-2 bg-bg-soft border-b border-bd select-none ${
+        IS_MAC ? "pl-[80px] pr-3" : "px-3"
+      }`}
     >
       <span
         data-tauri-drag-region
