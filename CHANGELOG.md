@@ -6,6 +6,20 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.1.3] — 2026-04-25
+
+macOS deep-fix. The 2.1.2 attempt traded one half-fix for another: `titleBarStyle: "Overlay"` failed to position the window correctly on macOS Tahoe, AND the `tauri-plugin-window-state` plugin was still restoring stale, off-screen window coordinates inherited from the borderless 2.1.0 / 2.1.1 setup. Result: traffic lights ended up above the menu bar (invisible) and the status bar ended up below the dock (invisible). Same bug, deeper diagnosis.
+
+### Fixed
+
+- **Window-state self-heal on every launch.** New `rescue_offscreen_window` setup hook in `lib.rs` validates the restored window rect against the current monitor and forces a recentre + default size if the window is partly off-screen, oversized, or the saved coordinates are bogus. This breaks the bad-state-inherits-itself cycle that made every 2.1.x release "feel worse" on macOS Tahoe — even after a config fix landed, the saved state from the previous broken setup kept poisoning subsequent launches. Self-healing on a single clean launch; valid rects pass through untouched, so window-position memory is preserved on the happy path.
+- **Tauri config simplified to plain `decorations: true`.** Dropped `titleBarStyle: "Overlay"` and `hiddenTitle: true` — both turned out to interact badly with macOS Tahoe's window manager (the title-bar-overlay path reportedly skipped traffic-light rendering on some Tahoe builds, and `hiddenTitle` may have compounded it). macOS now shows a standard NSWindow title bar with traffic lights at top-left and the window title text — boring, native, well-tested across every macOS version since 10.x. The custom Titlebar carries the version + workspace name as an identity strip immediately below.
+- **Custom Titlebar `pl-[80px]` removed.** With no overlay region to clear, our identity strip starts cleanly from the left edge on every platform. Linux still shows the custom min / max / close buttons (GNOME Mutter fallback); macOS and Windows let the OS draw them.
+
+### Note on the trade-off
+
+Plain `decorations: true` means macOS users see "Yarrow" in the native title bar AND in our identity strip below — a small visible duplication. That's the cost of using the most-tested, most-reliable Mac window mode. We can revisit a custom-looking title bar (via a properly-tested `titleBarStyle: "Overlay"` once macOS Tahoe's behaviour is understood, or via a Rust-side native-API shim) in a future release once we've landed a full release cycle of stable macOS positioning.
+
 ## [2.1.2] — 2026-04-25
 
 macOS window-positioning fix. The 2.1.1 CSS-only attempt closed the document-scroll path but didn't address the underlying issue: with `decorations: false`, Tauri's borderless `NSWindow` was being positioned past the visible bottom of the screen on macOS Tahoe, so the bottom of the app (status bar, sidebar utility row) was physically off-screen. CSS can't recover from a window that's larger than its display.

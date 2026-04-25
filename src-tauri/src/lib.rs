@@ -26,6 +26,73 @@ pub mod trash;
 pub mod workspace;
 pub mod ws_client;
 
+/// Validate the saved window rect against the current monitor and
+/// reset it on mismatch. This breaks the bad-state-inherits-itself
+/// cycle that bit macOS Tahoe in 2.1.0 → 2.1.2: the borderless
+/// `decorations: false` setup in 2.1.0 / 2.1.1 confused Tahoe's
+/// window manager about safe-area insets and the window-state
+/// plugin happily saved a position that was partially above the
+/// menu bar / partially below the dock. Every subsequent launch —
+/// including 2.1.2's `titleBarStyle: "Overlay"` config — restored
+/// the bogus rect, so traffic lights ended up off-screen at the top
+/// and the status bar ended up off-screen at the bottom and the
+/// user only saw the middle slice.
+///
+/// Logic: if the restored window is even partly off the connected
+/// monitor — origin negative beyond a small drag-tolerance, or
+/// extending past the monitor's bottom/right edge — we recentre
+/// with a default 1400 × 900 frame. Self-healing on the next clean
+/// launch; subsequent launches save a valid rect and skip this path.
+fn rescue_offscreen_window(win: &tauri::WebviewWindow) {
+    let pos = match win.outer_position() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let size = match win.outer_size() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let monitor = match win.current_monitor() {
+        Ok(Some(m)) => m,
+        _ => match win.primary_monitor() {
+            Ok(Some(m)) => m,
+            _ => return,
+        },
+    };
+    let mp = monitor.position();
+    let ms = monitor.size();
+    // Generous 60-px slack on each edge so a deliberately-edge-
+    // docked window isn't forced back to centre. We only intervene
+    // when a meaningful chunk of the window is genuinely off the
+    // visible area.
+    const SLACK: i32 = 60;
+    let left = pos.x;
+    let top = pos.y;
+    let right = pos.x + size.width as i32;
+    let bottom = pos.y + size.height as i32;
+    let mon_left = mp.x;
+    let mon_top = mp.y;
+    let mon_right = mp.x + ms.width as i32;
+    let mon_bottom = mp.y + ms.height as i32;
+    let off_top = top < mon_top - SLACK;
+    let off_bottom = bottom > mon_bottom + SLACK;
+    let off_left = left < mon_left - SLACK;
+    let off_right = right > mon_right + SLACK;
+    let oversize = size.width > ms.width || size.height > ms.height;
+    if !(off_top || off_bottom || off_left || off_right || oversize) {
+        return;
+    }
+    eprintln!(
+        "[yarrow] rescuing off-screen window — pos=({},{}) size=({},{}) monitor=({},{} {}x{})",
+        pos.x, pos.y, size.width, size.height, mp.x, mp.y, ms.width, ms.height,
+    );
+    // Default 1400 × 900, clamped to fit even on a 13" laptop.
+    let target_w = (1400u32).min(ms.width.saturating_sub(40));
+    let target_h = (900u32).min(ms.height.saturating_sub(40));
+    let _ = win.set_size(tauri::PhysicalSize::new(target_w, target_h));
+    let _ = win.center();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -33,6 +100,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .setup(|app| {
+            use tauri::Manager;
+            if let Some(win) = app.get_webview_window("main") {
+                rescue_offscreen_window(&win);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::cmd_init_workspace,
             commands::cmd_init_sample_workspace,
