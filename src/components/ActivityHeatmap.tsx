@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/tauri";
 import type { ActivityDay } from "../lib/types";
+import { useT, type StringKey } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -13,10 +14,20 @@ interface Props {
 const CELL = 12;
 const GAP = 2;
 
-const WINDOWS: Array<{ label: string; days: number }> = [
-  { label: "90 days", days: 90 },
-  { label: "6 months", days: 183 },
-  { label: "1 year", days: 365 },
+const WINDOWS: Array<{ labelKey: StringKey; days: number }> = [
+  { labelKey: "modals.activity.window90", days: 90 },
+  { labelKey: "modals.activity.window6Months", days: 183 },
+  { labelKey: "modals.activity.window1Year", days: 365 },
+];
+
+const WEEKDAY_KEYS: StringKey[] = [
+  "modals.activity.weekdaySun",
+  "modals.activity.weekdayMon",
+  "modals.activity.weekdayTue",
+  "modals.activity.weekdayWed",
+  "modals.activity.weekdayThu",
+  "modals.activity.weekdayFri",
+  "modals.activity.weekdaySat",
 ];
 
 function fmtDateLong(iso: string): string {
@@ -79,6 +90,7 @@ export default function ActivityHeatmap({ open, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hovered, setHovered] = useState<ActivityDay | null>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!open) return;
@@ -174,7 +186,7 @@ export default function ActivityHeatmap({ open, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+      className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center p-6"
       onClick={onClose}
     >
       <div
@@ -183,9 +195,9 @@ export default function ActivityHeatmap({ open, onClose }: Props) {
       >
         <div className="flex items-baseline justify-between px-6 pt-5 pb-3 border-b border-bd">
           <div>
-            <h2 className="font-serif text-2xl text-char">Activity</h2>
+            <h2 className="font-serif text-2xl text-char">{t("modals.activity.title")}</h2>
             <p className="font-serif italic text-xs text-t3 mt-0.5">
-              checkpoints per day, across every path
+              {t("modals.activity.subtitle")}
             </p>
           </div>
           <div className="flex items-center gap-1 text-xs">
@@ -199,7 +211,7 @@ export default function ActivityHeatmap({ open, onClose }: Props) {
                     : "text-t2 hover:bg-s2 hover:text-char"
                 }`}
               >
-                {w.label}
+                {t(w.labelKey)}
               </button>
             ))}
           </div>
@@ -210,22 +222,22 @@ export default function ActivityHeatmap({ open, onClose }: Props) {
             <div className="text-xs text-danger font-mono">{error}</div>
           ) : loading && expanded.every((d) => d.count === 0) ? (
             <div className="text-xs text-t3 font-serif italic py-8 text-center">
-              Reading your history…
+              {t("modals.activity.reading")}
             </div>
           ) : (
             <>
               <div className="grid grid-cols-4 gap-4 mb-5">
-                <StatBlock label="Checkpoints" value={stats.total} />
-                <StatBlock label="Active days" value={stats.activeDays} />
+                <StatBlock label={t("modals.activity.checkpoints")} value={stats.total} />
+                <StatBlock label={t("modals.activity.activeDays")} value={stats.activeDays} />
                 <StatBlock
-                  label="Current streak"
+                  label={t("modals.activity.currentStreak")}
                   value={stats.streak}
-                  unit={stats.streak === 1 ? "day" : "days"}
+                  unit={stats.streak === 1 ? t("modals.activity.dayUnit") : t("modals.activity.daysUnit")}
                 />
                 <StatBlock
-                  label="Longest streak"
+                  label={t("modals.activity.longestStreak")}
                   value={stats.best}
-                  unit={stats.best === 1 ? "day" : "days"}
+                  unit={stats.best === 1 ? t("modals.activity.dayUnit") : t("modals.activity.daysUnit")}
                 />
               </div>
 
@@ -255,13 +267,13 @@ export default function ActivityHeatmap({ open, onClose }: Props) {
                     className="flex flex-col text-2xs text-t3 font-mono mr-1"
                     style={{ gap: `${GAP}px` }}
                   >
-                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                      (d, i) => (
+                    {WEEKDAY_KEYS.map(
+                      (k, i) => (
                         <div
-                          key={d}
+                          key={k}
                           style={{ height: `${CELL}px`, lineHeight: `${CELL}px` }}
                         >
-                          {i % 2 === 1 ? d : ""}
+                          {i % 2 === 1 ? t(k) : ""}
                         </div>
                       ),
                     )}
@@ -304,13 +316,13 @@ export default function ActivityHeatmap({ open, onClose }: Props) {
                 <div className="flex items-center justify-between mt-4">
                   <div className="text-2xs text-t3 font-serif italic min-h-[18px]">
                     {hovered
-                      ? `${hovered.count} ${
-                          hovered.count === 1 ? "checkpoint" : "checkpoints"
-                        } on ${fmtDateLong(hovered.date)}`
-                      : "Hover a square for the date."}
+                      ? (hovered.count === 1
+                          ? t("modals.activity.tooltipOne", { count: String(hovered.count), date: fmtDateLong(hovered.date) })
+                          : t("modals.activity.tooltipMany", { count: String(hovered.count), date: fmtDateLong(hovered.date) }))
+                      : t("modals.activity.hoverHint")}
                   </div>
                   <div className="flex items-center gap-1.5 text-2xs text-t3 font-mono">
-                    <span>less</span>
+                    <span>{t("modals.activity.legendLess")}</span>
                     {INTENSITY_BG.map((bg, i) => (
                       <div
                         key={i}
@@ -322,7 +334,7 @@ export default function ActivityHeatmap({ open, onClose }: Props) {
                         className="rounded-[2px]"
                       />
                     ))}
-                    <span>more</span>
+                    <span>{t("modals.activity.legendMore")}</span>
                   </div>
                 </div>
               </div>
@@ -332,13 +344,13 @@ export default function ActivityHeatmap({ open, onClose }: Props) {
 
         <div className="px-6 py-3 border-t border-bd flex items-center justify-between">
           <span className="font-serif italic text-2xs text-t3">
-            Esc to close
+            {t("modals.activity.escClose")}
           </span>
           <button
             onClick={onClose}
             className="px-3 py-1.5 text-xs rounded-md text-t2 hover:bg-s2 hover:text-char transition"
           >
-            Close
+            {t("modals.activity.close")}
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { tokenDiff, type TokenOp } from "../lib/lineDiff";
+import { useT } from "../lib/i18n";
 
 /**
  * Friendly diff views for the Compare modal.
@@ -20,6 +21,10 @@ export type CompareDiffView =
 
 export const DEFAULT_COMPARE_VIEW: CompareDiffView = "summary";
 
+// Canonical English labels — kept here for layout/sizing references and
+// stable persisted-localStorage names. The actual UI labels rendered in
+// PathCompare / InlineDiffPane / this module pull translated strings via
+// the `paths.cmpdiff.view*` keys.
 export const COMPARE_VIEW_LABELS: Record<CompareDiffView, string> = {
   summary:    "Summary",
   track:      "Track changes",
@@ -216,16 +221,20 @@ export default function CompareDiff({ leftText, rightText, leftName, rightName, 
 
   // Whole-note banner: when a note lives on only one side, set the
   // expectation up front so the "all green" or "all struck-through"
-  // rendering inside the view reads as intentional, not as a bug.
+  // rendering inside the view reads as intentional, not as a bug. The
+  // translator keeps `<strong>` in their string by way of literal markers
+  // we re-stitch into React nodes.
   const banner = whole === "modified" ? null : (
     <div className={`px-5 py-2.5 border-b border-bd text-xs font-sans ${
       whole === "added"
         ? "bg-green-500/8 text-green-700 dark:text-green-400 border-b-green-500/30"
         : "bg-danger/8 text-danger border-b-danger/30"
     }`}>
-      {whole === "added"
-        ? <>This note is <strong>only on {rightName}</strong>. Showing its full content through the selected view.</>
-        : <>This note is <strong>only on {leftName}</strong> — it doesn't exist on {rightName}. Showing what would be lost.</>}
+      <CompareBanner
+        whole={whole}
+        leftName={leftName}
+        rightName={rightName}
+      />
     </div>
   );
 
@@ -239,6 +248,58 @@ export default function CompareDiff({ leftText, rightText, leftName, rightName, 
       {view === "marginalia" && <MarginaliaView diff={diff} leftName={leftName} rightName={rightName} whole={whole} />}
     </div>
   );
+}
+
+/// Banner shown above each diff view when a note exists on only one
+/// side. Translators keep `{name}` / `{leftName}` / `{rightName}` in the
+/// string; we split on the literal markers and stitch the bold path-name
+/// span back in so they don't have to ship raw HTML.
+function CompareBanner({
+  whole, leftName, rightName,
+}: { whole: WholeKind; leftName: string; rightName: string }) {
+  const t = useT();
+  if (whole === "added") {
+    const tpl = t("paths.cmpdiff.bannerAdded");
+    const parts = splitMarkers(tpl, ["{name}"]);
+    return (
+      <>
+        {parts.map((p, i) =>
+          p === "{name}"
+            ? <strong key={i}>{rightName}</strong>
+            : <span key={i}>{p}</span>,
+        )}
+      </>
+    );
+  }
+  const tpl = t("paths.cmpdiff.bannerRemoved");
+  const parts = splitMarkers(tpl, ["{leftName}", "{rightName}"]);
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (p === "{leftName}") return <strong key={i}>{leftName}</strong>;
+        if (p === "{rightName}") return <span key={i}>{rightName}</span>;
+        return <span key={i}>{p}</span>;
+      })}
+    </>
+  );
+}
+
+/// Generic marker-preserving split — stand-alone so view helpers can
+/// reach for it without importing from another module.
+function splitMarkers(s: string, markers: string[]): string[] {
+  let parts: string[] = [s];
+  for (const m of markers) {
+    const next: string[] = [];
+    for (const p of parts) {
+      const segs = p.split(m);
+      for (let i = 0; i < segs.length; i++) {
+        if (i > 0) next.push(m);
+        next.push(segs[i]);
+      }
+    }
+    parts = next;
+  }
+  return parts.filter((p) => p !== "");
 }
 
 // ─── shared primitives ──────────────────────────────────────────────────
@@ -291,12 +352,13 @@ function Stat({
 function SummaryView({ diff, leftName, rightName }: {
   diff: ProseDiff; leftName: string; rightName: string;
 }) {
+  const t = useT();
   const { stats, paragraphs } = diff;
   const [openIdx, setOpenIdx] = useState<number | null>(null);
 
-  // English headline built from stats — no LLM involved. If nothing
-  // actually changed we degrade to a soft "same text on both paths".
-  const headline = buildHeadline(stats, leftName, rightName);
+  // Headline built from stats — no LLM involved. If nothing actually
+  // changed we degrade to a soft "same text on both paths" line.
+  const headline = buildHeadline(t, stats, leftName, rightName);
 
   // Build bullets from the paragraph list: every change gets one entry
   // so the user sees a linear log of what happened.
@@ -307,10 +369,17 @@ function SummaryView({ diff, leftName, rightName }: {
   if (bullets.length === 0) {
     return (
       <div className="p-6 text-center">
-        <div className="font-serif text-lg text-char mb-1">No prose changed.</div>
+        <div className="font-serif text-lg text-char mb-1">{t("paths.cmpdiff.summaryNoProse")}</div>
         <div className="text-sm text-t2">
-          The file body on <span className="text-char">{leftName}</span> and
-          <span className="text-char"> {rightName}</span> is identical.
+          {(() => {
+            const tpl = t("paths.cmpdiff.summaryIdentical");
+            const parts = splitMarkers(tpl, ["{leftName}", "{rightName}"]);
+            return parts.map((p, i) => {
+              if (p === "{leftName}") return <span key={i} className="text-char">{leftName}</span>;
+              if (p === "{rightName}") return <span key={i} className="text-char">{rightName}</span>;
+              return <span key={i}>{p}</span>;
+            });
+          })()}
         </div>
       </div>
     );
@@ -323,27 +392,27 @@ function SummaryView({ diff, leftName, rightName }: {
           {headline}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Stat tone="add"  num={`+${stats.wordsAdded}`} label="words added" />
-          <Stat tone="cut"  num={`−${stats.wordsCut}`}   label="words cut" />
-          <Stat tone="edit" num={stats.parasEdited}      label="paragraphs edited" />
+          <Stat tone="add"  num={`+${stats.wordsAdded}`} label={t("paths.cmpdiff.statWordsAdded")} />
+          <Stat tone="cut"  num={`−${stats.wordsCut}`}   label={t("paths.cmpdiff.statWordsCut")} />
+          <Stat tone="edit" num={stats.parasEdited}      label={t("paths.cmpdiff.statParasEdited")} />
           {stats.parasAdded > 0 && (
-            <Stat tone="add" num={stats.parasAdded} label="paragraphs added" />
+            <Stat tone="add" num={stats.parasAdded} label={t("paths.cmpdiff.statParasAdded")} />
           )}
           {stats.parasRemoved > 0 && (
-            <Stat tone="cut" num={stats.parasRemoved} label="paragraphs cut" />
+            <Stat tone="cut" num={stats.parasRemoved} label={t("paths.cmpdiff.statParasCut")} />
           )}
-          <Stat tone="same" num={stats.parasSame} label="identical" />
+          <Stat tone="same" num={stats.parasSame} label={t("paths.cmpdiff.statIdentical")} />
         </div>
       </div>
 
       <div className="px-3 py-3">
         <div className="text-2xs uppercase tracking-wider font-sans font-semibold text-t3 px-3 mb-1">
-          Change log
+          {t("paths.cmpdiff.changeLog")}
         </div>
         <ul className="flex flex-col">
           {bullets.map(({ p, i }) => {
             const isOpen = openIdx === i;
-            const { markerCls, markerGlyph, headline: line } = describeChange(p, leftName, rightName);
+            const { markerCls, markerGlyph, headline: line } = describeChange(t, p, leftName, rightName);
             return (
               <li key={i} className="flex flex-col">
                 <button
@@ -365,11 +434,11 @@ function SummaryView({ diff, leftName, rightName }: {
                     {p.kind === "edited" && (
                       <>
                         <div className="text-[10px] font-sans font-bold tracking-wider uppercase text-danger mb-1">
-                          was — {leftName}
+                          {t("paths.cmpdiff.was", { name: leftName })}
                         </div>
                         <div className="text-ch2 mb-3">{p.leftText}</div>
                         <div className="text-[10px] font-sans font-bold tracking-wider uppercase text-green-600 dark:text-green-400 mb-1">
-                          now — {rightName}
+                          {t("paths.cmpdiff.now", { name: rightName })}
                         </div>
                         <div className="text-ch2">{p.rightText}</div>
                       </>
@@ -377,7 +446,7 @@ function SummaryView({ diff, leftName, rightName }: {
                     {p.kind === "added" && (
                       <>
                         <div className="text-[10px] font-sans font-bold tracking-wider uppercase text-green-600 dark:text-green-400 mb-1">
-                          new on — {rightName}
+                          {t("paths.cmpdiff.newOn", { name: rightName })}
                         </div>
                         <div className="text-ch2">{p.rightText}</div>
                       </>
@@ -385,7 +454,7 @@ function SummaryView({ diff, leftName, rightName }: {
                     {p.kind === "removed" && (
                       <>
                         <div className="text-[10px] font-sans font-bold tracking-wider uppercase text-danger mb-1">
-                          cut — was on {leftName}
+                          {t("paths.cmpdiff.cutWasOn", { name: leftName })}
                         </div>
                         <div className="text-ch2">{p.leftText}</div>
                       </>
@@ -401,54 +470,82 @@ function SummaryView({ diff, leftName, rightName }: {
   );
 }
 
+/// Compose the localized SummaryView headline. We build the sentence
+/// from per-stat fragments so each language can place its own
+/// connectors ("and", "y", "och") naturally without forcing translators
+/// to hand-craft every permutation.
 function buildHeadline(
+  t: ReturnType<typeof useT>,
   stats: ProseDiff["stats"],
   leftName: string,
   rightName: string,
 ): string {
   const bits: string[] = [];
   if (stats.parasEdited > 0) {
-    bits.push(`edits ${stats.parasEdited} paragraph${stats.parasEdited === 1 ? "" : "s"}`);
+    bits.push(
+      stats.parasEdited === 1
+        ? t("paths.cmpdiff.headlineEditsOne", { count: String(stats.parasEdited) })
+        : t("paths.cmpdiff.headlineEditsMany", { count: String(stats.parasEdited) }),
+    );
   }
   if (stats.parasAdded > 0) {
-    bits.push(`adds ${stats.parasAdded} new one${stats.parasAdded === 1 ? "" : "s"}`);
+    bits.push(
+      stats.parasAdded === 1
+        ? t("paths.cmpdiff.headlineAddsOne", { count: String(stats.parasAdded) })
+        : t("paths.cmpdiff.headlineAddsMany", { count: String(stats.parasAdded) }),
+    );
   }
   if (stats.parasRemoved > 0) {
-    bits.push(`cuts ${stats.parasRemoved}`);
+    bits.push(t("paths.cmpdiff.headlineCuts", { count: String(stats.parasRemoved) }));
   }
-  if (bits.length === 0) return `${rightName} matches ${leftName} exactly.`;
-  // "darker ending edits 3 paragraphs and adds 1 new one."
+  if (bits.length === 0) {
+    return t("paths.cmpdiff.headlineMatch", { leftName, rightName });
+  }
+  // Rough sentence joining — works for English / Spanish / Swedish where
+  // a comma-then-conjunction structure reads naturally.
   let sentence: string;
+  const conjunction = t("paths.cmpdiff.headlineAnd");
   if (bits.length === 1) sentence = bits[0];
-  else if (bits.length === 2) sentence = `${bits[0]} and ${bits[1]}`;
-  else sentence = `${bits.slice(0, -1).join(", ")}, and ${bits[bits.length - 1]}`;
+  else if (bits.length === 2) sentence = `${bits[0]} ${conjunction} ${bits[1]}`;
+  else sentence = `${bits.slice(0, -1).join(", ")}, ${conjunction} ${bits[bits.length - 1]}`;
   return `${rightName} ${sentence}.`;
 }
 
 function describeChange(
+  t: ReturnType<typeof useT>,
   p: ParaChange,
   leftName: string,
   rightName: string,
 ): { markerCls: string; markerGlyph: string; headline: string } {
-  const where = p.rightIdx != null ? `¶${p.rightIdx + 1}` : p.leftIdx != null ? `¶${p.leftIdx + 1}` : "";
+  const where = p.rightIdx != null
+    ? t("paths.cmpdiff.where", { n: String(p.rightIdx + 1) })
+    : p.leftIdx != null
+      ? t("paths.cmpdiff.where", { n: String(p.leftIdx + 1) })
+      : "";
   if (p.kind === "added") {
     return {
       markerCls: "text-green-600 dark:text-green-400 border-green-500/50 bg-green-500/15",
       markerGlyph: "+",
-      headline: `${where} — new paragraph on ${rightName}: “${shorten(p.rightText!)}”`,
+      headline: t("paths.cmpdiff.changeAdded", {
+        where, name: rightName, text: shorten(p.rightText!),
+      }),
     };
   }
   if (p.kind === "removed") {
     return {
       markerCls: "text-danger border-danger/50 bg-danger/15",
       markerGlyph: "−",
-      headline: `${where} — paragraph cut from ${leftName}: “${shorten(p.leftText!)}”`,
+      headline: t("paths.cmpdiff.changeRemoved", {
+        where, name: leftName, text: shorten(p.leftText!),
+      }),
     };
   }
   return {
     markerCls: "text-yeld border-yel/50 bg-yel/15",
     markerGlyph: "~",
-    headline: `${where} — edited: “${shorten(p.leftText!)}” → “${shorten(p.rightText!)}”`,
+    headline: t("paths.cmpdiff.changeEdited", {
+      where, from: shorten(p.leftText!), to: shorten(p.rightText!),
+    }),
   };
 }
 
@@ -462,12 +559,23 @@ function shorten(s: string, n = 60): string {
 function TrackView({ diff, leftName, rightName }: {
   diff: ProseDiff; leftName: string; rightName: string;
 }) {
+  const t = useT();
   const [hideDeletes, setHideDeletes] = useState(false);
 
   return (
     <div>
       <div className="px-5 py-2 border-b border-bd bg-paper-dim flex items-center gap-3 text-2xs text-t2">
-        <span>Reading <span className="text-yeld">{rightName}</span> with changes from <span className="text-ch2">{leftName}</span>.</span>
+        <span>
+          {(() => {
+            const tpl = t("paths.cmpdiff.trackHeader");
+            const parts = splitMarkers(tpl, ["{leftName}", "{rightName}"]);
+            return parts.map((p, i) => {
+              if (p === "{leftName}") return <span key={i} className="text-ch2">{leftName}</span>;
+              if (p === "{rightName}") return <span key={i} className="text-yeld">{rightName}</span>;
+              return <span key={i}>{p}</span>;
+            });
+          })()}
+        </span>
         <label className="ml-auto inline-flex items-center gap-1.5 cursor-pointer">
           <input
             type="checkbox"
@@ -475,7 +583,7 @@ function TrackView({ diff, leftName, rightName }: {
             onChange={(e) => setHideDeletes(e.target.checked)}
             className="accent-yel"
           />
-          <span>hide deletions</span>
+          <span>{t("paths.cmpdiff.hideDeletions")}</span>
         </label>
       </div>
       <div className="px-6 py-5 font-serif text-[15.5px] leading-[1.75] text-ch2">
@@ -533,6 +641,7 @@ function renderTrackPara(p: ParaChange, hideDeletes: boolean) {
 function SplitView({ diff, leftName, rightName, whole }: {
   diff: ProseDiff; leftName: string; rightName: string; whole: WholeKind;
 }) {
+  const t = useT();
   const [collapseSame, setCollapseSame] = useState(true);
 
   // One-sided notes: show the side that has content full-width with a
@@ -552,7 +661,7 @@ function SplitView({ diff, leftName, rightName, whole }: {
         <div className="pb-2 mb-3 border-b border-bd flex items-baseline justify-between">
           <span className={`font-serif italic text-lg ${headTone}`}>{pathName}</span>
           <span className="text-2xs font-sans uppercase tracking-wider text-t3">
-            {whole === "added" ? "added, side = right" : "cut, side = left"} · {side}
+            {whole === "added" ? t("paths.cmpdiff.splitAddedTag") : t("paths.cmpdiff.splitCutTag")} · {side}
           </span>
         </div>
         {text.split(/\n\s*\n+/).filter((p) => p.trim().length > 0).map((para, i) => (
@@ -595,10 +704,13 @@ function SplitView({ diff, leftName, rightName, whole }: {
             onChange={(e) => setCollapseSame(e.target.checked)}
             className="accent-yel"
           />
-          <span>collapse unchanged paragraphs</span>
+          <span>{t("paths.cmpdiff.collapseSame")}</span>
         </label>
         <span className="ml-auto font-mono text-t3 text-[10px]">
-          {diff.stats.parasChanged} of {diff.paragraphs.length} paragraphs differ
+          {t("paths.cmpdiff.parasDifferOf", {
+            changed: String(diff.stats.parasChanged),
+            total: String(diff.paragraphs.length),
+          })}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-0">
@@ -617,6 +729,7 @@ function SplitColumn({
   pathName: string;
   paraKey: "leftText" | "rightText";
 }) {
+  const t = useT();
   const headCls = side === "left"
     ? "text-yeld"
     : "text-accent2";
@@ -626,7 +739,7 @@ function SplitColumn({
       <div className="pb-2 mb-3 border-b border-bd flex items-baseline justify-between">
         <span className={`font-serif italic text-lg ${headCls}`}>{pathName}</span>
         <span className="text-2xs font-sans uppercase tracking-wider text-t3">
-          {side === "left" ? "was" : "now"}
+          {side === "left" ? t("paths.cmpdiff.splitWas") : t("paths.cmpdiff.splitNow")}
         </span>
       </div>
       <div className="font-serif text-[15.5px] leading-[1.75] text-ch2">
@@ -634,7 +747,9 @@ function SplitColumn({
           if ("gap" in item) {
             return (
               <div key={i} className="text-center text-t3 italic text-xs py-3 my-3 border-y border-dashed border-bd/60 font-serif">
-                — {item.gap} paragraph{item.gap === 1 ? "" : "s"} unchanged —
+                {item.gap === 1
+                  ? t("paths.cmpdiff.unchangedRunOne", { count: String(item.gap) })
+                  : t("paths.cmpdiff.unchangedRunMany", { count: String(item.gap) })}
               </div>
             );
           }
@@ -644,7 +759,7 @@ function SplitColumn({
           if (!text) {
             return (
               <p key={i} className="mb-4 text-t3 italic text-sm opacity-60">
-                [no paragraph on this side]
+                {t("paths.cmpdiff.splitNoPara")}
               </p>
             );
           }
@@ -673,6 +788,7 @@ function SplitColumn({
 function CardsView({ diff, leftName, rightName }: {
   diff: ProseDiff; leftName: string; rightName: string;
 }) {
+  const t = useT();
   // Build a flat list that alternates between change-cards and
   // "N unchanged" gap markers, preserving reading order.
   const out: Array<ParaChange | { gap: number }> = [];
@@ -690,21 +806,23 @@ function CardsView({ diff, leftName, rightName }: {
         if ("gap" in item) {
           return (
             <div key={i} className="text-center text-t3 italic text-xs py-1 font-serif">
-              · {item.gap} paragraph{item.gap === 1 ? "" : "s"} unchanged ·
+              {item.gap === 1
+                ? t("paths.cmpdiff.unchangedDotOne", { count: String(item.gap) })
+                : t("paths.cmpdiff.unchangedDotMany", { count: String(item.gap) })}
             </div>
           );
         }
         const kindLabel =
-          item.kind === "added"   ? `added on ${rightName}` :
-          item.kind === "removed" ? `cut on ${rightName}` :
-                                    `edited`;
+          item.kind === "added"   ? t("paths.cmpdiff.kindAddedOn", { name: rightName })
+          : item.kind === "removed" ? t("paths.cmpdiff.kindCutOn", { name: rightName })
+                                    : t("paths.cmpdiff.kindEdited");
         const kindCls =
           item.kind === "added"   ? "text-green-600 dark:text-green-400 bg-green-500/15"
           : item.kind === "removed" ? "text-danger bg-danger/15"
                                     : "text-yeld bg-yel/15";
         const where =
-          item.rightIdx != null ? `paragraph ${item.rightIdx + 1}`
-          : item.leftIdx != null ? `paragraph ${item.leftIdx + 1}`
+          item.rightIdx != null ? t("paths.cmpdiff.cardWhere", { n: String(item.rightIdx + 1) })
+          : item.leftIdx != null ? t("paths.cmpdiff.cardWhere", { n: String(item.leftIdx + 1) })
           : "";
         const single = item.kind !== "edited";
         return (
@@ -719,7 +837,7 @@ function CardsView({ diff, leftName, rightName }: {
               {item.kind !== "added" && (
                 <div className="px-5 py-4 bg-danger/[0.03] border-r border-bd">
                   <div className="text-[9.5px] font-sans font-bold tracking-[0.2em] uppercase text-danger mb-2">
-                    was — {leftName}
+                    {t("paths.cmpdiff.was", { name: leftName })}
                   </div>
                   {item.leftText}
                 </div>
@@ -727,7 +845,7 @@ function CardsView({ diff, leftName, rightName }: {
               {item.kind !== "removed" && (
                 <div className="px-5 py-4 bg-green-500/[0.03]">
                   <div className="text-[9.5px] font-sans font-bold tracking-[0.2em] uppercase text-green-600 dark:text-green-400 mb-2">
-                    now — {rightName}
+                    {t("paths.cmpdiff.now", { name: rightName })}
                   </div>
                   {item.rightText}
                 </div>
@@ -753,6 +871,7 @@ interface Annotation {
 function MarginaliaView({ diff, leftName, rightName, whole }: {
   diff: ProseDiff; leftName: string; rightName: string; whole: WholeKind;
 }) {
+  const t = useT();
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
   // Pure-remove note: no "new version" to read; show the *old* prose
   // instead, struck through, so the user still gets to read what would
@@ -768,8 +887,8 @@ function MarginaliaView({ diff, leftName, rightName, whole }: {
       annotations.push({
         paraIndex: i,
         kind: "added",
-        headline: "added",
-        body: `new on ${rightName} — didn't exist on ${leftName}`,
+        headline: t("paths.cmpdiff.marginAdded"),
+        body: t("paths.cmpdiff.marginAddedBody", { leftName, rightName }),
       });
       return;
     }
@@ -777,8 +896,11 @@ function MarginaliaView({ diff, leftName, rightName, whole }: {
       annotations.push({
         paraIndex: i,
         kind: "removed",
-        headline: "cut",
-        body: `was on ${leftName}: “${shorten(p.leftText!, 80)}”`,
+        headline: t("paths.cmpdiff.marginCut"),
+        body: t("paths.cmpdiff.marginCutBody", {
+          leftName,
+          text: shorten(p.leftText!, 80),
+        }),
       });
       return;
     }
@@ -788,8 +910,8 @@ function MarginaliaView({ diff, leftName, rightName, whole }: {
         paraIndex: i,
         kind: "edited",
         anchor: firstAdd?.text.trim() || undefined,
-        headline: "rephrased",
-        body: `was: “${shorten(p.leftText!, 80)}”`,
+        headline: t("paths.cmpdiff.marginEdited"),
+        body: t("paths.cmpdiff.marginEditedBody", { text: shorten(p.leftText!, 80) }),
       });
     }
   });
@@ -850,10 +972,10 @@ function MarginaliaView({ diff, leftName, rightName, whole }: {
       </div>
       <div className="px-5 py-5 bg-paper-dim">
         <div className="text-[10px] font-sans font-bold tracking-[0.2em] uppercase text-t3 pb-2 mb-3 border-b border-bd">
-          Changes · {rightName}
+          {t("paths.cmpdiff.marginHeading", { name: rightName })}
         </div>
         {annotations.length === 0 && (
-          <div className="text-xs italic text-t3 font-serif">No prose changed.</div>
+          <div className="text-xs italic text-t3 font-serif">{t("paths.cmpdiff.marginEmpty")}</div>
         )}
         <div className="flex flex-col gap-2">
           {annotations.map((a, idx) => {

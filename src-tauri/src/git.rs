@@ -1,13 +1,13 @@
 // All git2-rs operations live here. No other module calls git2 directly.
 // User-facing vocabulary: "checkpoint" = commit, "path" = branch, "sync" = push/pull.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use git2::{
     BranchType, Commit, Cred, FetchOptions, IndexAddOption, MergeOptions, ObjectType, Oid,
     PushOptions, RemoteCallbacks, Repository, RepositoryState, ResetType, Signature, Sort,
-    Tree, TreeBuilder,
+    Tree, TreeBuilder, TreeWalkMode, TreeWalkResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,9 +24,88 @@ pub fn open(path: &Path) -> Result<Repository> {
     Ok(Repository::open(path)?)
 }
 
+/// 2.1 Air-gapped notes. Registers (or unregisters) a per-note path in
+/// `.git/info/exclude` — git's per-clone gitignore that is **not** part
+/// of the working tree and never gets committed or pushed. The file
+/// itself stays in `notes/<slug>.md` on disk and is fully editable; it
+/// just becomes invisible to `git status`, `git add`, and every push.
+///
+/// Why per-clone exclude rather than the workspace's `.gitignore`:
+/// `.gitignore` is checked in. Listing private slugs there would leak
+/// the note titles via the commit history, which is exactly what we
+/// were trying to avoid by making the note private in the first place.
+/// `.git/info/exclude` solves this cleanly — it's a local file that
+/// only the user's machine ever sees.
+///
+/// Idempotent: re-registering an already-listed slug is a no-op,
+/// unregistering one that isn't listed is a no-op. Safe to call from
+/// every save.
+pub fn ensure_private_exclude(root: &Path, slug: &str, private: bool) -> Result<()> {
+    let exclude_path = root.join(".git").join("info").join("exclude");
+    let entry = format!("notes/{slug}.md");
+
+    let existing = if exclude_path.exists() {
+        std::fs::read_to_string(&exclude_path)?
+    } else {
+        String::new()
+    };
+
+    let mut lines: Vec<&str> = existing.lines().collect();
+    let already_listed = lines.iter().any(|l| l.trim() == entry);
+
+    if private && !already_listed {
+        if let Some(parent) = exclude_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut updated = existing.trim_end().to_string();
+        if !updated.is_empty() {
+            updated.push('\n');
+        }
+        updated.push_str(&format!("# yarrow:private — kept off sync\n{entry}\n"));
+        std::fs::write(&exclude_path, updated)?;
+    } else if !private && already_listed {
+        lines.retain(|l| l.trim() != entry);
+        // Drop the marker comment when no private entries remain so the
+        // file doesn't accumulate orphan headers.
+        let only_marker_left = lines
+            .iter()
+            .all(|l| l.trim().is_empty() || l.trim().starts_with('#'));
+        let body: String = if only_marker_left {
+            lines
+                .iter()
+                .filter(|l| !l.trim().starts_with("# yarrow:private"))
+                .copied()
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            lines.join("\n")
+        };
+        let mut trimmed = body.trim_end().to_string();
+        if !trimmed.is_empty() {
+            trimmed.push('\n');
+        }
+        std::fs::write(&exclude_path, trimmed)?;
+    }
+    Ok(())
+}
+
 pub fn init_workspace(path: &Path) -> Result<Repository> {
-    let repo = Repository::init(path)?;
+    let mut opts = git2::RepositoryInitOptions::new();
+    opts.initial_head("main");
+    let repo = Repository::init_opts(path, &opts)?;
     Ok(repo)
+}
+
+/// Create an empty commit on HEAD when the working tree has nothing
+/// to commit yet. Used as a last-resort seed during first sync so
+/// push has a branch to send.
+fn empty_root_commit(repo: &Repository) -> Result<Oid> {
+    let mut index = repo.index()?;
+    let tree_id = index.write_tree()?;
+    let tree = repo.find_tree(tree_id)?;
+    let sig = signature()?;
+    let oid = repo.commit(Some("HEAD"), &sig, &sig, "initial checkpoint", &tree, &[])?;
+    Ok(oid)
 }
 
 /// Stage all changes and create a checkpoint (commit). Returns the new OID.
@@ -46,74 +125,19 @@ pub fn checkpoint(repo: &Repository, message: &str) -> Result<Oid> {
     };
 
     // If nothing changed from the parent tree, skip.
+    // Skip the commit when the working tree matches the current HEAD's
+    // tree — there's nothing to record. This is the ONLY safe form of
+    // "collapse", because it doesn't move the branch ref. The older
+    // oscillation coalescer that walked further back and rewound the
+    // branch when an ancestor's tree matched has been removed: it was
+    // able to silently orphan unpublished commits (they lived in the
+    // object store and reflog, but no longer in any branch), which
+    // caused user edits to "disappear into history" after the next
+    // fetch force-checked-out the server's HEAD over what had been
+    // rewound away. Noisy history beats lost edits.
     if let Some(parent) = &parent_commit {
         if parent.tree()?.id() == tree_id {
             return Ok(parent.id());
-        }
-
-        // Oscillation coalescing. A very common pattern:
-        //   1. User types a space        → save → commit A (adds " ")
-        //   2. User backspaces the space → save → commit B (removes " ")
-        // Commit A and commit B both have real diffs, but the net effect
-        // is zero. If the working tree matches any recent local ancestor,
-        // roll HEAD back to that ancestor instead of stacking a new
-        // commit. Result: no history entry at all for paired edits that
-        // end back where they started.
-        //
-        // Guardrails:
-        //   • Only walk linear ancestry (no merge commits) — we can't
-        //     safely collapse one parent of a merge without losing the
-        //     other.
-        //   • Only coalesce past commits that aren't yet on a remote.
-        //     Anything published is immutable as far as we're concerned
-        //     — rewriting it would force-push on next sync.
-        //   • Small window (5 commits) so typical oscillation is caught
-        //     without infinite history walks.
-        const MAX_COALESCE: usize = 5;
-
-        // Collect remote-tracking tips so we can spot commits that have
-        // already been published. `refs/remotes/*` covers every remote.
-        let mut published: Vec<Oid> = Vec::new();
-        if let Ok(iter) = repo.references_glob("refs/remotes/*") {
-            for r in iter.flatten() {
-                if let Ok(c) = r.peel_to_commit() {
-                    published.push(c.id());
-                }
-            }
-        }
-        let is_published = |oid: Oid| -> bool {
-            published.iter().any(|&rem| {
-                rem == oid || repo.graph_descendant_of(rem, oid).unwrap_or(false)
-            })
-        };
-
-        // Skip coalescing entirely during a merge: mid-merge the working
-        // tree can coincidentally match a pre-merge ancestor, and rolling
-        // HEAD back there would destroy the in-progress merge state.
-        let in_merge = !matches!(repo.state(), RepositoryState::Clean);
-
-        // Only coalesce if HEAD itself isn't already pushed — if it is,
-        // we'd rewrite published history on the next sync.
-        if !in_merge && !is_published(parent.id()) && parent.parent_count() == 1 {
-            let mut cursor = parent.parent(0).ok();
-            for _ in 0..MAX_COALESCE {
-                let Some(ancestor) = cursor else { break; };
-                if ancestor.tree()?.id() == tree_id {
-                    // Match. Roll the current branch ref back to this
-                    // ancestor and return — no new commit, no diff.
-                    let target = ancestor.id();
-                    if let Ok(mut head_ref) = repo.head() {
-                        // `head_ref` resolves to the branch ref (e.g.
-                        // refs/heads/main) so set_target moves the
-                        // branch, not HEAD-as-symbolic.
-                        let _ = head_ref
-                            .set_target(target, "yarrow: coalesce oscillating save");
-                    }
-                    return Ok(target);
-                }
-                if ancestor.parent_count() != 1 { break; }
-                cursor = ancestor.parent(0).ok();
-            }
         }
     }
 
@@ -677,6 +701,319 @@ pub struct SyncOutcome {
     pub fetched: bool,
     pub pushed: bool,
     pub message: String,
+    /// When the sync performed a three-way merge and found conflicts,
+    /// this records how each one was resolved. Yarrow follows the
+    /// Obsidian/Dropbox pattern: the server version wins at the
+    /// original path, and the local (pre-merge) version is saved as a
+    /// sibling file `<path>.conflict-<machine>-<ts>.md` so the user
+    /// can review both and merge by hand.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conflicts: Vec<ConflictResolution>,
+    /// Workspace-relative paths whose on-disk contents changed between
+    /// pre-sync HEAD and post-sync HEAD. The frontend consumes this to
+    /// reload any open editor whose file we just rewrote under it —
+    /// without that reload, the editor's stale in-memory buffer gets
+    /// written back on the next autosave and the commit that carries
+    /// the write deletes the server's edit. Empty when nothing moved.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files_changed: Vec<String>,
+    /// Set when the pre-push quota check bailed locally — no network
+    /// push was attempted. Carries the offending files so the UI can
+    /// point the user at what to delete or shrink. `ok`/`pushed` are
+    /// both false in this case; the frontend treats this as a typed
+    /// "try again after freeing space" outcome, not a hard error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quota_blocked: Option<QuotaBlockInfo>,
+}
+
+impl SyncOutcome {
+    /// Blank outcome with all booleans false and every list empty. Used
+    /// to build the specific "quota blocked" outcome without having to
+    /// spell out every default field at each call-site.
+    pub fn blocked_skeleton(message: String, quota_blocked: QuotaBlockInfo) -> Self {
+        Self {
+            ok: false,
+            fetched: false,
+            pushed: false,
+            message,
+            conflicts: Vec::new(),
+            files_changed: Vec::new(),
+            quota_blocked: Some(quota_blocked),
+        }
+    }
+}
+
+/// A single local blob the pre-push estimate flagged as a likely
+/// quota-buster. Lives next to `SyncOutcome` because the frontend needs
+/// both shapes at once.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BlobCulprit {
+    /// Tree-relative path the blob last appeared at, best-effort — for
+    /// a blob that was added then deleted in the range, this is the
+    /// earliest sighting during the walk.
+    pub path: String,
+    /// Uncompressed blob bytes. Upper bound on what the blob
+    /// contributes to the pack (the pack applies delta compression).
+    pub size: u64,
+    pub oid: String,
+}
+
+/// Payload the frontend renders when the pre-push check blocks the
+/// sync. Carries numbers + named files so the banner can say "foo.mp4
+/// is 512 MB, you have 100 MB left, shrink or delete it" instead of a
+/// vague "over quota."
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct QuotaBlockInfo {
+    /// Upper-bound bytes the push would ship, per the pre-push estimate.
+    pub estimated_bytes: u64,
+    /// Bytes currently free, per the server's /quota probe — the min of
+    /// per-workspace and per-user remaining.
+    pub remaining_bytes: u64,
+    /// Largest locally-unpushed blobs, largest first, capped.
+    pub culprits: Vec<BlobCulprit>,
+    /// Copy-pastable command string the user can run to drop the
+    /// biggest culprit from their own unpushed history. Stage 1 only
+    /// populates this as a hint — the actual `shrink` command lands
+    /// with stage 4.
+    pub shrink_hint: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PushEstimate {
+    pub bytes: u64,
+    pub culprits: Vec<BlobCulprit>,
+}
+
+impl PushEstimate {
+    fn empty() -> Self {
+        Self { bytes: 0, culprits: Vec::new() }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConflictResolution {
+    pub path: String,
+    pub action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copy_path: Option<String>,
+}
+
+/// Auth material for a sync run. Either a generic PAT (`x-access-token`
+/// as the HTTP Basic username, the way GitHub and most git hosts want
+/// it) or an explicit username+password pair, which yarrow-server
+/// needs (Basic `email:pat` on `/git/<workspace_id>.git`).
+#[derive(Clone)]
+pub enum SyncCredentials {
+    None,
+    Token(String),
+    UserPassword { username: String, password: String },
+}
+
+impl SyncCredentials {
+    fn from_token(t: Option<&str>) -> Self {
+        match t {
+            Some(s) if !s.is_empty() => SyncCredentials::Token(s.to_string()),
+            _ => SyncCredentials::None,
+        }
+    }
+
+    fn build_callbacks(&self, insecure_tls: bool) -> RemoteCallbacks<'static> {
+        let cloned = self.clone();
+        let mut cb = RemoteCallbacks::new();
+        cb.credentials(move |_url, username, allowed| {
+            if allowed.contains(git2::CredentialType::SSH_KEY) {
+                if let Some(user) = username {
+                    return Cred::ssh_key_from_agent(user);
+                }
+            }
+            if allowed.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+                match &cloned {
+                    SyncCredentials::Token(t) => {
+                        return Cred::userpass_plaintext("x-access-token", t);
+                    }
+                    SyncCredentials::UserPassword { username, password } => {
+                        return Cred::userpass_plaintext(username, password);
+                    }
+                    SyncCredentials::None => {}
+                }
+            }
+            Cred::default()
+        });
+        if insecure_tls {
+            // Dev-only: accept every TLS certificate the server
+            // presents, including self-signed. libgit2 routes TLS
+            // verification failures through this callback when it's
+            // installed; returning `CertificateOk` short-circuits the
+            // normal PKI check.
+            cb.certificate_check(|_cert, _host| {
+                Ok(git2::CertificateCheckStatus::CertificateOk)
+            });
+        }
+        cb
+    }
+}
+
+/// Upper-bound estimate of how many net-new bytes a push of the current
+/// branch would ship. Used by the pre-push quota check so the client
+/// can short-circuit before uploading a pack the server would reject.
+///
+/// The estimate is the sum of uncompressed sizes of blobs reachable from
+/// the local HEAD commit that aren't already reachable from
+/// `tracking_ref_full` (the server's last-known tip of this branch). The
+/// real pack will be smaller (delta compression), so this over-estimates
+/// — which is the right direction for a quota gate: we never let a bad
+/// push through, and any over-rejection is cheap for the user to
+/// re-attempt after a fetch.
+///
+/// When the tracking ref is missing (first sync), we fall back to the
+/// full size of the HEAD tree's blobs as an upper bound.
+pub fn estimate_push_size(repo: &Repository, tracking_ref_full: &str) -> Result<PushEstimate> {
+    let head_oid = match repo.head().and_then(|r| r.peel_to_commit()) {
+        Ok(c) => c.id(),
+        Err(_) => return Ok(PushEstimate::empty()),
+    };
+
+    let tracking_oid = repo.refname_to_id(tracking_ref_full).ok();
+    if tracking_oid == Some(head_oid) {
+        return Ok(PushEstimate::empty());
+    }
+
+    // Seed the "already on server" set from the tracking commit's tree,
+    // when we have one. First-sync path: empty set, every blob counts.
+    let server_blobs: HashSet<Oid> = match tracking_oid {
+        Some(oid) => collect_tree_blob_oids(repo, oid)?,
+        None => HashSet::new(),
+    };
+
+    // Enumerate blobs the push would carry. For each commit in the
+    // local..tracking range, walk its tree and record blobs whose OIDs
+    // aren't already known to the server. Blob path is the first place
+    // we saw it in the walk — good enough to name a culprit in the UI.
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push(head_oid)?;
+    if let Some(oid) = tracking_oid {
+        let _ = revwalk.hide(oid);
+    }
+
+    let mut new_blobs: HashMap<Oid, (String, u64)> = HashMap::new();
+    for oid_res in revwalk {
+        let commit_oid = match oid_res {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let Ok(commit) = repo.find_commit(commit_oid) else { continue };
+        let Ok(tree) = commit.tree() else { continue };
+        tree.walk(TreeWalkMode::PreOrder, |root, entry| {
+            if !matches!(entry.kind(), Some(ObjectType::Blob)) {
+                return TreeWalkResult::Ok;
+            }
+            let eid = entry.id();
+            if server_blobs.contains(&eid) || new_blobs.contains_key(&eid) {
+                return TreeWalkResult::Ok;
+            }
+            if let Ok(blob) = repo.find_blob(eid) {
+                let name = entry.name().unwrap_or("<?>");
+                let path = if root.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{root}{name}")
+                };
+                new_blobs.insert(eid, (path, blob.size() as u64));
+            }
+            TreeWalkResult::Ok
+        })?;
+    }
+
+    // If we had no tracking ref and the HEAD tree is empty, this comes
+    // back zero — matches first-sync-of-empty-workspace.
+    if tracking_oid.is_none() && new_blobs.is_empty() {
+        let head_tree = repo.find_commit(head_oid)?.tree()?;
+        head_tree.walk(TreeWalkMode::PreOrder, |root, entry| {
+            if !matches!(entry.kind(), Some(ObjectType::Blob)) {
+                return TreeWalkResult::Ok;
+            }
+            if let Ok(blob) = repo.find_blob(entry.id()) {
+                let name = entry.name().unwrap_or("<?>");
+                let path = if root.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{root}{name}")
+                };
+                new_blobs.insert(entry.id(), (path, blob.size() as u64));
+            }
+            TreeWalkResult::Ok
+        })?;
+    }
+
+    let total: u64 = new_blobs.values().map(|(_, s)| *s).sum();
+    let mut culprits: Vec<BlobCulprit> = new_blobs
+        .into_iter()
+        .map(|(oid, (path, size))| BlobCulprit {
+            oid: oid.to_string(),
+            path,
+            size,
+        })
+        .collect();
+    culprits.sort_by(|a, b| b.size.cmp(&a.size));
+    culprits.truncate(5);
+
+    Ok(PushEstimate { bytes: total, culprits })
+}
+
+fn collect_tree_blob_oids(repo: &Repository, commit_oid: Oid) -> Result<HashSet<Oid>> {
+    let commit = repo.find_commit(commit_oid)?;
+    let tree = commit.tree()?;
+    let mut out = HashSet::new();
+    tree.walk(TreeWalkMode::PreOrder, |_root, entry| {
+        if matches!(entry.kind(), Some(ObjectType::Blob)) {
+            out.insert(entry.id());
+        }
+        TreeWalkResult::Ok
+    })?;
+    Ok(out)
+}
+
+/// Build the fully-qualified tracking ref name the way `sync_to_server`
+/// does for its wildcard fetch. Exposed so callers (notably the pre-push
+/// quota check in `cmd_sync`) can estimate push size against the same
+/// ref the push will actually compare to.
+pub fn server_tracking_ref(branch: &str) -> String {
+    format!("refs/yarrow/server-fetch/{branch}")
+}
+
+/// Fetch every branch from the server into the yarrow tracking-ref
+/// namespace, no push, no merge. Separate from `sync_to_server` because
+/// the post-purge recovery path needs to update the tracking ref
+/// *without* also pushing local commits — if we pushed, the big blob
+/// the user was trying to purge would go right back up.
+///
+/// The refspec uses `+` (force-update) so a server-side history rewrite
+/// doesn't leave the client stuck with a stale tracking ref. That's
+/// the whole point of this function: absorb the new history so a
+/// subsequent `discard_unsynced_commits` can hard-reset onto it.
+pub fn fetch_from_server(
+    repo: &Repository,
+    server_git_url: &str,
+    email: &str,
+    pat: &str,
+    insecure_tls: bool,
+) -> Result<()> {
+    if insecure_tls {
+        if let Ok(mut cfg) = repo.config() {
+            let _ = cfg.set_bool("http.sslVerify", false);
+        }
+    }
+    let mut remote = repo.remote_anonymous(server_git_url)?;
+    let tracking_prefix = "refs/yarrow/server-fetch";
+    let fetch_refspec = format!("+refs/heads/*:{}/*", tracking_prefix);
+    let creds = SyncCredentials::UserPassword {
+        username: email.to_string(),
+        password: pat.to_string(),
+    };
+    let mut fetch_opts = FetchOptions::new();
+    fetch_opts.remote_callbacks(creds.build_callbacks(insecure_tls));
+    remote.fetch(&[fetch_refspec], Some(&mut fetch_opts), None)?;
+    Ok(())
 }
 
 /// Sync with configured remote: fetch + fast-forward, then push.
@@ -685,89 +1022,617 @@ pub fn sync(repo: &Repository, remote_name: &str, token: Option<&str>) -> Result
     let mut remote = repo
         .find_remote(remote_name)
         .map_err(|_| YarrowError::NoRemote)?;
+    let branch = current_path_name(repo)?;
+    let fetch_head_name = format!("refs/remotes/{}/{}", remote_name, branch);
+    let fetch_refspec = format!("refs/heads/{0}:refs/remotes/{1}/{0}", branch, remote_name);
+    sync_with_remote(
+        repo,
+        &mut remote,
+        &SyncCredentials::from_token(token),
+        &branch,
+        &fetch_refspec,
+        Some(&fetch_head_name),
+        false,
+    )
+}
 
-    let mut callbacks = RemoteCallbacks::new();
-    let token_owned = token.map(|s| s.to_string());
-    callbacks.credentials(move |_url, username, allowed| {
-        if allowed.contains(git2::CredentialType::SSH_KEY) {
-            if let Some(user) = username {
-                return Cred::ssh_key_from_agent(user);
+/// Sync against a yarrow-server-style anonymous remote. The URL is
+/// never written to `.git/config` — it's constructed on the fly and
+/// the anonymous remote object goes out of scope at the end of this
+/// call. Safer than storing `https://email:pat@host/...` in the repo.
+pub fn sync_to_server(
+    repo: &Repository,
+    server_git_url: &str,
+    email: &str,
+    pat: &str,
+    insecure_tls: bool,
+) -> Result<SyncOutcome> {
+    // libgit2's `certificate_check` callback isn't always honored on
+    // Linux builds that use libcurl as the HTTP transport — the TLS
+    // verify happens inside libcurl before libgit2 gets a chance to
+    // ask us. Setting `http.sslVerify = false` on the repo config is
+    // the belt-and-suspenders fix: it works regardless of HTTP backend.
+    // Only applied when the workspace has explicitly opted into
+    // `insecure_skip_tls_verify` via Settings (the "TLS: insecure" badge
+    // in the UI). Persists on the repo, which matches user intent.
+    if insecure_tls {
+        if let Ok(mut cfg) = repo.config() {
+            let _ = cfg.set_bool("http.sslVerify", false);
+        }
+    }
+
+    // Fresh workspaces come up from `init_workspace` with no HEAD —
+    // git init, but no initial commit. Sync would then fail at
+    // `current_path_name` below with an "unborn branch" error before
+    // making any network call, and the user sees "nothing happens."
+    // If there's anything on disk, checkpoint it; otherwise create an
+    // empty initial commit so the push has a branch to send.
+    if repo.head().is_err() {
+        match checkpoint(repo, "initial checkpoint (first sync)") {
+            Ok(_) => {}
+            Err(_) => {
+                // Checkpoint can fail if the working tree has nothing
+                // to commit at all — force an empty root commit so HEAD
+                // exists. This only runs once per workspace.
+                if let Err(e) = empty_root_commit(repo) {
+                    return Err(YarrowError::Other(format!(
+                        "couldn't initialize local history for first sync: {e}"
+                    )));
+                }
             }
         }
-        if allowed.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
-            if let Some(t) = &token_owned {
-                return Cred::userpass_plaintext("x-access-token", t);
-            }
-        }
-        Cred::default()
-    });
+    }
+
+    let mut remote = repo.remote_anonymous(server_git_url)?;
+    let branch = current_path_name(repo)?;
+    // Wildcard fetch so the first sync against a freshly-created
+    // empty vault is a no-op instead of an error. With an explicit
+    // source ref (`refs/heads/main:...`) libgit2 returns "couldn't
+    // find remote ref" when the server has nothing yet, which would
+    // break the very first push on a new vault.
+    let tracking_prefix = "refs/yarrow/server-fetch";
+    let fetch_refspec = format!("+refs/heads/*:{}/*", tracking_prefix);
+    let tracking = format!("{}/{}", tracking_prefix, branch);
+    let creds = SyncCredentials::UserPassword {
+        username: email.to_string(),
+        password: pat.to_string(),
+    };
+    sync_with_remote(
+        repo,
+        &mut remote,
+        &creds,
+        &branch,
+        &fetch_refspec,
+        Some(&tracking),
+        insecure_tls,
+    )
+}
+
+fn sync_with_remote(
+    repo: &Repository,
+    remote: &mut git2::Remote<'_>,
+    credentials: &SyncCredentials,
+    branch: &str,
+    fetch_refspec: &str,
+    fetched_ref: Option<&str>,
+    insecure_tls: bool,
+) -> Result<SyncOutcome> {
+    // Capture HEAD BEFORE any pull happens. After fast-forward / merge
+    // updates the ref, we diff the two tree OIDs to know which paths on
+    // disk the pull just rewrote. The frontend uses that list to reload
+    // any open editor whose file we touched — otherwise the editor's
+    // stale React state writes back on the next autosave and the commit
+    // that carries the write deletes whatever the server just sent us.
+    let pre_sync_head: Option<Oid> = repo
+        .head()
+        .and_then(|r| r.peel_to_commit())
+        .map(|c| c.id())
+        .ok();
 
     let mut fetch_opts = FetchOptions::new();
-    fetch_opts.remote_callbacks(callbacks);
-
-    let branch = current_path_name(repo)?;
-    let refspec = format!("refs/heads/{0}:refs/remotes/{1}/{0}", branch, remote_name);
-    remote.fetch(&[&refspec], Some(&mut fetch_opts), None)?;
+    fetch_opts.remote_callbacks(credentials.build_callbacks(insecure_tls));
+    remote.fetch(&[fetch_refspec], Some(&mut fetch_opts), None)?;
 
     let mut fetched = false;
-    let fetch_head_name = format!("refs/remotes/{}/{}", remote_name, branch);
-    if let Ok(remote_ref) = repo.find_reference(&fetch_head_name) {
-        let remote_commit = remote_ref.peel_to_commit()?;
-        let annotated = repo.find_annotated_commit(remote_commit.id())?;
-        let analysis = repo.merge_analysis(&[&annotated])?;
-        if analysis.0.is_up_to_date() {
-            // nothing to pull
-        } else if analysis.0.is_fast_forward() {
+    let mut conflicts_recorded: Vec<ConflictResolution> = Vec::new();
+    if let Some(tracking) = fetched_ref {
+        if let Ok(remote_ref) = repo.find_reference(tracking) {
+            let remote_commit = remote_ref.peel_to_commit()?;
+            let annotated = repo.find_annotated_commit(remote_commit.id())?;
+            let analysis = repo.merge_analysis(&[&annotated])?;
+            if analysis.0.is_up_to_date() {
+                // Local has everything remote has (and possibly more
+                // unpushed commits). Nothing to pull; push will flush.
+            } else if analysis.0.is_fast_forward() {
+                // Remote has strictly more history than local. Safe to
+                // jump HEAD forward + overwrite working tree — pre-sync
+                // checkpoint in cmd_sync captured any pending edits as
+                // real commits already, so this force-checkout cannot
+                // lose unsaved buffer content any more.
+                let refname = format!("refs/heads/{}", branch);
+                match repo.find_reference(&refname) {
+                    Ok(mut reference) => {
+                        reference.set_target(remote_commit.id(), "sync fast-forward")?;
+                    }
+                    Err(_) => {
+                        repo.reference(&refname, remote_commit.id(), true, "sync fast-forward")?;
+                    }
+                }
+                repo.set_head(&refname)?;
+                repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+                fetched = true;
+            } else {
+                // Divergent: both local and remote have unique
+                // commits. Attempt a real three-way merge. If the
+                // merge has no conflicts, commit it and continue to
+                // the push step. If it DOES, abort and surface the
+                // conflict to the UI — the user resolves via the
+                // desktop's existing bring-together flow.
+                match attempt_merge(repo, &annotated, &remote_commit, branch) {
+                    MergeResult::Clean => {
+                        fetched = true;
+                    }
+                    MergeResult::ResolvedWithCopies(res) => {
+                        fetched = true;
+                        conflicts_recorded = res;
+                    }
+                    MergeResult::Failed(msg) => {
+                        let _ = repo.cleanup_state();
+                        return Ok(SyncOutcome {
+                            ok: false,
+                            fetched: false,
+                            pushed: false,
+                            message: format!("merge failed: {msg}"),
+                            conflicts: Vec::new(),
+                            files_changed: Vec::new(),
+                            quota_blocked: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Push with per-ref rejection surfacing + one automatic retry on
+    // ref-race (non-fast-forward / "incorrect old value" — happens
+    // when another client pushed between our fetch and our push, or
+    // when a rename fires the ref tip moved between pre-push fetch
+    // and the push itself). The web client already does this; desktop
+    // had to surface the error verbatim before. Now both clients
+    // recover silently from the common race.
+    let push_refspec = format!("refs/heads/{0}:refs/heads/{0}", branch);
+    let mut push_result;
+    let mut per_ref_rejections: Vec<String>;
+    let mut retries = 0usize;
+    loop {
+        let rejections: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut push_opts = PushOptions::new();
+        let mut push_cb = credentials.build_callbacks(insecure_tls);
+        {
+            let rejections = rejections.clone();
+            push_cb.push_update_reference(move |refname, status| {
+                if let Some(msg) = status {
+                    if let Ok(mut guard) = rejections.lock() {
+                        guard.push(format!("{refname}: {msg}"));
+                    }
+                }
+                Ok(())
+            });
+        }
+        push_opts.remote_callbacks(push_cb);
+        push_result = remote.push(&[&push_refspec], Some(&mut push_opts));
+        per_ref_rejections = rejections.lock().map(|g| g.clone()).unwrap_or_default();
+
+        // Retry once on ref-race: re-fetch the remote and attempt a
+        // fast-forward merge of the new remote head into our local
+        // branch, then push again. If merge is not fast-forward we
+        // bail out — the existing merge path above handles that for
+        // the next user-initiated sync.
+        let race = per_ref_rejections
+            .iter()
+            .any(|m| is_ref_race(m));
+        if push_result.is_ok() && race && retries == 0 {
+            retries += 1;
+            let mut fetch_opts = FetchOptions::new();
+            fetch_opts.remote_callbacks(credentials.build_callbacks(insecure_tls));
+            if remote
+                .fetch(&[fetch_refspec], Some(&mut fetch_opts), None)
+                .is_err()
+            {
+                break;
+            }
+            let Some(tracking) = fetched_ref else { break };
+            let Ok(remote_ref) = repo.find_reference(tracking) else { break };
+            let Ok(remote_commit) = remote_ref.peel_to_commit() else { break };
+            let Ok(annotated) = repo.find_annotated_commit(remote_commit.id()) else { break };
+            let Ok(analysis) = repo.merge_analysis(&[&annotated]) else { break };
+            if analysis.0.is_up_to_date() {
+                // Somehow already caught up — retry the push as-is.
+                continue;
+            }
+            if !analysis.0.is_fast_forward() {
+                // Divergent; don't try to auto-merge in the retry
+                // loop. User's next sync runs the merge path.
+                break;
+            }
             let refname = format!("refs/heads/{}", branch);
-            let mut reference = repo.find_reference(&refname)?;
-            reference.set_target(remote_commit.id(), "sync fast-forward")?;
-            repo.set_head(&refname)?;
-            repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+            match repo.find_reference(&refname) {
+                Ok(mut reference) => {
+                    let _ = reference
+                        .set_target(remote_commit.id(), "sync ref-race ff");
+                }
+                Err(_) => {
+                    let _ = repo.reference(&refname, remote_commit.id(), true, "sync ref-race ff");
+                }
+            }
+            if repo.set_head(&refname).is_err() {
+                break;
+            }
+            let _ = repo
+                .checkout_head(Some(git2::build::CheckoutBuilder::default().force()));
             fetched = true;
-        } else {
-            // divergent — v1: skip (surface error)
-            return Ok(SyncOutcome {
-                ok: false,
-                fetched: false,
-                pushed: false,
-                message: "remote has diverged; bring-together required".into(),
+            continue;
+        }
+        break;
+    }
+
+    // A push is only a real success when BOTH the top-level call
+    // returned Ok AND no ref came back with a rejection message.
+    let pushed = push_result.is_ok() && per_ref_rejections.is_empty();
+    let message = match (&push_result, per_ref_rejections.as_slice()) {
+        (Ok(_), []) => {
+            if !conflicts_recorded.is_empty() {
+                format!(
+                    "synced — {} conflict{} resolved by keeping server version; local saved as .conflict-* copies",
+                    conflicts_recorded.len(),
+                    if conflicts_recorded.len() == 1 { "" } else { "s" }
+                )
+            } else if fetched {
+                "synced (pulled + pushed)".into()
+            } else {
+                "synced".into()
+            }
+        }
+        (Ok(_), rejections) => {
+            // Top-level push ok but server rejected refs. This is the
+            // case we were silently swallowing. Surface verbatim — the
+            // message usually names the exact hook / ref-race / quota
+            // reason (e.g. "refs/heads/main: pre-receive hook declined").
+            format!("server rejected push: {}", rejections.join("; "))
+        }
+        (Err(e), _) => format!("push failed: {e}"),
+    };
+
+    // Diff pre- and post-sync HEAD to find which workspace files the
+    // pull rewrote. Frontend reloads any open editor pointed at one of
+    // these paths so a stale buffer can't overwrite the server's edit
+    // on the next save.
+    let post_sync_head: Option<Oid> = repo
+        .head()
+        .and_then(|r| r.peel_to_commit())
+        .map(|c| c.id())
+        .ok();
+    let files_changed = match (pre_sync_head, post_sync_head) {
+        (Some(from), Some(to)) if from != to => changed_paths_between(repo, from, to),
+        _ => Vec::new(),
+    };
+
+    Ok(SyncOutcome {
+        ok: pushed,
+        fetched,
+        pushed,
+        message,
+        conflicts: conflicts_recorded,
+        files_changed,
+        quota_blocked: None,
+    })
+}
+
+/// Workspace-relative paths that differ between two commit trees, sorted
+/// and deduped. Used by sync to tell the frontend which open notes need
+/// reloading after a pull. Returns an empty list on any git error — the
+/// frontend tolerates that (degrades to "don't reload") and a failure
+/// here must not fail the sync itself.
+fn changed_paths_between(repo: &Repository, from: Oid, to: Oid) -> Vec<String> {
+    let Ok(from_tree) = repo.find_commit(from).and_then(|c| c.tree()) else {
+        return Vec::new();
+    };
+    let Ok(to_tree) = repo.find_commit(to).and_then(|c| c.tree()) else {
+        return Vec::new();
+    };
+    let Ok(diff) = repo.diff_tree_to_tree(Some(&from_tree), Some(&to_tree), None) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<String> = Vec::new();
+    for delta in diff.deltas() {
+        if let Some(p) = delta.new_file().path().and_then(|p| p.to_str()) {
+            paths.push(p.to_string());
+        }
+        if let Some(p) = delta.old_file().path().and_then(|p| p.to_str()) {
+            paths.push(p.to_string());
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+/// True when a per-ref rejection looks like "another client raced us
+/// to the server" rather than a real user-actionable error (auth fail,
+/// quota exceeded, hook decline).
+fn is_ref_race(msg: &str) -> bool {
+    let l = msg.to_ascii_lowercase();
+    l.contains("non-fast-forward")
+        || l.contains("non fast forward")
+        || l.contains("not a simple fast-forward")
+        || l.contains("incorrect old value")
+        || l.contains("failed to update ref")
+        || l.contains("stale info")
+        || l.contains("rejected")
+}
+
+enum MergeResult {
+    Clean,
+    ResolvedWithCopies(Vec<ConflictResolution>),
+    Failed(String),
+}
+
+/// Three-way merge of `remote_commit` into the current HEAD with
+/// auto-conflict resolution via the Obsidian/Dropbox "conflict copy"
+/// pattern: when a file is conflicted, server content wins at the
+/// original path, and local (pre-merge) content is saved as a
+/// sibling `<stem>.conflict-<host>-<ts>.<ext>`. Never leaves the repo
+/// in a half-merged state; never leaves conflict markers in files.
+/// User reconciles by comparing the original and the .conflict-* copy.
+fn attempt_merge(
+    repo: &Repository,
+    annotated: &git2::AnnotatedCommit<'_>,
+    remote_commit: &git2::Commit<'_>,
+    branch: &str,
+) -> MergeResult {
+    let mut merge_opts = git2::MergeOptions::new();
+    merge_opts.fail_on_conflict(false);
+    if !matches!(repo.state(), git2::RepositoryState::Clean) {
+        return MergeResult::Failed(
+            "repo is in the middle of another merge/rebase — finish that first".into(),
+        );
+    }
+    if let Err(e) = repo.merge(&[annotated], Some(&mut merge_opts), None) {
+        return MergeResult::Failed(e.to_string());
+    }
+
+    let mut index = match repo.index() {
+        Ok(i) => i,
+        Err(e) => return MergeResult::Failed(format!("read index: {e}")),
+    };
+
+    let mut resolutions: Vec<ConflictResolution> = Vec::new();
+    if index.has_conflicts() {
+        match resolve_conflicts_via_copies(repo, &mut index) {
+            Ok(list) => resolutions = list,
+            Err(e) => {
+                let _ = repo.cleanup_state();
+                return MergeResult::Failed(format!("resolve conflicts: {e}"));
+            }
+        }
+    }
+
+    // Merge commit — index is guaranteed conflict-free now.
+    let tree_id = match index.write_tree() {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = repo.cleanup_state();
+            return MergeResult::Failed(format!("write index tree: {e}"));
+        }
+    };
+    let tree = match repo.find_tree(tree_id) {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = repo.cleanup_state();
+            return MergeResult::Failed(format!("find merge tree: {e}"));
+        }
+    };
+    let sig = match signature() {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = repo.cleanup_state();
+            return MergeResult::Failed(format!("signature: {e}"));
+        }
+    };
+    let head_commit = match repo.head().and_then(|r| r.peel_to_commit()) {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = repo.cleanup_state();
+            return MergeResult::Failed(format!("head commit: {e}"));
+        }
+    };
+    let msg = if resolutions.is_empty() {
+        format!("merge remote {branch} via sync")
+    } else {
+        format!(
+            "merge remote {branch} via sync ({} conflict{} auto-resolved; see .conflict-* copies)",
+            resolutions.len(),
+            if resolutions.len() == 1 { "" } else { "s" }
+        )
+    };
+    let parents = [&head_commit, remote_commit];
+    let commit_id = match repo.commit(Some("HEAD"), &sig, &sig, &msg, &tree, &parents) {
+        Ok(id) => id,
+        Err(e) => {
+            let _ = repo.cleanup_state();
+            return MergeResult::Failed(format!("create merge commit: {e}"));
+        }
+    };
+
+    let refname = format!("refs/heads/{}", branch);
+    if let Ok(mut reference) = repo.find_reference(&refname) {
+        let _ = reference.set_target(commit_id, "sync merge");
+    }
+    let _ = repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()));
+    let _ = repo.cleanup_state();
+    if resolutions.is_empty() {
+        MergeResult::Clean
+    } else {
+        MergeResult::ResolvedWithCopies(resolutions)
+    }
+}
+
+fn resolve_conflicts_via_copies(
+    repo: &Repository,
+    index: &mut git2::Index,
+) -> std::result::Result<Vec<ConflictResolution>, String> {
+    use std::path::Path as StdPath;
+
+    let workdir = match repo.workdir() {
+        Some(w) => w.to_path_buf(),
+        None => return Err("bare repo has no working tree".into()),
+    };
+    let ts = chrono::Utc::now().format("%Y-%m-%d-%H%M%S").to_string();
+    let host = std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "desktop".into());
+    let host = sanitize_host(&host);
+
+    // Drain conflict entries into an owned list first. We can't hold
+    // a borrow on `index` while mutating it.
+    #[derive(Debug)]
+    struct Triple {
+        path: String,
+        our_oid: Option<git2::Oid>,
+        their_oid: Option<git2::Oid>,
+    }
+    let mut work: Vec<Triple> = Vec::new();
+    {
+        let conflicts = index.conflicts().map_err(|e| e.to_string())?;
+        for c in conflicts {
+            let c = c.map_err(|e| e.to_string())?;
+            let path = c
+                .our
+                .as_ref()
+                .or(c.their.as_ref())
+                .or(c.ancestor.as_ref())
+                .and_then(|e| std::str::from_utf8(&e.path).ok().map(String::from))
+                .unwrap_or_default();
+            work.push(Triple {
+                path,
+                our_oid: c.our.as_ref().map(|e| e.id),
+                their_oid: c.their.as_ref().map(|e| e.id),
             });
         }
     }
 
-    // Push
-    let mut push_callbacks = RemoteCallbacks::new();
-    let token_owned2 = token.map(|s| s.to_string());
-    push_callbacks.credentials(move |_url, username, allowed| {
-        if allowed.contains(git2::CredentialType::SSH_KEY) {
-            if let Some(user) = username {
-                return Cred::ssh_key_from_agent(user);
-            }
+    let mut resolutions = Vec::with_capacity(work.len());
+    for triple in work {
+        if triple.path.is_empty() {
+            continue;
         }
-        if allowed.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
-            if let Some(t) = &token_owned2 {
-                return Cred::userpass_plaintext("x-access-token", t);
-            }
-        }
-        Cred::default()
-    });
-    let mut push_opts = PushOptions::new();
-    push_opts.remote_callbacks(push_callbacks);
-    let push_refspec = format!("refs/heads/{0}:refs/heads/{0}", branch);
-    let push_result = remote.push(&[&push_refspec], Some(&mut push_opts));
+        let rel = StdPath::new(&triple.path).to_path_buf();
+        // Clear the conflict entry (stages 1/2/3) for this path from
+        // the index. We re-stage whatever we end up writing below.
+        let _ = index.remove_path(&rel);
 
-    let pushed = push_result.is_ok();
-    let message = match push_result {
-        Ok(_) => "synced".into(),
-        Err(e) => format!("fetched ok, push failed: {}", e),
+        let abs = workdir.join(&rel);
+        let (resolution, copy_rel_opt) = match (triple.our_oid, triple.their_oid) {
+            (Some(our), Some(their)) => {
+                // Both edited same file. Take theirs at the original
+                // path; save ours as `.conflict-*` copy.
+                let our_blob = repo.find_blob(our).map_err(|e| e.to_string())?;
+                let their_blob = repo.find_blob(their).map_err(|e| e.to_string())?;
+                let copy_rel = conflict_copy_path(&triple.path, &host, &ts);
+                let abs_copy = workdir.join(&copy_rel);
+                if let Some(parent) = abs_copy.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                std::fs::write(&abs_copy, our_blob.content()).map_err(|e| e.to_string())?;
+                if let Some(parent) = abs.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                std::fs::write(&abs, their_blob.content()).map_err(|e| e.to_string())?;
+                index
+                    .add_path(StdPath::new(&copy_rel))
+                    .map_err(|e| e.to_string())?;
+                index.add_path(&rel).map_err(|e| e.to_string())?;
+                (
+                    "kept-server-version-saved-local-as-copy".to_string(),
+                    Some(copy_rel),
+                )
+            }
+            (Some(our), None) => {
+                // Remote deleted; we edited. Save ours as copy,
+                // accept remote delete at original path.
+                let our_blob = repo.find_blob(our).map_err(|e| e.to_string())?;
+                let copy_rel = conflict_copy_path(&triple.path, &host, &ts);
+                let abs_copy = workdir.join(&copy_rel);
+                if let Some(parent) = abs_copy.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                std::fs::write(&abs_copy, our_blob.content()).map_err(|e| e.to_string())?;
+                if abs.exists() {
+                    let _ = std::fs::remove_file(&abs);
+                }
+                index
+                    .add_path(StdPath::new(&copy_rel))
+                    .map_err(|e| e.to_string())?;
+                (
+                    "accepted-remote-delete-saved-local-as-copy".to_string(),
+                    Some(copy_rel),
+                )
+            }
+            (None, Some(their)) => {
+                // We deleted; remote edited. Take theirs — the user's
+                // delete becomes the minority action.
+                let their_blob = repo.find_blob(their).map_err(|e| e.to_string())?;
+                if let Some(parent) = abs.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                std::fs::write(&abs, their_blob.content()).map_err(|e| e.to_string())?;
+                index.add_path(&rel).map_err(|e| e.to_string())?;
+                ("kept-server-version-over-local-delete".to_string(), None)
+            }
+            (None, None) => ("both-sides-deleted".to_string(), None),
+        };
+
+        resolutions.push(ConflictResolution {
+            path: triple.path,
+            action: resolution,
+            copy_path: copy_rel_opt,
+        });
+    }
+
+    index.write().map_err(|e| e.to_string())?;
+    Ok(resolutions)
+}
+
+fn conflict_copy_path(original: &str, host: &str, ts: &str) -> String {
+    use std::path::Path as StdPath;
+    let path = StdPath::new(original);
+    let parent = path.parent();
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("note");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    let filename = if ext.is_empty() {
+        format!("{stem}.conflict-{host}-{ts}")
+    } else {
+        format!("{stem}.conflict-{host}-{ts}.{ext}")
     };
+    match parent {
+        Some(p) if !p.as_os_str().is_empty() => p.join(filename).to_string_lossy().into_owned(),
+        _ => filename,
+    }
+}
 
-    Ok(SyncOutcome {
-        ok: pushed || fetched,
-        fetched,
-        pushed,
-        message,
-    })
+fn sanitize_host(raw: &str) -> String {
+    raw.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
 }
 
 pub fn set_remote(repo: &Repository, name: &str, url: &str) -> Result<()> {
@@ -783,6 +1648,131 @@ pub fn reset_hard_head(repo: &Repository) -> Result<()> {
     let head = repo.head()?.peel(ObjectType::Commit)?;
     repo.reset(&head, ResetType::Hard, None)?;
     Ok(())
+}
+
+/// A single commit from the tracking..HEAD range, returned as part of
+/// the discard-unsynced-changes preview so the UI can show the user
+/// what they're about to throw away.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DiscardedCommit {
+    pub oid: String,
+    /// First line of the commit message — what the UI lists.
+    pub summary: String,
+    /// Unix seconds. Rendered in the preview as "3 minutes ago" etc.
+    pub time: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DiscardOutcome {
+    /// True when the caller passed `confirm=true` and the reset ran.
+    /// False when this was a dry-run preview.
+    pub performed: bool,
+    /// Count of commits that are (or would be) discarded.
+    pub commits_ahead: usize,
+    /// Newest-first commit summaries for the preview list.
+    pub commits: Vec<DiscardedCommit>,
+    /// The commit the local branch was (or would be) reset to — the
+    /// last-known server tip. `None` when no tracking ref exists yet
+    /// (i.e. first-ever sync).
+    pub reset_to_oid: Option<String>,
+    pub reset_to_summary: Option<String>,
+}
+
+/// Drop local commits that the server doesn't have. The "unstick" action
+/// for the pre-push quota check: when a too-big local commit is stuck
+/// in unpushed history and the user hasn't made other work they need to
+/// preserve, a hard reset to the tracking ref throws away the offending
+/// commit along with anything else ahead of the server.
+///
+/// When `confirm=false`, returns the preview only — nothing is reset.
+/// The UI should call this once with `false`, show the user the commit
+/// list, and call again with `true` on their go-ahead.
+///
+/// Refuses to run against an empty tracking ref: without one, a hard
+/// reset would have no target, and "first sync never happened" is a
+/// different problem this function shouldn't try to solve.
+pub fn discard_unsynced_commits(
+    repo: &Repository,
+    tracking_ref: &str,
+    confirm: bool,
+) -> Result<DiscardOutcome> {
+    let head_oid = repo
+        .head()
+        .and_then(|r| r.peel_to_commit())
+        .map(|c| c.id())
+        .map_err(|_| YarrowError::Other("no local HEAD to discard from".into()))?;
+
+    let tracking_oid = repo.refname_to_id(tracking_ref).ok();
+    let Some(tracking_oid) = tracking_oid else {
+        return Err(YarrowError::Other(
+            "no record of a previous sync — try syncing first, then discard if it fails".into(),
+        ));
+    };
+
+    if head_oid == tracking_oid {
+        return Ok(DiscardOutcome {
+            performed: false,
+            commits_ahead: 0,
+            commits: Vec::new(),
+            reset_to_oid: Some(tracking_oid.to_string()),
+            reset_to_summary: commit_summary(repo, tracking_oid),
+        });
+    }
+
+    // Enumerate commits in tracking..HEAD for the preview list. Newest
+    // first (walk from HEAD, hide tracking). Cap at 50 — the banner
+    // shouldn't render more than that anyway.
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push(head_oid)?;
+    let _ = revwalk.hide(tracking_oid);
+    let mut commits: Vec<DiscardedCommit> = Vec::new();
+    for (idx, oid_res) in revwalk.enumerate() {
+        if idx >= 50 {
+            break;
+        }
+        let Ok(oid) = oid_res else { continue };
+        let Ok(commit) = repo.find_commit(oid) else { continue };
+        let summary = commit
+            .summary()
+            .unwrap_or("(no message)")
+            .to_string();
+        commits.push(DiscardedCommit {
+            oid: oid.to_string(),
+            summary,
+            time: commit.time().seconds(),
+        });
+    }
+    let commits_ahead = commits.len();
+
+    if !confirm {
+        return Ok(DiscardOutcome {
+            performed: false,
+            commits_ahead,
+            commits,
+            reset_to_oid: Some(tracking_oid.to_string()),
+            reset_to_summary: commit_summary(repo, tracking_oid),
+        });
+    }
+
+    // Commit to the reset. Hard reset rewrites the working tree to the
+    // tracking commit's tree; working-tree edits the user hadn't
+    // committed yet are lost. That's the advertised contract.
+    let target = repo.find_object(tracking_oid, Some(ObjectType::Commit))?;
+    repo.reset(&target, ResetType::Hard, None)?;
+
+    Ok(DiscardOutcome {
+        performed: true,
+        commits_ahead,
+        commits,
+        reset_to_oid: Some(tracking_oid.to_string()),
+        reset_to_summary: commit_summary(repo, tracking_oid),
+    })
+}
+
+fn commit_summary(repo: &Repository, oid: Oid) -> Option<String> {
+    repo.find_commit(oid)
+        .ok()
+        .and_then(|c| c.summary().map(|s| s.to_string()))
 }
 
 fn sanitize_branch_name(name: &str) -> String {

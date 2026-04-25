@@ -45,6 +45,10 @@ Hard constraints from the spec — violating any of these breaks product identit
 
 **Scratchpad is gitignored.** `.yarrow/scratchpad.md` lives in `.gitignore` by design — "nothing here is saved permanently." Don't "fix" this.
 
+**Yarrow-specific IPC goes through `src/lib/transport/`.** No code outside that directory imports `@tauri-apps/api/core` or calls `fetch()` for yarrow calls. `src/lib/tauri.ts` is a typed façade on top of the transport singleton — all consumers still `import { api }` from there. Plugin imports (`@tauri-apps/plugin-dialog`, `plugin-opener`, `plugin-window-state`) are fine to use directly since they aren't yarrow-specific. See `desktop-integration-spec.md` §3.
+
+**Server PATs never touch `.git/config`.** When a workspace is connected to a yarrow-server, `cmd_sync` creates an anonymous git remote (`repo.remote_anonymous`) on every sync and hands credentials via `RemoteCallbacks`. The server URL + email + PAT id live in `config.toml`'s `[sync.server]` section; the PAT itself lives in the OS keychain (keyed `server-pat:<canonical_path>`), with the usual `secrets.rs` fallback to `.yarrow/credentials.toml` when no keychain is available. Disconnect clears both local state and — when `revoke_on_server` is true and the PAT has an id — calls `DELETE /api/v1/tokens/:id`.
+
 ## Layout
 
 ```
@@ -57,6 +61,8 @@ src-tauri/src/
   commands.rs     — Tauri IPC bridge (every #[tauri::command])
   lib.rs          — builder + invoke_handler list
   error.rs        — YarrowError enum, serialized as string across IPC
+  secrets.rs      — OS keychain for sync tokens and server PATs (Linux/macOS/Windows), with a per-workspace file fallback
+  server.rs       — yarrow-server REST client (login → PAT exchange, vault create, token revoke, connection probe)
 
 src/
   App.tsx                            — Onboarding ↔ AppShell
@@ -79,7 +85,9 @@ src/
     LinkedNotesList.tsx              — typed links with reciprocal-remove
     OpenQuestions.tsx                — lists current note's ?? items, click jumps to line
   components/{Modal,Scratchpad,RemoteSetup}.tsx
-  lib/tauri.ts                       — typed wrappers around every invoke()
+  components/Settings.tsx            — modal settings surface; Sync pane includes the "Connect to a Yarrow server" flow
+  lib/transport/                     — pluggable Transport (TauriTransport today, HttpTransport stubbed for the future web build)
+  lib/tauri.ts                       — typed wrappers around every invoke(), routed through the transport singleton
   lib/types.ts                       — shared IPC types + link-type colors/labels
   lib/format.ts                      — relativeTime, friendlyDate
   lib/theme.ts                       — useTheme hook, applies .dark class, persists in localStorage

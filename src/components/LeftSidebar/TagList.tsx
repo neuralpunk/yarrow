@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import type { TagCount } from "../../lib/types";
 import { ChevronRightIcon } from "../../lib/icons";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   tags: TagCount[];
@@ -9,6 +10,7 @@ interface Props {
 }
 
 function TagListInner({ tags, activeTag, onSelect }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(true);
   if (tags.length === 0) return null;
 
@@ -24,7 +26,7 @@ function TagListInner({ tags, activeTag, onSelect }: Props) {
         >
           <ChevronRightIcon />
         </span>
-        <span>Tags</span>
+        <span>{t("sidebar.tags.title")}</span>
         <span className="text-t3/60 font-mono normal-case tracking-normal">
           · {tags.length}
         </span>

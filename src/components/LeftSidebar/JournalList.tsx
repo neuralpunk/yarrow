@@ -4,6 +4,7 @@ import { dailyLabel, todayIso } from "../../lib/format";
 import { JournalIcon } from "../../lib/icons";
 import { SK } from "../../lib/platform";
 import JournalCalendar from "./JournalCalendar";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   entries: NoteSummary[];
@@ -17,6 +18,7 @@ interface Props {
  * the current path (AppShell surfaces that to the user).
  */
 function JournalListInner({ entries, activeSlug, onOpenDaily }: Props) {
+  const t = useT();
   const today = todayIso();
   const todaySlug = `daily/${today}`;
   const todayActive = activeSlug === todaySlug;
@@ -34,14 +36,14 @@ function JournalListInner({ entries, activeSlug, onOpenDaily }: Props) {
       <div className="flex items-center justify-between px-4 mb-2">
         <div className="inline-flex items-center gap-1.5 text-2xs uppercase tracking-wider text-t3 font-semibold">
           <JournalIcon size={12} />
-          <span>Journal</span>
+          <span>{t("sidebar.journal.title")}</span>
         </div>
         <button
           onClick={() => setCalOpen(true)}
           className="text-2xs text-t3 hover:text-char transition"
-          title="Browse the calendar"
+          title={t("sidebar.journal.calendarTooltip")}
         >
-          calendar
+          {t("sidebar.journal.calendar")}
         </button>
       </div>
       <JournalCalendar
@@ -59,14 +61,14 @@ function JournalListInner({ entries, activeSlug, onOpenDaily }: Props) {
               ? "bg-yelp text-yeld"
               : "text-t2 hover:bg-s2 hover:text-char"
           }`}
-          data-tip={`Jump to today's journal (${SK.jumpToday})`}
+          data-tip={t("sidebar.journal.todayTooltip", { shortcut: SK.jumpToday })}
         >
           <span
             className={`w-1.5 h-1.5 rounded-full shrink-0 ${
               todayActive ? "bg-yel" : "bg-bd2"
             }`}
           />
-          <span className="font-medium">Today</span>
+          <span className="font-medium">{t("sidebar.journal.today")}</span>
           <span className="ml-auto text-2xs text-t3 font-mono">{today}</span>
         </button>
       </div>

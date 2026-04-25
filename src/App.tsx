@@ -4,8 +4,10 @@ import Onboarding from "./components/Onboarding";
 import AppShell from "./components/AppShell";
 import Titlebar from "./components/Titlebar";
 import WindowResizeEdges from "./components/WindowResizeEdges";
+import ExternalUrlFallbackModal from "./components/ExternalUrlFallbackModal";
 import { useTheme } from "./lib/theme";
 import { GuidanceProvider } from "./lib/guidanceStore";
+import { installExternalLinkInterceptor } from "./lib/openExternal";
 // Side-effect import: applies the saved UI font + scale at module-load
 // time so even the Onboarding screen renders in the user's preferred
 // chrome face, not a flash of Inter.
@@ -22,6 +24,12 @@ export default function App() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  // Catch every external-URL click anywhere in the app and route it to the
+  // OS browser. Without this, an `<a href="https://…">` in a note body
+  // navigates the Tauri webview itself and the user is trapped with no
+  // chrome to escape.
+  useEffect(() => installExternalLinkInterceptor(), []);
 
   return (
     <GuidanceProvider>
@@ -45,6 +53,7 @@ export default function App() {
             />
           )}
         </div>
+        <ExternalUrlFallbackModal />
       </div>
     </GuidanceProvider>
   );

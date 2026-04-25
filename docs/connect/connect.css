@@ -1,0 +1,279 @@
+/* ─────────────────────────────────────────────────────────────
+   Yarrow Connect — teaser page styles.
+   Palette + fonts mirror the Yarrow editorial welcome:
+     paper   #f4efe2       ink (deep)   #16140a
+     gold    #afa464       gold deep    #8f8553
+     ink soft #5a5230
+   Font stack: Fraunces (display serif), Figtree (sans), JetBrains Mono.
+   All class names are yc-* to avoid collisions when bundled into an existing
+   site. Mobile breakpoint at 640px.
+   ───────────────────────────────────────────────────────────── */
+
+.yc {
+  --yc-paper:     #f4efe2;
+  --yc-paper-hi:  #fbf6e6;
+  --yc-paper-lo:  #ede5ca;
+  --yc-ink:       #16140a;
+  --yc-ink-soft:  #5a5230;
+  --yc-gold:      #afa464;
+  --yc-gold-d:    #8f8553;
+  --yc-serif:     'Fraunces', 'Oranienbaum', ui-serif, Georgia, serif;
+  --yc-sans:      'Figtree', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --yc-mono:      'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  margin: 0;
+  background: var(--yc-paper);
+  color: var(--yc-ink);
+  font-family: var(--yc-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.yc *, .yc *::before, .yc *::after { box-sizing: border-box; }
+
+/* ───── Stage — fills viewport, layered bg ───── */
+
+.yc-stage {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  /* iOS-friendly viewport height */
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 50% at 80% 0%,  var(--yc-paper-hi) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 10% 100%, var(--yc-paper-lo) 0%, transparent 60%),
+    var(--yc-paper);
+  box-shadow: inset 0 0 120px rgba(90, 82, 48, 0.10);
+}
+
+/* ───── Masthead ───── */
+
+.yc-mast {
+  position: absolute;
+  top: 28px;
+  left: 48px;
+  right: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--yc-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--yc-gold-d);
+  font-weight: 500;
+  z-index: 2;
+}
+.yc-mast-r { opacity: 0.6; }
+
+.yc-hairline {
+  position: absolute;
+  top: 62px;
+  left: 48px;
+  right: 48px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--yc-gold) 20%,
+    var(--yc-gold) 80%,
+    transparent
+  );
+  opacity: 0.6;
+  z-index: 1;
+}
+
+/* ───── Main centered composition ───── */
+
+.yc-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 110px 48px 88px;
+  text-align: center;
+  min-height: 0;
+}
+/* Short-viewport mode: compress the hero so everything fits above the
+   ticker on laptop screens (≤ 920px tall). */
+@media (max-height: 920px) and (min-width: 641px) {
+  .yc-inner { padding: 96px 48px 72px; }
+}
+
+/* Feather — transparent PNG, tinted ink. Negative margins let the tail
+   overlap the wordmark's top rule without a hard gap. */
+.yc-feather {
+  width: clamp(280px, 32vw, 440px);
+  max-width: 86%;
+  margin-top: -32px;
+  margin-bottom: -40px;
+  filter: drop-shadow(0 12px 18px rgba(90, 82, 48, 0.12));
+  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+  will-change: transform;
+}
+/* Shrink feather further on short viewports so the composition fits. */
+@media (max-height: 820px) and (min-width: 641px) {
+  .yc-feather { width: clamp(260px, 26vw, 360px); margin-bottom: -30px; }
+}
+.yc-feather img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Wordmark block */
+.yc-mark { margin-bottom: 22px; }
+
+.yc-rule {
+  width: 56px;
+  height: 1px;
+  border: 0;
+  margin: 0 auto;
+  background: var(--yc-gold);
+}
+.yc-rule-top { margin: 0 auto 14px; }
+.yc-rule-bot { margin: 14px auto 0; background: var(--yc-ink-soft); }
+
+.yc-word {
+  font-family: var(--yc-serif);
+  /* Fluid size: fits on one line down to ~480px viewport before the
+     mobile breakpoint takes over. */
+  font-size: clamp(44px, 7vw, 72px);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: var(--yc-ink);
+  margin: 0;
+  white-space: nowrap;
+  font-variation-settings: "SOFT" 30, "WONK" 1, "opsz" 144;
+}
+.yc-word em {
+  font-style: italic;
+  font-weight: 400;
+}
+
+.yc-meta {
+  margin-top: 10px;
+  font-family: var(--yc-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--yc-gold-d);
+  font-weight: 500;
+}
+
+/* Blurb — centered editorial letter */
+.yc-blurb {
+  max-width: 560px;
+  font-family: var(--yc-serif);
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--yc-ink-soft);
+  font-weight: 400;
+  font-variation-settings: "opsz" 12, "SOFT" 50;
+}
+.yc-blurb p { margin: 0; }
+.yc-blurb-lead { margin: 0 0 12px !important; }
+.yc-blurb-lead em { font-style: italic; }
+
+/* Promise card */
+.yc-promise {
+  margin-top: 30px;
+  padding: 14px 22px;
+  border: 1px solid var(--yc-gold);
+  background: rgba(255, 253, 243, 0.5);
+  font-family: var(--yc-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--yc-ink-soft);
+  max-width: 520px;
+  font-weight: 500;
+}
+.yc-promise-sub { opacity: 0.7; }
+
+/* ───── Ticker at the bottom ───── */
+
+.yc-ticker {
+  flex-shrink: 0;
+  padding: 20px 24px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  font-family: var(--yc-mono);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--yc-gold-d);
+}
+.yc-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--yc-gold);
+  display: inline-block;
+}
+
+/* ───── Mobile ───── */
+
+@media (max-width: 640px) {
+  .yc-mast {
+    top: 18px;
+    left: 22px;
+    right: 22px;
+    font-size: 10px;
+  }
+  .yc-mast-r span,
+  .yc-mast-r::after { /* no-op; keeping selector space for downstream overrides */ }
+  .yc-hairline {
+    top: 44px;
+    left: 22px;
+    right: 22px;
+  }
+  .yc-inner { padding: 84px 24px 40px; }
+  .yc-feather {
+    width: 320px;
+    margin-top: -24px;
+    margin-bottom: -26px;
+  }
+  .yc-word { font-size: 44px; }
+  .yc-meta { font-size: 10px; }
+  .yc-blurb { font-size: 15px; max-width: 100%; }
+  .yc-promise {
+    margin-top: 24px;
+    padding: 12px 16px;
+    font-size: 10px;
+    max-width: 100%;
+  }
+  .yc-ticker {
+    padding: 14px 20px 18px;
+    gap: 12px;
+    font-size: 9px;
+    letter-spacing: 0.24em;
+  }
+  /* Drop the last bullet on very narrow viewports so the ticker fits. */
+  .yc-optional,
+  .yc-dot-wide { display: none; }
+}
+
+/* Swap masthead right-side copy on narrow screens. Kept in CSS so the HTML
+   stays a single copy block — the full phrase is the default, and on mobile
+   we fall back to a short Roman-numeral year. */
+@media (max-width: 640px) {
+  .yc-mast-r { font-size: 0; }
+  .yc-mast-r::after {
+    content: "MMXXVI";
+    font-size: 10px;
+    letter-spacing: 0.22em;
+  }
+}
+
+/* Respect reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .yc-feather { transition: none; }
+}

@@ -217,9 +217,13 @@ pub fn rebuild(root: &Path) -> anyhow::Result<usize> {
             Err(_) => continue,
         };
         // Encrypted bodies are opaque — indexing the ciphertext would
-        // pollute FTS with noise and enable nothing useful. Match the
-        // substring path's behaviour: title + tags only.
-        let searchable_body = if note.frontmatter.encrypted {
+        // pollute FTS with noise and enable nothing useful. Private
+        // notes (clinical kits) have plaintext bodies on disk but are
+        // PHI-bearing by design; indexing them would let the command
+        // palette surface client content to anyone with access to the
+        // unlocked workspace, which defeats the point. Match the
+        // encrypted path: title + tags only.
+        let searchable_body = if note.frontmatter.encrypted || note.frontmatter.is_private() {
             String::new()
         } else {
             note.body.clone()

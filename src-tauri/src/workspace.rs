@@ -23,12 +23,61 @@ pub struct SyncSection {
     /// it on the struct for frontend convenience. See `read_credentials`.
     #[serde(skip)]
     pub token: Option<String>,
+    /// When set, this workspace talks to a yarrow-server instance for
+    /// sync instead of (or in addition to) the generic `remote_url`
+    /// above. The PAT itself never lives here — it's kept in the OS
+    /// keychain under a workspace-scoped key. See `secrets.rs`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server: Option<WorkspaceServerConfig>,
+    /// Cached PAT for the server config, injected by `read_config` from
+    /// the OS keychain on load. Never serialized. Frontend-visible only
+    /// so the Settings panel can display "connected" state — the token
+    /// itself is not sent back to the UI by any typed wrapper.
+    #[serde(skip)]
+    pub server_pat: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-struct Credentials {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    token: Option<String>,
+/// Per-workspace association with a yarrow-server. Each workspace can
+/// independently connect to a different server (or none at all). The
+/// `workspace_id` is populated on first sync — see the sync command.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WorkspaceServerConfig {
+    /// Root of the server, e.g. `https://yarrow.example.com`. No
+    /// trailing slash.
+    pub server_url: String,
+    /// Email used as the HTTP Basic username on git calls against
+    /// `/git/<workspace_id>.git`.
+    pub email: String,
+    /// PAT id returned by `POST /api/v1/tokens`. `None` when the user
+    /// pasted a bare token (revocation UI is disabled in that case).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pat_id: Option<String>,
+    /// Human label we gave the token on the server — handy for the
+    /// "connected as …" summary row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pat_label: Option<String>,
+    /// Workspace uuid on the server. `None` before the first successful
+    /// sync; that first sync either creates a fresh workspace on the
+    /// server or adopts one the user named. `alias = "vault_id"` keeps
+    /// pre-v0.3 saved configs readable (the field was called `vault_id`
+    /// before the server-wide rename).
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "vault_id")]
+    pub workspace_id: Option<String>,
+    /// Display name used when the first sync creates the workspace on
+    /// the server. Falls back to the local workspace name if unset.
+    /// `alias = "vault_name"` for pre-v0.3 saved-config compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "vault_name")]
+    pub workspace_name: Option<String>,
+    /// Development escape hatch: when true, all HTTP + git calls to
+    /// this server skip certificate verification. Intended for local
+    /// `https://localhost:8443` setups with self-signed certs — do
+    /// NOT turn on for production servers.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub insecure_skip_tls_verify: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 fn default_remote_type() -> String {
@@ -54,6 +103,13 @@ pub struct Preferences {
     /// substring scanner. Notes stay canonical either way.
     #[serde(default = "default_true")]
     pub search_index_enabled: bool,
+    /// Auto-sync cadence in minutes. `0` disables the interval; any
+    /// positive value sets the periodic sync timer in the UI. Default
+    /// is 5 minutes — balances fresh-on-the-server against the cost
+    /// of an HTTP round-trip per interval. Only fires when a sync
+    /// remote is configured (generic git OR `sync.server`).
+    #[serde(default = "default_autosync")]
+    pub autosync_minutes: u32,
 }
 
 fn default_decay() -> u32 {
@@ -71,6 +127,9 @@ fn default_editor_font_size() -> u32 {
 fn default_idle_lock() -> u32 {
     900 // 15 minutes
 }
+fn default_autosync() -> u32 {
+    5 // minutes; 0 disables
+}
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -82,6 +141,7 @@ impl Default for Preferences {
             editor_font_size: default_editor_font_size(),
             encryption_idle_timeout_secs: default_idle_lock(),
             search_index_enabled: true,
+            autosync_minutes: default_autosync(),
         }
     }
 }
@@ -219,12 +279,42 @@ pub fn read_config(root: &Path) -> Result<WorkspaceConfig> {
     if !path.exists() {
         return Err(YarrowError::NoWorkspace);
     }
-    let raw = std::fs::read_to_string(path)?;
-    let mut cfg: WorkspaceConfig = toml::from_str(&raw)?;
-    // Tokens are stored separately and never committed to git.
-    if let Ok(creds) = read_credentials(root) {
-        cfg.sync.token = creds.token;
+    let raw = std::fs::read_to_string(&path)?;
+    let mut cfg: WorkspaceConfig = toml::from_str(&raw)
+        .map_err(|e| YarrowError::Other(format!("parsing {}: {e}", path.display())))?;
+    // 2.1: sync token is stored in the OS keychain when possible, with a
+    // transparent fallback to the pre-existing `.yarrow/credentials.toml`
+    // on systems where no keychain is available. See `secrets.rs`.
+    cfg.sync.token = crate::secrets::read_sync_token(root).unwrap_or(None);
+    // 2.2: per-workspace yarrow-server PAT. Lives in the same secret
+    // store as the generic sync token but under a different key so they
+    // don't collide — a workspace can have both configured.
+    cfg.sync.server_pat = crate::secrets::read_server_pat(root).unwrap_or(None);
+
+    // Diagnostic: catch the "forgotten auth after restart" class of
+    // bugs loudly instead of silently shipping the UI into a
+    // disconnected state. If the user previously connected (server
+    // config is in config.toml) but the PAT is missing from both
+    // keychain and credentials.toml, something ate the secret store —
+    // surface it in logs so we can figure out what.
+    let has_server = cfg.sync.server.is_some();
+    let has_pat = cfg
+        .sync
+        .server_pat
+        .as_deref()
+        .map(|t| !t.is_empty())
+        .unwrap_or(false);
+    if has_server && !has_pat {
+        eprintln!(
+            "[yarrow] WARN: server config present at {} but PAT missing — user will need to reconnect. \
+             Check .yarrow/credentials.toml + OS keychain for the `yarrow/server-pat:*` entry.",
+            root.display()
+        );
     }
+    eprintln!(
+        "[yarrow] read workspace config at {} (server={has_server} pat={has_pat})",
+        root.display()
+    );
     Ok(cfg)
 }
 
@@ -234,35 +324,85 @@ pub fn write_config(root: &Path, config: &WorkspaceConfig) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let raw = toml::to_string_pretty(config)?;
-    std::fs::write(path, raw)?;
-    write_credentials(
-        root,
-        &Credentials {
-            token: config.sync.token.clone(),
-        },
-    )?;
+
+    // Atomic write: temp-file + rename. A partial write (disk-full,
+    // power loss, OS kill mid-write) on the direct `fs::write` path
+    // would leave a truncated config.toml with no [sync.server] block,
+    // permanently forgetting the user's server connection on the next
+    // open. Atomic swap via rename-on-same-filesystem means the caller
+    // always observes either the old file or the complete new one.
+    atomic_write(&path, raw.as_bytes())?;
+
+    // IMPORTANT: do NOT auto-clear the keychain/file-backed secrets
+    // when the in-memory config has `None` for token / server_pat.
+    // These fields are `#[serde(skip)]` — any caller that obtains a
+    // `WorkspaceConfig` from somewhere other than `read_config` (or
+    // forgets to refresh the in-memory field before writing) would
+    // silently wipe live credentials from disk every time the config
+    // is saved. Preferences updates, sync-remote changes, and similar
+    // side-effect writes would all destroy the stored PAT.
+    //
+    // Writes now only CARRY FORWARD a present value; explicit deletion
+    // is the job of `clear_stored_secrets_on_disconnect` (called from
+    // the disconnect command paths).
+    if let Some(tok) = config.sync.token.as_deref() {
+        if !tok.is_empty() {
+            crate::secrets::write_sync_token(root, tok)?;
+        }
+    }
+    if let Some(tok) = config.sync.server_pat.as_deref() {
+        if !tok.is_empty() {
+            crate::secrets::write_server_pat(root, tok)?;
+        }
+    }
+    let has_server = config.sync.server.is_some();
+    let has_pat = config
+        .sync
+        .server_pat
+        .as_deref()
+        .map(|t| !t.is_empty())
+        .unwrap_or(false);
+    eprintln!(
+        "[yarrow] wrote workspace config at {} (server={has_server} pat={has_pat})",
+        root.display()
+    );
     Ok(())
 }
 
-fn read_credentials(root: &Path) -> Result<Credentials> {
-    let path = credentials_path(root);
-    if !path.exists() {
-        return Ok(Credentials::default());
+/// Atomic file write: write to `<path>.tmp`, fsync, then rename over
+/// the target. Crash-safe on the happy path for every filesystem that
+/// guarantees rename atomicity within a directory (ext4, xfs, apfs,
+/// ntfs). Yarrow's `.yarrow/` lives inside the workspace root, which
+/// is always on one filesystem, so this is safe.
+pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension(format!(
+        "{}.tmp",
+        path.extension().and_then(|s| s.to_str()).unwrap_or("")
+    ));
+    {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(contents)?;
+        f.sync_all()?;
     }
-    let raw = std::fs::read_to_string(path)?;
-    Ok(toml::from_str(&raw)?)
+    std::fs::rename(&tmp, path)?;
+    Ok(())
 }
 
-fn write_credentials(root: &Path, creds: &Credentials) -> Result<()> {
-    let path = credentials_path(root);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+/// Explicit clear path used by disconnect flows. Writes an empty
+/// config (the caller's responsibility to prepare that) AND wipes the
+/// keychain/file-backed secrets. This is the only code path that
+/// actually deletes PATs from disk now.
+pub fn clear_stored_secrets_on_disconnect(
+    root: &Path,
+    clear_generic_token: bool,
+    clear_server_pat: bool,
+) -> Result<()> {
+    if clear_generic_token {
+        let _ = crate::secrets::clear_sync_token(root);
     }
-    if creds.token.is_some() {
-        let raw = toml::to_string_pretty(creds)?;
-        std::fs::write(path, raw)?;
-    } else if path.exists() {
-        std::fs::remove_file(path)?;
+    if clear_server_pat {
+        let _ = crate::secrets::clear_server_pat(root);
     }
     Ok(())
 }

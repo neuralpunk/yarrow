@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/tauri";
 import type { NoteSummary, WorkspaceConfig } from "../lib/types";
 import Modal from "./Modal";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -21,6 +22,7 @@ export default function MainNotePrompt({
   const [newTitle, setNewTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!open) return;
@@ -89,29 +91,27 @@ export default function MainNotePrompt({
     <Modal open={open} onClose={onClose} width="w-[min(92vw,560px)]">
       <div className="mb-4">
         <div className="font-serif text-2xl text-char leading-tight mb-1">
-          Pick your starting note
+          {t("modals.mainNote.title")}
         </div>
         <p className="text-xs text-t2 leading-relaxed">
-          Every map has a beginning — the anchor for decisions going forward.
-          Choose a note that already exists, or create a new one. You can change
-          it later in Settings.
+          {t("modals.mainNote.subtitle")}
         </p>
       </div>
 
       <div className="mb-3">
         <div className="text-2xs font-mono uppercase tracking-wider text-t3 mb-1.5">
-          Use an existing note
+          {t("modals.mainNote.useExisting")}
         </div>
         <input
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter…"
+          placeholder={t("modals.mainNote.filter")}
           className="w-full px-3 py-1.5 bg-s1 border border-bd rounded-md text-char text-sm placeholder:text-t3 focus:outline-none focus:border-yel"
         />
         <ul className="mt-2 max-h-[180px] overflow-y-auto border border-bd rounded-md bg-s1">
           {filtered.length === 0 && (
-            <li className="px-3 py-2 text-xs text-t3">No notes yet.</li>
+            <li className="px-3 py-2 text-xs text-t3">{t("modals.mainNote.noNotes")}</li>
           )}
           {filtered.map((n) => (
             <li key={n.slug}>
@@ -130,7 +130,7 @@ export default function MainNotePrompt({
 
       <div className="mb-3 pt-3 border-t border-bd">
         <div className="text-2xs font-mono uppercase tracking-wider text-t3 mb-1.5">
-          Or create a new starting note
+          {t("modals.mainNote.orCreateNew")}
         </div>
         <div className="flex gap-2">
           <input
@@ -140,7 +140,7 @@ export default function MainNotePrompt({
             onKeyDown={(e) => {
               if (e.key === "Enter" && newTitle.trim()) createAndPick();
             }}
-            placeholder="e.g. Garden plan"
+            placeholder={t("modals.mainNote.newPlaceholder")}
             className="flex-1 px-3 py-1.5 bg-s1 border border-bd rounded-md text-char text-sm placeholder:text-t3 focus:outline-none focus:border-yel"
           />
           <button
@@ -148,7 +148,7 @@ export default function MainNotePrompt({
             onClick={createAndPick}
             className="px-3 py-1.5 rounded-md bg-yel text-on-yel text-sm font-medium hover:bg-yel2 disabled:opacity-50"
           >
-            Create
+            {t("modals.mainNote.create")}
           </button>
         </div>
       </div>
@@ -159,14 +159,14 @@ export default function MainNotePrompt({
           onClick={switchToBasic}
           className="text-xs text-t3 hover:text-char underline-offset-2 hover:underline"
         >
-          I just want basic notes (no map or paths)
+          {t("modals.mainNote.basicMode")}
         </button>
         <button
           onClick={onClose}
           disabled={busy}
           className="text-xs text-t3 hover:text-char"
         >
-          Not now
+          {t("modals.mainNote.notNow")}
         </button>
       </div>
 

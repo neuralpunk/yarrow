@@ -3,6 +3,7 @@ import { api } from "../lib/tauri";
 import { ScratchpadIcon } from "../lib/icons";
 import type { Note } from "../lib/types";
 import { SK } from "../lib/platform";
+import { useT } from "../lib/i18n";
 
 interface Props {
   /** The note currently being edited, if any. Drives the "with: …" chip. */
@@ -40,6 +41,7 @@ export default function Scratchpad({
   const [flash, setFlash] = useState<null | "sent">(null);
   const saveTimer = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const t = useT();
 
   useEffect(() => {
     api.readScratchpad().then(setContent).catch(() => setContent(""));
@@ -84,7 +86,7 @@ export default function Scratchpad({
       .split("\n")
       .map((s) => s.replace(/^#+\s*/, "").trim())
       .find(Boolean);
-    return (first || "Scratchpad note").slice(0, 80);
+    return (first || t("modals.scratchpad.fallbackTitle")).slice(0, 80);
   };
 
   const trimmed = content.trim();
@@ -163,39 +165,39 @@ export default function Scratchpad({
       <div
         onMouseDown={onResizeStart}
         className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-yel/40 transition z-10"
-        title="Drag to resize"
+        title={t("modals.scratchpad.dragResize")}
       />
 
       <header className="px-3.5 pt-3 pb-2 border-b border-bd">
         <div className="flex items-center gap-2">
           <ScratchpadIcon size={14} />
-          <div className="font-serif text-base text-char leading-none">Scratchpad</div>
+          <div className="font-serif text-base text-char leading-none">{t("modals.scratchpad.title")}</div>
           <button
             onClick={clearScratchpad}
             disabled={!content}
             className="ml-auto text-2xs text-t3 hover:text-char disabled:opacity-30"
-            title="Clear"
+            title={t("modals.scratchpad.clearTitle")}
           >
-            clear
+            {t("modals.scratchpad.clear")}
           </button>
           <button
             onClick={onClose}
             className="text-t3 hover:text-char w-5 h-5 flex items-center justify-center rounded hover:bg-s2"
-            aria-label="Close scratchpad"
-            title={`Close (${SK.scratchpad})`}
+            aria-label={t("modals.scratchpad.closeAria")}
+            title={t("modals.scratchpad.closeTitle", { shortcut: SK.scratchpad })}
           >
             ×
           </button>
         </div>
         <div className="text-2xs text-t3 italic mt-1">
-          Nothing here is saved permanently.
+          {t("modals.scratchpad.notSaved")}
         </div>
       </header>
 
       {activeNote && (
         <div className="px-3.5 py-2 border-b border-bd/60 bg-bg/40">
           <div className="flex items-center gap-1.5 text-2xs">
-            <span className="text-t3 shrink-0">with</span>
+            <span className="text-t3 shrink-0">{t("modals.scratchpad.with")}</span>
             <span className="text-char truncate" title={activeTitle}>
               {activeTitle}
             </span>
@@ -205,13 +207,13 @@ export default function Scratchpad({
               onClick={sendToNote}
               disabled={!trimmed}
               className="px-2 py-1 text-2xs bg-s2 text-ch2 rounded hover:bg-s3 disabled:opacity-40 flex items-center gap-1"
-              title="Insert scratchpad at the note's cursor"
+              title={t("modals.scratchpad.sendTitle")}
             >
               <ArrowRightIcon />
-              <span>send to note</span>
+              <span>{t("modals.scratchpad.sendToNote")}</span>
             </button>
             {flash === "sent" && (
-              <span className="text-2xs text-yeld italic">inserted</span>
+              <span className="text-2xs text-yeld italic">{t("modals.scratchpad.inserted")}</span>
             )}
           </div>
         </div>
@@ -223,8 +225,8 @@ export default function Scratchpad({
         onChange={(e) => onChange(e.target.value)}
         placeholder={
           activeNote
-            ? `Jot anything. Arrows above move it into "${activeTitle}".`
-            : "Think out loud here…"
+            ? t("modals.scratchpad.placeholderActive", { name: activeTitle })
+            : t("modals.scratchpad.placeholderIdle")
         }
         className="flex-1 w-full px-4 py-3 bg-bg text-char outline-none resize-none font-sans text-sm leading-relaxed"
         spellCheck
@@ -242,7 +244,7 @@ export default function Scratchpad({
                 keepAsNote();
               }
             }}
-            placeholder={trimmed ? suggestedTitle() : "title…"}
+            placeholder={trimmed ? suggestedTitle() : t("modals.scratchpad.titlePlaceholder")}
             disabled={busy}
             className="flex-1 min-w-0 px-2 py-1.5 bg-bg border border-bd rounded-md text-char text-xs placeholder:text-t3"
           />
@@ -250,9 +252,9 @@ export default function Scratchpad({
             onClick={keepAsNote}
             disabled={busy || !trimmed}
             className="btn-yel px-2.5 py-1.5 text-xs rounded-md disabled:opacity-40 shrink-0"
-            title="Turn this into a saved note"
+            title={t("modals.scratchpad.keepTitle")}
           >
-            {busy ? "saving…" : "Keep as note"}
+            {busy ? t("modals.scratchpad.saving") : t("modals.scratchpad.keepAsNote")}
           </button>
         </div>
         {activeNote && (
@@ -264,7 +266,7 @@ export default function Scratchpad({
               className="accent-yel"
             />
             <span>
-              link from{" "}
+              {t("modals.scratchpad.linkFrom")}{" "}
               <span className="text-char">{activeTitle}</span>
             </span>
           </label>

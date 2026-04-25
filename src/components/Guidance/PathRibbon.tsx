@@ -8,6 +8,7 @@ import { useMemo } from "react";
 import { useGuidance } from "../../lib/guidanceStore";
 import { GUIDANCE } from "../../lib/guidance";
 import { colorForPath } from "../../lib/pathAwareness";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   pathName: string;
@@ -43,6 +44,7 @@ export default function PathRibbon({
 }: Props) {
   const { enabled } = useGuidance();
   const def = GUIDANCE["path.stepInto.coach"];
+  const t = useT();
 
   const onPath = !!pathName && pathName !== rootName && pathName !== "main" && pathName !== "master";
 
@@ -71,14 +73,14 @@ export default function PathRibbon({
         borderLeft: `3px solid ${accent}`,
       }}
       role="status"
-      aria-label="You're on a try path"
+      aria-label={t("modals.pathRibbon.aria")}
     >
       <div className="flex-1 min-w-0">
         <div
           className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] font-semibold font-sans"
           style={{ color: accent }}
         >
-          <span>{def?.eyebrow ?? "On a path"}</span>
+          <span>{def?.eyebrow ?? t("modals.pathRibbon.eyebrowFallback")}</span>
           <span className="text-t3 normal-case tracking-normal font-normal font-serif italic truncate">
             — {pathName}
             {condition ? (
@@ -89,7 +91,7 @@ export default function PathRibbon({
           </span>
         </div>
         <div className="text-[12px] font-sans text-ch2 mt-0.5 leading-snug">
-          {def?.body ?? "Edits on this path are kept separate from main."}
+          {def?.body ?? t("modals.pathRibbon.bodyFallback")}
         </div>
       </div>
 
@@ -102,44 +104,44 @@ export default function PathRibbon({
                 ? "bg-yel/90 text-on-yel border-yel"
                 : "border-bd2 bg-bg hover:bg-s2 text-ch2"
             }`}
-            title="Show what's different inside this note, line by line"
+            title={t("modals.pathRibbon.diffTitle")}
           >
-            {inlineDiffActive ? "Stop diffing" : "Diff vs main"}
+            {inlineDiffActive ? t("modals.pathRibbon.stopDiffing") : t("modals.pathRibbon.diffVsMain")}
           </button>
         )}
         {onOpenCompare && (
           <button
             onClick={onOpenCompare}
             className="px-2.5 py-1 rounded text-[11px] font-sans font-medium border border-bd2 bg-bg hover:bg-s2 text-ch2 transition"
-            title="Compare every note across paths side by side"
+            title={t("modals.pathRibbon.compareAllTitle")}
           >
-            Compare all
+            {t("modals.pathRibbon.compareAll")}
           </button>
         )}
         {onPromote && (
           <button
             onClick={onPromote}
             className="px-2.5 py-1 rounded text-[11px] font-sans font-medium bg-yel text-on-yel hover:opacity-90 transition"
-            title="Make this path the new main — every edit becomes real"
+            title={t("modals.pathRibbon.promoteTitle")}
             style={{ background: accent, color: "white" }}
           >
-            Promote to main
+            {t("modals.pathRibbon.promote")}
           </button>
         )}
         <button
           onClick={() => onSwitchPath(rootName)}
           className="px-2.5 py-1 rounded text-[11px] font-sans font-medium border border-bd2 bg-bg hover:bg-s2 text-ch2 transition"
-          title="Switch back to main. Your edits on this path stay saved here."
+          title={t("modals.pathRibbon.backToMainTitle")}
         >
-          Back to main
+          {t("modals.pathRibbon.backToMain")}
         </button>
         {onThrowAway && (
           <button
             onClick={onThrowAway}
             className="px-2.5 py-1 rounded text-[11px] font-sans font-medium border border-bd2 bg-bg text-danger hover:bg-danger/10 transition"
-            title="Throw this try away — every edit on this path is lost"
+            title={t("modals.pathRibbon.throwAwayTitle")}
           >
-            Throw away
+            {t("modals.pathRibbon.throwAway")}
           </button>
         )}
       </div>

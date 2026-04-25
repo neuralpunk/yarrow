@@ -1,4 +1,5 @@
 import { NewDirectionIcon } from "../../lib/icons";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   visible: boolean;
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function ForkSuggestion({ visible, onAccept, onDismiss }: Props) {
+  const t = useT();
   if (!visible) return null;
   return (
     <div className="absolute bottom-6 right-8 z-20 max-w-sm bg-bg border border-yel/60 rounded-xl shadow-lg p-3 animate-slideUp">
@@ -16,24 +18,23 @@ export default function ForkSuggestion({ visible, onAccept, onDismiss }: Props) 
         </div>
         <div className="flex-1">
           <div className="text-sm text-char font-medium mb-0.5">
-            Explore a different direction?
+            {t("editor.forkSuggestion.title")}
           </div>
           <div className="text-xs text-t2 mb-2 leading-relaxed">
-            This paragraph sounds like it's pulling against what came before.
-            You can branch off to try it out without losing the current take.
+            {t("editor.forkSuggestion.body")}
           </div>
           <div className="flex gap-2">
             <button
               onClick={onAccept}
               className="px-2.5 py-1 text-xs bg-yel text-on-yel rounded hover:bg-yel2"
             >
-              Yes, explore it
+              {t("editor.forkSuggestion.accept")}
             </button>
             <button
               onClick={onDismiss}
               className="px-2.5 py-1 text-xs text-t2 hover:text-char"
             >
-              Not now
+              {t("editor.forkSuggestion.dismiss")}
             </button>
           </div>
         </div>

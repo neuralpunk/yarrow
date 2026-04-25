@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { tagPillClass } from "../../lib/tagStyles";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   /** Initial tag list — refreshed when the parent note changes. */
@@ -15,6 +17,7 @@ interface Props {
  *  typing in the trailing input + Enter (or comma / space) commits the
  *  new tag; Backspace on an empty input removes the last tag. */
 export default function TagChips({ initial, onCommit, suggestions = [] }: Props) {
+  const t = useT();
   const [tags, setTags] = useState<string[]>(initial);
   const [draft, setDraft] = useState("");
   const [focused, setFocused] = useState(false);
@@ -108,22 +111,22 @@ export default function TagChips({ initial, onCommit, suggestions = [] }: Props)
         <button
           onClick={() => inputRef.current?.focus()}
           className="text-2xs italic text-t3 hover:text-yeld font-serif"
-          title="Click to add tags"
+          title={t("editor.tagChips.addTagsTitle")}
         >
-          + add tags
+          {t("editor.tagChips.addTags")}
         </button>
       )}
-      {tags.map((t, i) => (
+      {tags.map((tag, i) => (
         <span
-          key={`${t}:${i}`}
-          className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full bg-yelp text-yeld text-2xs font-mono group"
+          key={`${tag}:${i}`}
+          className={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-2xs font-mono group ${tagPillClass(tag)}`}
         >
-          <span>#{t}</span>
+          <span>#{tag}</span>
           <button
             onClick={() => removeAt(i)}
             className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-yel hover:text-on-yel text-yeld/60"
-            title={`Remove #${t}`}
-            aria-label={`Remove tag ${t}`}
+            title={t("editor.tagChips.removeTitle", { tag })}
+            aria-label={t("editor.tagChips.removeAria", { tag })}
           >
             ×
           </button>
@@ -144,7 +147,7 @@ export default function TagChips({ initial, onCommit, suggestions = [] }: Props)
             setDraft("");
           }
         }}
-        placeholder={tags.length === 0 ? "" : "+ tag"}
+        placeholder={tags.length === 0 ? "" : t("editor.tagChips.addTagPlaceholder")}
         className="bg-transparent border-0 outline-none text-2xs font-mono text-char placeholder:text-t3 w-20 min-w-[64px]"
       />
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../lib/i18n";
 
 interface Props {
   pathName: string | null;
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export default function ForkMoment({ pathName, onDone }: Props) {
+  const t = useT();
   const [visible, setVisible] = useState(false);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
@@ -68,7 +70,7 @@ export default function ForkMoment({ pathName, onDone }: Props) {
 
         <div className="mt-2 text-center animate-slideUp">
           <div className="text-2xs uppercase tracking-wider text-t3">
-            exploring
+            {t("paths.forkMoment.exploring")}
           </div>
           <div className="font-serif text-xl text-char mt-0.5">
             {pathName}

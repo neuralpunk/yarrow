@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Yarrow — a writing tool that remembers every version</title>
+<title>Yarrow 2.1 — a writing tool that remembers every version</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=GT+Sectra&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,500&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -11,12 +11,27 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="apple-touch-icon" href="app-icon-256.png" />
 <meta name="description" content="Yarrow is a local-first writing tool for non-linear thinking. Plain markdown, every save a checkpoint, every direction a path you can return to. Free and open source." />
-<meta property="og:title" content="Yarrow 2.0 — a writing tool that remembers every version" />
-<meta property="og:description" content="Local-first, git-backed, plain-text notes for writers who think in drafts." />
+<meta property="og:title" content="Yarrow 2.1 — kits, research workflow, private clinical surface" />
+<meta property="og:description" content="2.1 lands 75 hand-picked kits across nine categories, a research workflow with paper-cards + @cite + BibTeX import, a privacy-first clinical surface with on-device PHI scanning, and optional sidebar folders. Free and open source." />
 <meta property="og:image" content="assets/main-reading-dark.png" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://yarrow.software/" />
-<meta name="theme-color" content="#f4efe2" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#f4efe2" />
+<script>
+  // Pre-paint theme apply. Without this, an Ashrose visitor sees a
+  // flash of the default light palette before the bottom-of-body
+  // toggle script runs. Reads the same key the toggle writes.
+  (function () {
+    try {
+      var t = localStorage.getItem('yarrow.docs.theme');
+      if (t === 'ashrose') {
+        document.documentElement.setAttribute('data-theme', 'ashrose');
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', '#F6E5EA');
+      }
+    } catch (e) {}
+  })();
+</script>
 <style>
   :root {
     --paper: #f4efe2;
@@ -35,6 +50,32 @@
     --sans: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
     --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
   }
+
+  /* Ashrose — third theme (2.1). A dusty-rose paper canvas with a
+     deep-wine primary accent and warm muted greys. Source palette:
+       #C6ABAF · #5C2E38 · #23181E · #746B6E · #C5CBCA
+       #A39A9B · #D88D9B · #695F63 · #6F464F
+     The page bg is lighter than the lightest palette tone (paper,
+     not chip — backgrounds need the extra step of lift); chips and
+     rules step into the palette proper. */
+  html[data-theme="ashrose"] {
+    --paper: #F6E5EA;
+    --paper-2: #F0DAE0;
+    --paper-3: #C6ABAF;
+    --ink: #1F141A;
+    --ink-2: #2D1F25;
+    --ink-3: #564047;
+    --ink-4: #7B6A6F;
+    --rule: #C8A8B0;
+    --rule-2: #B49399;
+    --accent: #5C2E38;
+    --accent-deep: #6F464F;
+    --red: #A04A4A;
+  }
+  /* Honour the OS pref on first visit when the site has no stored
+     choice and the visitor's system asks for a non-default. We don't
+     ship a dark theme on the website yet, but ashrose is light-family
+     and reads well as a "warmer" alternate — no auto-flip. */
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0;
@@ -107,6 +148,101 @@
   }
   .sub-mast nav a:hover { color: var(--accent); }
   .sub-mast .prominent { color: var(--red); font-weight: 600; }
+
+  /* Yarrow Connect — given a small editorial flourish so it reads
+     as a separate offering rather than another in-page anchor. The
+     mark glyph is a stylised box-with-corner-cut, the same family
+     of bookplate/colophon ornaments used in print magazines for
+     "see also" pointers. */
+  .sub-mast nav a.connect-link {
+    color: var(--accent-deep);
+    font-weight: 600;
+  }
+  .sub-mast nav a.connect-link:hover { color: var(--red); }
+  .sub-mast nav a.connect-link .connect-mark {
+    margin-left: 4px;
+    font-weight: 400;
+    color: var(--accent);
+  }
+
+  /* Theme toggle pill — sits at the right end of the sub-mast nav.
+     Cycles between Light (default) and Ashrose. The dot mirrors the
+     current accent color so the swatch reads as "this is what you'll
+     get" before the click. */
+  .theme-toggle {
+    margin-left: 22px;
+    border: 1px solid var(--rule);
+    background: var(--paper-2);
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 500;
+    padding: 4px 10px 4px 8px;
+    border-radius: 99px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    transition: border-color 160ms, color 140ms, background 200ms;
+  }
+  .theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .theme-toggle .th-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
+  }
+  .theme-toggle .th-label { line-height: 1; }
+
+  /* stop-press bulletin — sits above the masthead as an editorial strip */
+  .dispatch {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper-2);
+    color: var(--ink-3);
+    text-decoration: none;
+    transition: background 140ms ease, color 140ms ease;
+  }
+  .dispatch:hover { background: var(--paper-3); color: var(--ink-2); }
+  .dispatch .d-tag {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--red);
+  }
+  .dispatch .d-body {
+    font-family: var(--serif);
+    font-size: 14.5px;
+    font-weight: 400;
+    color: var(--ink-2);
+    letter-spacing: -0.005em;
+  }
+  .dispatch .d-body em {
+    font-style: italic;
+    color: var(--accent-deep);
+    font-variation-settings: "SOFT" 0, "WONK" 1, "opsz" 144;
+  }
+  .dispatch .d-go {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--ink-3);
+  }
+  .dispatch:hover .d-go { color: var(--accent-deep); }
+  .dispatch:active { background: var(--paper-3); }
 
   /* hero: 3-col editorial cover */
   .cover {
@@ -667,6 +803,23 @@
     .mast-left, .mast-right { display: none; }
     .mast-title { font-size: 38px; }
 
+    /* Dispatch bulletin: stack the three elements (tag, body, CTA)
+       vertically on phones so serif body doesn't get crushed against
+       the "Read the letter →" label. Honor the notch safe-area so
+       nothing is clipped in landscape. */
+    .dispatch {
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 9px max(14px, env(safe-area-inset-right)) 9px max(14px, env(safe-area-inset-left));
+    }
+    .dispatch .d-body {
+      font-size: 13.5px;
+      text-align: center;
+      line-height: 1.35;
+    }
+    .dispatch .d-go { font-size: 10.5px; }
+
     /* Sub-mast: two lines — issue tag on top, horizontally-scrolling
        nav below. Scrollbar hidden on iOS because it's already
        momentum-scrolling through the overflow. */
@@ -784,15 +937,341 @@
     html { scroll-behavior: auto; }
     * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
   }
+
+  /* ===========================================================
+     §2 NEW ARRIVALS — the 2.1 centerpiece. Editorial-newsprint
+     idiom (warm neutrals, classical hierarchy, generous space)
+     with a kit-card grid drawn from the app's actual visual
+     language. Inspired by the Heart University template's
+     restrained newsprint composition.
+     =========================================================== */
+
+  .arrivals { padding: 32px 0 80px; }
+
+  .arrivals-intro {
+    max-width: 820px;
+    margin-bottom: 56px;
+  }
+  .arrivals-intro .kicker { color: var(--ink-3); margin-bottom: 14px; }
+  .arrivals-intro .kicker-rule {
+    width: 28px;
+    height: 1px;
+    background: var(--ink-3);
+    display: inline-block;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+  .arrivals-head {
+    font-family: var(--serif);
+    font-size: clamp(32px, 4vw, 46px);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    margin: 0 0 18px;
+    color: var(--ink);
+    font-variation-settings: "opsz" 80;
+  }
+  .arrivals-head i { color: var(--accent); font-style: italic; }
+  .arrivals-lede {
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.65;
+    color: var(--ink-2);
+  }
+  .arrivals-lede code {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--paper-2);
+    padding: 1px 5px;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+
+  /* Arrivals block — a discrete feature spotlight, separated by
+     a thin top rule like a newspaper section break. */
+  .arrivals-block {
+    padding-top: 36px;
+    padding-bottom: 12px;
+    border-top: 1px solid var(--ink-2);
+    margin-top: 36px;
+  }
+  .arrivals-block:first-of-type { margin-top: 0; }
+
+  .block-head {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .block-num {
+    font-family: var(--serif);
+    font-size: 30px;
+    font-weight: 500;
+    font-style: italic;
+    color: var(--accent);
+    line-height: 1;
+    font-variation-settings: "opsz" 60;
+  }
+  .block-title {
+    font-family: var(--serif);
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    flex: 1;
+    min-width: 0;
+  }
+  .block-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border: 1px solid var(--rule);
+    padding: 4px 10px;
+    border-radius: 99px;
+    background: var(--paper-2);
+  }
+
+  .block-lede {
+    font-family: var(--serif);
+    font-size: 16.5px;
+    line-height: 1.7;
+    color: var(--ink-2);
+    max-width: 760px;
+    margin: 0 0 28px;
+  }
+  .block-lede code {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--paper-2);
+    padding: 1px 5px;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+
+  /* Kit-card grid — the small-tile language from the app, ported
+     to the marketing site. Same aesthetic: a colored glyph cell,
+     serif title, short blurb, monospace category tag. */
+  .kit-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 8px;
+  }
+  @media (max-width: 1100px) {
+    .kit-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 780px) {
+    .kit-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 480px) {
+    .kit-grid { grid-template-columns: 1fr; }
+  }
+
+  .kit-tile {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 14px;
+    transition: transform 200ms var(--ease-out-smooth, cubic-bezier(0.22, 1, 0.36, 1)),
+                border-color 200ms,
+                box-shadow 200ms;
+  }
+  .kit-tile:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 18px -8px rgba(27,25,22,0.18);
+  }
+  .kit-glyph {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: var(--g);
+    border: 1px solid var(--s);
+    color: var(--s);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 19px;
+    margin-bottom: 12px;
+  }
+  .kit-tit {
+    font-family: var(--serif);
+    font-size: 15.5px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.2;
+    letter-spacing: -0.005em;
+  }
+  .kit-sub {
+    font-family: var(--serif);
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--ink-3);
+    margin-top: 5px;
+  }
+  .kit-cat {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-4, var(--ink-3));
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--rule);
+  }
+  .kit-coda {
+    font-family: var(--serif);
+    font-size: 14px;
+    color: var(--ink-3);
+    line-height: 1.6;
+    margin: 22px 0 0;
+    font-style: italic;
+  }
+  .kit-coda a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 0.5px;
+    text-underline-offset: 2px;
+  }
+
+  /* Research workflow — three-step grid with serif numerals. */
+  .workflow-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+    margin-top: 8px;
+  }
+  @media (max-width: 880px) { .workflow-grid { grid-template-columns: 1fr; } }
+  .workflow-step {
+    border-left: 2px solid var(--rule);
+    padding: 6px 0 6px 18px;
+  }
+  .step-num {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 500;
+    font-style: italic;
+    color: var(--accent);
+    line-height: 1;
+    font-variation-settings: "opsz" 60;
+    margin-bottom: 10px;
+  }
+  .step-tit {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+  .step-body {
+    font-family: var(--serif);
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--ink-2);
+  }
+  .step-body code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--paper-2);
+    padding: 1px 4px;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+
+  /* Privacy table — left tag, right body. */
+  .privacy-list {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 0;
+    margin-top: 8px;
+  }
+  @media (max-width: 720px) {
+    .privacy-list { grid-template-columns: 1fr; }
+  }
+  .priv-row {
+    display: contents;
+  }
+  .privacy-list .priv-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 18px 16px 18px 0;
+    border-top: 1px solid var(--rule);
+    align-self: start;
+  }
+  .privacy-list .priv-body {
+    font-family: var(--serif);
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--ink-2);
+    padding: 18px 0;
+    border-top: 1px solid var(--rule);
+  }
+  @media (max-width: 720px) {
+    .privacy-list .priv-tag { padding-bottom: 4px; border-top: 1px solid var(--rule); }
+    .privacy-list .priv-body { padding-top: 0; border-top: none; }
+  }
+  .priv-body code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--paper-2);
+    padding: 1px 4px;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+
+  /* Small wins — tight serif list. */
+  .small-wins {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    column-count: 2;
+    column-gap: 36px;
+  }
+  @media (max-width: 880px) { .small-wins { column-count: 1; } }
+  .small-wins li {
+    font-family: var(--serif);
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    margin-bottom: 14px;
+    padding-left: 14px;
+    border-left: 2px solid var(--rule);
+    break-inside: avoid;
+  }
+  .small-wins li b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .small-wins li code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--paper-2);
+    padding: 1px 4px;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
 </style>
 </head>
 <body>
+
+<a class="dispatch" href="#new-arrivals">
+  <span class="d-tag">Dispatch</span>
+  <span class="d-body"><em>Yarrow&nbsp;2.1</em> lands today — 75 kits, a research workflow, a private clinical surface, optional folders. <strong style="color:var(--accent-deep);">Read on &darr;</strong></span>
+  <span class="d-go">Read the issue →</span>
+</a>
 
 <div class="wrap">
 
   <header class="mast">
     <div class="mast-left">
-      <div>Vol. 2 · № 0</div>
+      <div>Vol. 2 · № 1</div>
       <div>April 2026 · §</div>
     </div>
     <div class="mast-title">Yar<i>r</i>ow</div>
@@ -803,38 +1282,43 @@
   </header>
 
   <div class="sub-mast">
-    <div><span class="prominent">The 2.0 issue</span> &nbsp;·&nbsp; a living map of your thinking</div>
+    <div><span class="prominent">The 2.1 issue</span> &nbsp;·&nbsp; kits, workflows, &amp; quieter privacy</div>
     <nav>
       <a href="#essay">Prospectus</a>
+      <a href="#new-arrivals">New arrivals</a>
       <a href="#features">Dossier</a>
       <a href="#gallery">In situ</a>
       <a href="user-guide.html">User Guide</a>
+      <a href="connect/" class="connect-link">Yarrow Connect <span class="connect-mark">⌑</span></a>
       <a href="#download">Download</a>
+      <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Switch theme" title="Switch theme — Light / Ashrose">
+        <span class="th-dot"></span>
+        <span class="th-label">Light</span>
+      </button>
     </nav>
   </div>
 
   <!-- COVER -->
   <section class="cover">
     <div class="cover-left">
-      <div class="kicker">Desktop writing · 2.0 is out</div>
+      <div class="kicker">Desktop writing · 2.1 is out</div>
       <h1 class="cover-head">Notes that <i>branch,</i> evolve, and&nbsp;connect.</h1>
       <div class="byline">
         <em>A local-first writing tool built around the way thinking actually works.</em>
-        Your notes are plain markdown. Every save is a checkpoint. Every direction you explore stays in an archive, not the trash.
+        Your notes are plain markdown. Every save is a checkpoint. Every direction you explore stays in an archive, not the trash. <strong>2.1</strong> adds 75 hand-picked starting shapes, a research workflow, and a clinical surface that never leaves your machine.
       </div>
       <div class="cta-row">
         <a href="https://github.com/neuralpunk/yarrow/releases/latest" class="btn btn-primary" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download 2.0
+          Download 2.1
         </a>
-        <a href="#gallery" class="btn btn-ghost">See it in motion →</a>
+        <a href="#new-arrivals" class="btn btn-ghost">What's new →</a>
       </div>
     </div>
     <figure class="cover-plate">
       <img src="assets/main-reading-dark.png" alt="Yarrow's reading view showing a long-form note titled 'One month in Europe' in the warm dusk dark theme." />
       <figcaption class="plate-cap">
         <span>Fig. 1 &nbsp;·&nbsp; Reading view · warm dusk</span>
-        <span class="tag">Photographed 04/26</span>
       </figcaption>
     </figure>
   </section>
@@ -891,65 +1375,272 @@
     </div>
   </section>
 
-  <!-- DOSSIER: all features as a 15-entry list -->
-  <div class="section-head" id="features">
+  <!-- §2 NEW ARRIVALS — the 2.1 centerpiece -->
+  <div class="section-head" id="new-arrivals">
     <div class="sec-num">§2</div>
+    <div class="sec-title">The new arrivals</div>
+    <div class="sec-meta">2.1 in detail</div>
+  </div>
+
+  <section class="arrivals">
+    <div class="arrivals-intro">
+      <div class="kicker"><span class="kicker-rule"></span>Workflow, not just warmth</div>
+      <h2 class="arrivals-head">A larger kit library, two new <i>workflows,</i> and a quieter approach to privacy.</h2>
+      <p class="arrivals-lede">
+        The original 2.1 cut shipped fonts, paper, and Calm Palettes. The rolled-up 2.1 also lands a much larger kit system, a research workflow with paper-cards + <code>@cite</code> + BibTeX import, a privacy-first clinical surface with on-device PHI scanning + air-gapped sync, optional sidebar folders, and a substantial pass on data-leak hardening and editor polish. None of it is on by default — you opt in at the moment you want it.
+      </p>
+    </div>
+
+    <!-- a. KITS -->
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">a.</div>
+        <div class="block-title">The kit library</div>
+        <div class="block-tag">75 across nine categories</div>
+      </header>
+      <p class="block-lede">
+        Hand-picked starting shapes, grouped by what you're trying to do. Each kit is a regular markdown template tagged <code>&lt;!-- kit: &lt;kind&gt; --&gt;</code> — you can edit them, override them, or author your own. The picker has its own search box; the journal-only "Start a journal kit" affordance grew up into a whole library.
+      </p>
+
+      <div class="kit-grid">
+        <div class="kit-tile" style="--g:#F3E2B0;--s:#C89B3C;">
+          <div class="kit-glyph">🌅</div>
+          <div class="kit-tit">The Morning Three</div>
+          <div class="kit-sub">Three lines, before anything else.</div>
+          <div class="kit-cat">journal</div>
+        </div>
+        <div class="kit-tile" style="--g:#F4E1AF;--s:#A07835;">
+          <div class="kit-glyph">🌻</div>
+          <div class="kit-tit">Three good things</div>
+          <div class="kit-sub">Three things that went right today, with a "why" line each.</div>
+          <div class="kit-cat">journal</div>
+        </div>
+        <div class="kit-tile" style="--g:#EBDFC9;--s:#7A5F3A;">
+          <div class="kit-glyph">📜</div>
+          <div class="kit-tit">Letter to future self</div>
+          <div class="kit-sub">Sealed today, opened later.</div>
+          <div class="kit-cat">journal</div>
+        </div>
+        <div class="kit-tile" style="--g:#E4DCC2;--s:#7A6A3E;">
+          <div class="kit-glyph">📄</div>
+          <div class="kit-tit">Paper card</div>
+          <div class="kit-sub">One note per paper. Citation, methodology, your critique.</div>
+          <div class="kit-cat">research</div>
+        </div>
+        <div class="kit-tile" style="--g:#D5DAE0;--s:#46546A;">
+          <div class="kit-glyph">🔬</div>
+          <div class="kit-tit">Hypothesis card</div>
+          <div class="kit-sub">H₀ / H₁, predicted effect, falsifier.</div>
+          <div class="kit-cat">research</div>
+        </div>
+        <div class="kit-tile" style="--g:#D8E0D2;--s:#4F6A47;">
+          <div class="kit-glyph">🗂</div>
+          <div class="kit-tit">Lit-review summary</div>
+          <div class="kit-sub">Themes, disagreements, the gap you're filling.</div>
+          <div class="kit-cat">research</div>
+        </div>
+        <div class="kit-tile" style="--g:#E0D6E4;--s:#5F4670;">
+          <div class="kit-glyph">🅢</div>
+          <div class="kit-tit">SOAP note</div>
+          <div class="kit-sub">Subjective · Objective · Assessment · Plan. Private.</div>
+          <div class="kit-cat">clinical</div>
+        </div>
+        <div class="kit-tile" style="--g:#E2D2D5;--s:#7A434B;">
+          <div class="kit-glyph">🛟</div>
+          <div class="kit-tit">Crisis safety plan</div>
+          <div class="kit-sub">Stanley-Brown shape. Co-developed with the client.</div>
+          <div class="kit-cat">clinical</div>
+        </div>
+        <div class="kit-tile" style="--g:#DDD8C7;--s:#5F5638;">
+          <div class="kit-glyph">🪧</div>
+          <div class="kit-tit">Decision log (ADR)</div>
+          <div class="kit-sub">Context, options, decision, consequences.</div>
+          <div class="kit-cat">work</div>
+        </div>
+        <div class="kit-tile" style="--g:#E0DCC9;--s:#75603A;">
+          <div class="kit-glyph">🗒</div>
+          <div class="kit-tit">Cornell notes</div>
+          <div class="kit-sub">Cue · notes · summary three-pane.</div>
+          <div class="kit-cat">learning</div>
+        </div>
+        <div class="kit-tile" style="--g:#E0D6BF;--s:#75603A;">
+          <div class="kit-glyph">⏳</div>
+          <div class="kit-tit">10-10-10</div>
+          <div class="kit-sub">10 minutes / 10 months / 10 years.</div>
+          <div class="kit-cat">decision</div>
+        </div>
+        <div class="kit-tile" style="--g:#E5D8B0;--s:#7A6232;">
+          <div class="kit-glyph">🕯</div>
+          <div class="kit-tit">Examen</div>
+          <div class="kit-sub">Ignatian nightly review — five gentle movements.</div>
+          <div class="kit-cat">spiritual</div>
+        </div>
+      </div>
+
+      <p class="kit-coda">
+        Plus 63 more — story idea, character sheet, scene beat, doctor visit, symptom journal, habit streak, brag doc, postmortem, customer interview, retrospective, status report, behavioral chain (DBT), case formulation, supervision prep, reflective practice, examen, lectio divina, loving-kindness, dream journal, mood + energy, anxiety unspooler, annual review, grief check-in, methodology card, experiment log, annotated bibliography, conference talk, data analysis log, thesis chapter, treatment plan, risk assessment, termination, group session, cognitive distortion log, weighted pros/cons, Eisenhower matrix, 5 Whys, WRAP, pre-mortem, concept map, lecture summary, reading log, tutorial walk-through, poem draft, critique notes, submission tracker, medication tracker, workout log, &mdash; all listed in the <a href="https://github.com/neuralpunk/yarrow/blob/main/CHANGELOG.md" rel="noopener">changelog</a>.
+      </p>
+    </article>
+
+    <!-- b. RESEARCH WORKFLOW -->
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">b.</div>
+        <div class="block-title">A research workflow</div>
+        <div class="block-tag">paper-card · @cite · BibTeX</div>
+      </header>
+      <p class="block-lede">
+        Three pieces of one motion. The <em>paper-card</em> kit gives every paper a structured home. The <code>@cite</code> picker turns <code>@bow</code> into a wikilink to your Bowlby card. A <code>.bib</code> file from Zotero or BibDesk lands as one paper-card per entry — tagged, ready to cite.
+      </p>
+      <div class="workflow-grid">
+        <div class="workflow-step">
+          <div class="step-num">1</div>
+          <div class="step-tit">Read &amp; record</div>
+          <div class="step-body">
+            Drop a <code>.bib</code> file into Settings → Workspace → Import notes. Each entry becomes a paper-card with title, authors, year, journal, DOI, citation key.
+          </div>
+        </div>
+        <div class="workflow-step">
+          <div class="step-num">2</div>
+          <div class="step-tit">Critique &amp; connect</div>
+          <div class="step-body">
+            Open a paper-card. The kit's structure pre-fills the <em>methodology</em>, <em>key findings</em>, <em>my critique</em>, <em>open questions</em>, <em>connections</em> sections. Wikilinks tie cards together.
+          </div>
+        </div>
+        <div class="workflow-step">
+          <div class="step-num">3</div>
+          <div class="step-tit">Cite &amp; write</div>
+          <div class="step-body">
+            In any note, type <code>@bow</code>. The picker scopes to paper-tagged notes; Enter inserts a <code>[[Bowlby&nbsp;1969 — Attachment&nbsp;and&nbsp;Loss]]</code> wikilink. The graph + reciprocal-link machinery picks it up like any other reference.
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- c. CLINICAL SURFACE -->
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">c.</div>
+        <div class="block-title">A privacy-first clinical surface</div>
+        <div class="block-tag">never leaves your machine</div>
+      </header>
+      <p class="block-lede">
+        Five clinical kits — SOAP, BIRP, DAP, supervision prep, reflective practice — plus intake, safety plan, treatment plan, risk assessment, termination, group session, behavioral chain, distortion log, and case formulation. All of them ship with the privacy gate already on: <code>private: true</code> plus the <code>#clinical</code> tag, and the file is registered in <code>.git/info/exclude</code> so it never enters a commit, let alone a sync.
+      </p>
+      <div class="privacy-list">
+        <div class="priv-row">
+          <div class="priv-tag">on disk</div>
+          <div class="priv-body">Stays at <code>notes/&lt;slug&gt;.md</code> as plain markdown. You can edit it, back it up, read it in any editor — git just doesn't see it.</div>
+        </div>
+        <div class="priv-row">
+          <div class="priv-tag">in the sidebar</div>
+          <div class="priv-body">Clinical-tagged tags render in rose. The note row shows a warm-amber <span style="color:#c97a3a;font-weight:600;">⊘</span> badge. Excerpt is redacted in every list view that shows note bodies.</div>
+        </div>
+        <div class="priv-row">
+          <div class="priv-tag">while you write</div>
+          <div class="priv-body">A pure-JavaScript PHI scanner highlights SSN-, DOB-, phone-, email-, address-, and MRN-shaped patterns inline as you type. No IPC, no upload, no uploaded model — runs entirely in the editor.</div>
+        </div>
+        <div class="priv-row">
+          <div class="priv-tag">in the welcome banner</div>
+          <div class="priv-body">"Where you left off" never bookmarks private or encrypted notes — the snippet that prompted this hardening is now structurally impossible to capture.</div>
+        </div>
+        <div class="priv-row">
+          <div class="priv-tag">in search</div>
+          <div class="priv-body">The full-text search index excludes private bodies entirely; the command palette can't surface PHI snippets in results.</div>
+        </div>
+      </div>
+    </article>
+
+    <!-- d. FOLDERS -->
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">d.</div>
+        <div class="block-title">Folders, optionally</div>
+        <div class="block-tag">if you want them</div>
+      </header>
+      <p class="block-lede">
+        Right-click any note → "Move to folder…" — your notes group into collapsible sections at the top of the sidebar. The file always stays at <code>notes/&lt;slug&gt;.md</code>; the folder is pure sidebar metadata. A workspace with no folders defined renders identically to v2.0. Folders are created the moment you first move a note into one; "+ Create new folder" lives inline in the picker.
+      </p>
+    </article>
+
+    <!-- e. SMALLER WINS -->
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">e.</div>
+        <div class="block-title">Small but felt</div>
+        <div class="block-tag">the polish layer</div>
+      </header>
+      <ul class="small-wins">
+        <li><b>Sharper text.</b> Webfonts now load in parallel with CSS parsing (was an <code>@import</code>); the editor no longer applies a <code>filter:&nbsp;blur(0.5px)</code> on every note switch; <code>zoom:&nbsp;1</code> stops creating a stacking context at the default UI scale.</li>
+        <li><b>Wikilink autocomplete that ranks.</b> Recently-opened notes float to the top; title-position matches outrank substring matches. Typing <code>[[k</code> gets you Knowledge before "Stuck on K".</li>
+        <li><b>Theme-aware graphs.</b> The connection graph and tag graph repaint live when you flip light↔dark, instead of waiting for a panel reopen.</li>
+        <li><b>Differential spell-check.</b> The plugin only rebuilds decorations on <em>changed</em> lines — measurable frame-time win on long notes.</li>
+        <li><b>IME composition guard.</b> Pressing Tab while composing CJK candidates passes through to the input method instead of jumping the cursor to the next table cell.</li>
+        <li><b>External URLs open in your browser.</b> An <code>&lt;a href="https://…"&gt;</code> click in the reader can no longer trap the Tauri webview — every external link routes through the OS default browser, with a fallback modal for the rare case where that fails.</li>
+        <li><b>Sync errors get categorised.</b> Toasts now begin with "authentication failed:" or "network unavailable:" rather than the generic "sync failed" — you know whether to reconnect or check Wi-Fi.</li>
+      </ul>
+    </article>
+  </section>
+
+  <!-- §3 DOSSIER (was §2 in 2.0) -->
+  <div class="section-head" id="features">
+    <div class="sec-num">§3</div>
     <div class="sec-title">The dossier</div>
-    <div class="sec-meta">All 15 features</div>
+    <div class="sec-meta">Everything since the start</div>
   </div>
 
   <section class="dossier">
     <div>
-      <h2 class="dossier-head">Everything <i>new</i> — and the mechanics underneath.</h2>
-      <small>Seven additions in 2.0 · eight mechanics that have been there since the start</small>
+      <h2 class="dossier-head">Mechanics that have been here since v1 — and the new ones that joined them.</h2>
+      <small>2.1 additions surface a "new" tag · earlier mechanics keep doing what they were quietly doing</small>
     </div>
     <div class="dossier-list">
       <div class="dossier-item">
         <div class="dossier-num">i.</div>
         <div class="dossier-body">
-          <div class="tit">Pinned notes <span class="new">new</span></div>
+          <div class="tit">Pinned notes</div>
           <p>Anchor a handful of always-visible notes at the top of the sidebar. Right-click → <em>Pin to top.</em></p>
         </div>
       </div>
       <div class="dossier-item">
         <div class="dossier-num">ii.</div>
         <div class="dossier-body">
-          <div class="tit">Quick capture <span class="new">new</span></div>
+          <div class="tit">Quick capture</div>
           <p><kbd>⌘⇧Space</kbd> pops a small window; <kbd>Ctrl+Enter</kbd> appends it to the scratchpad with a timestamp.</p>
         </div>
       </div>
       <div class="dossier-item">
         <div class="dossier-num">iii.</div>
         <div class="dossier-body">
-          <div class="tit">Journal &amp; templates <span class="new">new</span></div>
+          <div class="tit">Journal &amp; templates</div>
           <p>A month-grid calendar with dots on days you wrote; an optional <code>templates/daily.md</code> rendered into each entry.</p>
         </div>
       </div>
       <div class="dossier-item">
         <div class="dossier-num">iv.</div>
         <div class="dossier-body">
-          <div class="tit">Transclusion <span class="new">new</span></div>
+          <div class="tit">Transclusion</div>
           <p><code>![[note]]</code>, <code>![[note#heading]]</code>, or <code>![[note^block]]</code> — embeds another note's content inline.</p>
         </div>
       </div>
       <div class="dossier-item">
         <div class="dossier-num">v.</div>
         <div class="dossier-body">
-          <div class="tit">Path diffing <span class="new">new</span></div>
+          <div class="tit">Path diffing</div>
           <p>Compare any two paths prose-level. Export a path as a portable Markdown bundle — notes + attachments + README.</p>
         </div>
       </div>
       <div class="dossier-item">
         <div class="dossier-num">vi.</div>
         <div class="dossier-body">
-          <div class="tit">Rebuilt connections graph <span class="new">new</span></div>
+          <div class="tit">Rebuilt connections graph</div>
           <p>Structured radial layout with directional arrows, a legend, a nearby-vs-all filter, expand-to-fullscreen.</p>
         </div>
       </div>
       <div class="dossier-item">
         <div class="dossier-num">vii.</div>
         <div class="dossier-body">
-          <div class="tit">History modal <span class="new">new</span></div>
+          <div class="tit">History modal</div>
           <p>Now/Then panes, difference-only toggle, human timeline grouped by <em>Today / Yesterday / Earlier this week.</em></p>
         </div>
       </div>
@@ -1014,7 +1705,7 @@
 
   <!-- IN SITU -->
   <div class="section-head" id="gallery">
-    <div class="sec-num">§3</div>
+    <div class="sec-num">§4</div>
     <div class="sec-title">In situ</div>
     <div class="sec-meta">Three views</div>
   </div>
@@ -1120,7 +1811,7 @@
   </section>
 
   <footer class="foot">
-    <div><em>Yarrow</em> &nbsp;—&nbsp; Vol. 2, № 0 &nbsp;·&nbsp; MIT &nbsp;·&nbsp; no telemetry</div>
+    <div><em>Yarrow</em> &nbsp;—&nbsp; Vol. 2, № 1 &nbsp;·&nbsp; 2.1 issue &nbsp;·&nbsp; MIT &nbsp;·&nbsp; no telemetry</div>
     <div>
       <a href="user-guide.html">User Guide</a>
       <a href="https://github.com/neuralpunk/yarrow" rel="noopener">GitHub</a>
@@ -1130,6 +1821,49 @@
   </footer>
 
 </div>
+
+<script>
+  // Theme toggle. Cycles between Light (default) and Ashrose. Stored
+  // per-browser in localStorage; restored on page load before the
+  // first paint by an inline pre-script in <head>. Theme-color meta
+  // is updated alongside so OS chrome (Safari URL bar, Android nav)
+  // matches the chosen palette.
+  (function () {
+    var KEY = 'yarrow.docs.theme';
+    var THEMES = ['light', 'ashrose'];
+    var LABELS = { light: 'Light', ashrose: 'Ashrose' };
+    var THEME_COLORS = { light: '#f4efe2', ashrose: '#F6E5EA' };
+    var btn = document.getElementById('theme-toggle');
+    var label = btn && btn.querySelector('.th-label');
+    var meta = document.querySelector('meta[name="theme-color"]');
+
+    function read() {
+      try {
+        var raw = localStorage.getItem(KEY);
+        return THEMES.indexOf(raw) >= 0 ? raw : 'light';
+      } catch (e) { return 'light'; }
+    }
+    function apply(theme) {
+      if (theme === 'light') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', theme);
+      if (label) label.textContent = LABELS[theme];
+      if (meta && THEME_COLORS[theme]) meta.setAttribute('content', THEME_COLORS[theme]);
+    }
+    function next(theme) {
+      var i = THEMES.indexOf(theme);
+      return THEMES[(i + 1) % THEMES.length];
+    }
+    apply(read());
+    if (btn) {
+      btn.addEventListener('click', function () {
+        var current = read();
+        var n = next(current);
+        try { localStorage.setItem(KEY, n); } catch (e) {}
+        apply(n);
+      });
+    }
+  })();
+</script>
 
 </body>
 </html>

@@ -10,6 +10,8 @@ import {
   EnterKeyIcon,
 } from "../lib/icons";
 import { SK } from "../lib/platform";
+import EmptyState from "./EmptyState";
+import { useT } from "../lib/i18n";
 
 interface Action {
   kind: "command" | "note" | "path" | "search" | "tag" | "template";
@@ -42,6 +44,9 @@ interface Props {
   templates?: { name: string; label: string }[];
   onNewFromTemplate?: (name: string) => void;
   onOpenTemplatePicker?: () => void;
+  /** 2.1 Journal Kits. When provided, surfaces a "Start a journal kit…"
+   *  command that opens the kits-only picker. */
+  onOpenJournalKits?: () => void;
   encryption?: EncryptionStatus;
   activeIsEncrypted?: boolean;
   onLockEncryption?: () => void;
@@ -71,6 +76,7 @@ export default function CommandPalette(props: Props) {
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (open) {
@@ -104,22 +110,31 @@ export default function CommandPalette(props: Props) {
     };
   }, [q, open]);
 
-  const actions: Action[] = useMemo(() => {
+  // 2.1: each action carries a hidden `groupOrder` so the fuzzy re-ranker
+  // can sort across groups while still keeping the original top→bottom
+  // grouping (commands → templates → notes → search → paths).
+  type RankedAction = Action & { groupOrder: number };
+
+  const allActions: RankedAction[] = useMemo(() => {
     const rawTrimmed = q.trim();
-    const trimmed = rawTrimmed.toLowerCase();
     const isTagMode = rawTrimmed.startsWith("#");
     const tagQuery = isTagMode ? rawTrimmed.slice(1).toLowerCase() : "";
 
     if (isTagMode && props.tags) {
+      // Tag mode has its own explicit query prefix and keeps the small
+      // substring filter — fuzzy ranking tags by hash would feel weird.
       return props.tags
-        .filter((t) => !tagQuery || t.tag.toLowerCase().includes(tagQuery))
+        .filter((tg) => !tagQuery || tg.tag.toLowerCase().includes(tagQuery))
         .slice(0, 20)
-        .map<Action>((t) => ({
+        .map<RankedAction>((tg) => ({
           kind: "tag",
-          key: `tag-${t.tag}`,
-          label: `#${t.tag}`,
-          sublabel: `${t.count} note${t.count === 1 ? "" : "s"} — filter the list`,
-          run: () => { onClose(); props.onFilterTag?.(t.tag); },
+          key: `tag-${tg.tag}`,
+          label: `#${tg.tag}`,
+          sublabel: tg.count === 1
+            ? t("modals.commandPalette.tagFilter", { count: String(tg.count) })
+            : t("modals.commandPalette.tagFilterPlural", { count: String(tg.count) }),
+          groupOrder: 0,
+          run: () => { onClose(); props.onFilterTag?.(tg.tag); },
         }));
     }
 
@@ -127,7 +142,7 @@ export default function CommandPalette(props: Props) {
       {
         kind: "command",
         key: "new-note",
-        label: "New note",
+        label: t("modals.commandPalette.cmdNewNote"),
         hint: SK.newNote,
         run: () => { onClose(); props.onNewNote(); },
       },
@@ -135,16 +150,25 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "new-from-template",
-            label: "New note from template…",
-            sublabel: "pick a scaffold: meeting notes, book notes, morning pages…",
+            label: t("modals.commandPalette.cmdNewFromTemplate"),
+            sublabel: t("modals.commandPalette.cmdNewFromTemplateSub"),
             run: () => { onClose(); props.onOpenTemplatePicker!(); },
+          }]
+        : []),
+      ...(props.onOpenJournalKits
+        ? [{
+            kind: "command" as const,
+            key: "journal-kit",
+            label: t("modals.commandPalette.cmdJournalKit"),
+            sublabel: t("modals.commandPalette.cmdJournalKitSub"),
+            run: () => { onClose(); props.onOpenJournalKits!(); },
           }]
         : []),
       {
         kind: "command",
         key: "jump-today",
-        label: "Jump to today's journal",
-        sublabel: "daily notes always live on main — jumps there if needed",
+        label: t("modals.commandPalette.cmdJumpToday"),
+        sublabel: t("modals.commandPalette.cmdJumpTodaySub"),
         hint: SK.jumpToday,
         run: () => { onClose(); props.onJumpToday(); },
       },
@@ -153,16 +177,16 @@ export default function CommandPalette(props: Props) {
             {
               kind: "command" as const,
               key: "new-direction",
-              label: "Explore a new direction",
-              sublabel: "branch this note's path so you can try something without losing what you have",
+              label: t("modals.commandPalette.cmdNewDirection"),
+              sublabel: t("modals.commandPalette.cmdNewDirectionSub"),
               hint: SK.newDirection,
               run: () => { onClose(); props.onNewDirection(); },
             },
             {
               kind: "command" as const,
               key: "connect",
-              label: "Connect this note to another",
-              sublabel: "supports · challenges · came from · open question",
+              label: t("modals.commandPalette.cmdConnect"),
+              sublabel: t("modals.commandPalette.cmdConnectSub"),
               run: () => { onClose(); props.onConnect(); },
             },
           ]
@@ -170,35 +194,35 @@ export default function CommandPalette(props: Props) {
       {
         kind: "command",
         key: "history",
-        label: "Open history for this note",
+        label: t("modals.commandPalette.cmdHistory"),
         run: () => { onClose(); props.onOpenHistory(); },
       },
       {
         kind: "command",
         key: "focus",
-        label: "Toggle focus mode",
+        label: t("modals.commandPalette.cmdFocus"),
         hint: SK.focusToggle,
         run: () => { onClose(); props.onToggleFocus(); },
       },
       {
         kind: "command",
         key: "scratch",
-        label: "Open scratchpad",
-        sublabel: "a place to jot without saving",
+        label: t("modals.commandPalette.cmdScratchpad"),
+        sublabel: t("modals.commandPalette.cmdScratchpadSub"),
         run: () => { onClose(); props.onOpenScratchpad(); },
       },
       {
         kind: "command",
         key: "sync",
-        label: "Sync workspace",
+        label: t("modals.commandPalette.cmdSync"),
         run: () => { onClose(); props.onSync(); },
       },
       ...(props.onSwitchWorkspace
         ? [{
             kind: "command" as const,
             key: "switch-workspace",
-            label: "Switch workspace…",
-            sublabel: "jump to another workspace or start a new one",
+            label: t("modals.commandPalette.cmdSwitchWorkspace"),
+            sublabel: t("modals.commandPalette.cmdSwitchWorkspaceSub"),
             hint: SK.switchWorkspace,
             run: () => { onClose(); props.onSwitchWorkspace!(); },
           }]
@@ -207,8 +231,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "new-window",
-            label: "Open new window",
-            sublabel: "second view onto the same workspace",
+            label: t("modals.commandPalette.cmdNewWindow"),
+            sublabel: t("modals.commandPalette.cmdNewWindowSub"),
             run: () => { onClose(); props.onOpenNewWindow!(); },
           }]
         : []),
@@ -216,8 +240,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "find-replace",
-            label: "Find & replace…",
-            sublabel: "workspace-wide, with one-checkpoint undo",
+            label: t("modals.commandPalette.cmdFindReplace"),
+            sublabel: t("modals.commandPalette.cmdFindReplaceSub"),
             run: () => { onClose(); props.onFindReplace!(); },
           }]
         : []),
@@ -225,8 +249,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "print",
-            label: "Print or save as PDF",
-            sublabel: "render the current note for printing",
+            label: t("modals.commandPalette.cmdPrint"),
+            sublabel: t("modals.commandPalette.cmdPrintSub"),
             run: () => { onClose(); props.onPrintActiveNote!(); },
           }]
         : []),
@@ -234,8 +258,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "trash",
-            label: "Open trash",
-            sublabel: "restore or permanently remove deleted notes",
+            label: t("modals.commandPalette.cmdTrash"),
+            sublabel: t("modals.commandPalette.cmdTrashSub"),
             run: () => { onClose(); props.onOpenTrash!(); },
           }]
         : []),
@@ -243,8 +267,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "import-foreign",
-            label: "Import from another app…",
-            sublabel: "bring in a vault from Obsidian, Bear, Logseq, or Notion",
+            label: t("modals.commandPalette.cmdImport"),
+            sublabel: t("modals.commandPalette.cmdImportSub"),
             run: () => { onClose(); props.onImportObsidian!(); },
           }]
         : []),
@@ -252,8 +276,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "compare-paths",
-            label: "Compare two paths…",
-            sublabel: "side-by-side diff of any two directions",
+            label: t("modals.commandPalette.cmdComparePaths"),
+            sublabel: t("modals.commandPalette.cmdComparePathsSub"),
             run: () => { onClose(); props.onComparePaths!(); },
           }]
         : []),
@@ -261,8 +285,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "decision-matrix",
-            label: "Decision matrix…",
-            sublabel: "star must-have notes; see which path satisfies them",
+            label: t("modals.commandPalette.cmdDecisionMatrix"),
+            sublabel: t("modals.commandPalette.cmdDecisionMatrixSub"),
             run: () => { onClose(); props.onOpenDecisionMatrix!(); },
           }]
         : []),
@@ -270,8 +294,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "activity-heatmap",
-            label: "Activity",
-            sublabel: "calendar of your writing intensity across every path",
+            label: t("modals.commandPalette.cmdActivity"),
+            sublabel: t("modals.commandPalette.cmdActivitySub"),
             run: () => { onClose(); props.onOpenActivity!(); },
           }]
         : []),
@@ -279,8 +303,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "tag-graph",
-            label: "Tag graph",
-            sublabel: "see how your tags cluster — which notes share which themes",
+            label: t("modals.commandPalette.cmdTagGraph"),
+            sublabel: t("modals.commandPalette.cmdTagGraphSub"),
             run: () => { onClose(); props.onOpenTagGraph!(); },
           }]
         : []),
@@ -288,8 +312,8 @@ export default function CommandPalette(props: Props) {
         ? [{
             kind: "command" as const,
             key: "insert-table",
-            label: "Insert table…",
-            sublabel: "pick rows × columns — Tab moves between cells inside a row",
+            label: t("modals.commandPalette.cmdInsertTable"),
+            sublabel: t("modals.commandPalette.cmdInsertTableSub"),
             run: () => { onClose(); props.onInsertTable!(); },
           }]
         : []),
@@ -302,24 +326,24 @@ export default function CommandPalette(props: Props) {
         commands.push({
           kind: "command",
           key: "enc-setup",
-          label: "Set up local encryption…",
-          sublabel: "per-note, opt-in. Frontmatter stays plaintext.",
+          label: t("modals.commandPalette.cmdEncSetup"),
+          sublabel: t("modals.commandPalette.cmdEncSetupSub"),
           run: () => { onClose(); props.onOpenSecurity?.(); },
         });
       } else if (!enc.unlocked) {
         commands.push({
           kind: "command",
           key: "enc-unlock",
-          label: "Unlock encrypted notes",
-          sublabel: "enter your workspace password",
+          label: t("modals.commandPalette.cmdEncUnlock"),
+          sublabel: t("modals.commandPalette.cmdEncUnlockSub"),
           run: () => { onClose(); props.onUnlockEncryption?.(); },
         });
       } else {
         commands.push({
           kind: "command",
           key: "enc-lock",
-          label: "Lock encrypted notes",
-          sublabel: "zeroes the session key until you unlock again",
+          label: t("modals.commandPalette.cmdEncLock"),
+          sublabel: t("modals.commandPalette.cmdEncLockSub"),
           hint: "⌃L",
           run: () => { onClose(); props.onLockEncryption?.(); },
         });
@@ -327,78 +351,137 @@ export default function CommandPalette(props: Props) {
           commands.push({
             kind: "command",
             key: "enc-decrypt-this",
-            label: "Decrypt this note",
-            sublabel: "rewrite body as plaintext",
+            label: t("modals.commandPalette.cmdEncDecryptThis"),
+            sublabel: t("modals.commandPalette.cmdEncDecryptThisSub"),
             run: () => { onClose(); props.onDecryptActiveNote?.(); },
           });
         } else {
           commands.push({
             kind: "command",
             key: "enc-encrypt-this",
-            label: "Encrypt this note",
-            sublabel: "seal the body; frontmatter stays legible",
+            label: t("modals.commandPalette.cmdEncEncryptThis"),
+            sublabel: t("modals.commandPalette.cmdEncEncryptThisSub"),
             run: () => { onClose(); props.onEncryptActiveNote?.(); },
           });
         }
       }
     }
-    const filterCommands = trimmed
-      ? commands.filter((c) =>
-          (c.label + " " + (c.sublabel ?? "")).toLowerCase().includes(trimmed),
-        )
-      : commands;
+    // 2.1 Fuzzy: we no longer substring-filter per group here. Every
+    // candidate gets attached with its group order; the downstream
+    // effect runs a single nucleo IPC to decide which survive and in
+    // what order. When the query is empty, the group ordering below
+    // still holds because fuzzy's empty-query branch preserves input
+    // order at equal score.
+    const cmdsWithGroup: RankedAction[] = commands.map((c) => ({ ...c, groupOrder: 0 }));
 
-    const noteActions: Action[] = props.notes
-      .filter((n) => !trimmed || n.title.toLowerCase().includes(trimmed))
-      .slice(0, 6)
-      .map((n) => ({
-        kind: "note" as const,
-        key: `jump-${n.slug}`,
-        label: n.title || n.slug,
-        sublabel: "jump to note",
-        run: () => { onClose(); props.onSelectNote(n.slug); },
+    const templateActions: RankedAction[] = (props.templates ?? [])
+      .slice(0, 20)
+      .map((tpl) => ({
+        kind: "template" as const,
+        key: `tpl-${tpl.name}`,
+        label: t("modals.commandPalette.tplLabel", { label: tpl.label }),
+        sublabel: t("modals.commandPalette.tplSub"),
+        groupOrder: 1,
+        run: () => { onClose(); props.onNewFromTemplate?.(tpl.name); },
       }));
 
-    const pathActions: Action[] = props.mappingEnabled === false
-      ? []
-      : props.paths
-          .filter((p) => !p.is_current)
-          .filter((p) => !trimmed || p.name.toLowerCase().includes(trimmed))
-          .slice(0, 4)
-          .map((p) => ({
-            kind: "path" as const,
-            key: `path-${p.name}`,
-            label: `Switch to path: ${p.name}`,
-            sublabel: "follow this direction",
-            run: () => { onClose(); props.onSwitchPath(p.name); },
-          }));
+    const noteActions: RankedAction[] = props.notes.slice(0, 60).map((n) => ({
+      kind: "note" as const,
+      key: `jump-${n.slug}`,
+      label: n.title || n.slug,
+      sublabel: t("modals.commandPalette.noteSub"),
+      groupOrder: 2,
+      run: () => { onClose(); props.onSelectNote(n.slug); },
+    }));
 
-    const searchActions: Action[] = hits.map((h) => ({
+    const searchActions: RankedAction[] = hits.map((h) => ({
       kind: "search" as const,
       key: `hit-${h.slug}`,
       label: h.title,
       snippet: h.snippet,
-      sublabel: "search result",
+      sublabel: t("modals.commandPalette.searchSub"),
+      groupOrder: 3,
       run: () => { onClose(); props.onSelectNote(h.slug); },
     }));
 
-    const templateActions: Action[] = (props.templates ?? [])
-      .filter((t) => !trimmed || (t.label + " " + t.name).toLowerCase().includes(trimmed))
-      .slice(0, 6)
-      .map<Action>((t) => ({
-        kind: "template",
-        key: `tpl-${t.name}`,
-        label: `New note from template: ${t.label}`,
-        sublabel: "scaffolds a new note using this template",
-        run: () => { onClose(); props.onNewFromTemplate?.(t.name); },
-      }));
+    const pathActions: RankedAction[] = props.mappingEnabled === false
+      ? []
+      : props.paths
+          .filter((p) => !p.is_current)
+          .slice(0, 8)
+          .map((p) => ({
+            kind: "path" as const,
+            key: `path-${p.name}`,
+            label: t("modals.commandPalette.pathLabel", { name: p.name }),
+            sublabel: t("modals.commandPalette.pathSub"),
+            groupOrder: 4,
+            run: () => { onClose(); props.onSwitchPath(p.name); },
+          }));
 
-    // Ordering: commands (if query is short or matches), then notes, then search, then paths
-    if (!trimmed) {
-      return [...filterCommands, ...templateActions, ...noteActions];
+    return [
+      ...cmdsWithGroup,
+      ...templateActions,
+      ...noteActions,
+      ...searchActions,
+      ...pathActions,
+    ];
+  }, [q, hits, props, onClose, t]);
+
+  // 2.1 Nucleo-backed ranker over the whole candidate list. One IPC per
+  // query change; typically 100–600 labels, resolved in well under 10
+  // ms on a real vault. When the query is empty we skip the IPC and
+  // just show the first N candidates per group in their natural order.
+  const [actions, setActions] = useState<Action[]>([]);
+  useEffect(() => {
+    const trimmed = q.trim();
+    // Tag-mode is already pre-filtered by the memo above; pass it
+    // through verbatim.
+    if (trimmed.startsWith("#")) {
+      setActions(allActions);
+      return;
     }
-    return [...filterCommands, ...templateActions, ...noteActions, ...searchActions, ...pathActions];
-  }, [q, hits, props, onClose]);
+    if (!trimmed) {
+      // Empty query: preserve the original ordering, cap per group so
+      // the first paint doesn't blow up with hundreds of note rows.
+      const caps: Record<number, number> = { 0: 999, 1: 6, 2: 6, 3: 0, 4: 0 };
+      const counters: Record<number, number> = {};
+      const capped: Action[] = [];
+      for (const a of allActions) {
+        const used = counters[a.groupOrder] ?? 0;
+        if (used >= (caps[a.groupOrder] ?? 6)) continue;
+        counters[a.groupOrder] = used + 1;
+        capped.push(a);
+      }
+      setActions(capped);
+      return;
+    }
+    // Non-empty query: rank by fuzzy score, re-partition by group order.
+    let cancelled = false;
+    const labels = allActions.map(
+      (a) => a.label + (a.sublabel ? " " + a.sublabel : ""),
+    );
+    api.fuzzyRank(trimmed, labels, 80).then((hits) => {
+      if (cancelled) return;
+      // Sort: group order asc (keeps the visual rhythm), then score
+      // desc within group.
+      const decorated = hits.map((h) => ({
+        action: allActions[h.index],
+        score: h.score,
+      }));
+      decorated.sort((a, b) => {
+        if (a.action.groupOrder !== b.action.groupOrder) {
+          return a.action.groupOrder - b.action.groupOrder;
+        }
+        return b.score - a.score;
+      });
+      setActions(decorated.map((d) => d.action));
+    }).catch(() => {
+      // Fuzzy failed (shouldn't happen) — fall back to an unfiltered
+      // dump so the palette stays usable rather than empty.
+      setActions(allActions);
+    });
+    return () => { cancelled = true; };
+  }, [q, allActions]);
 
   useEffect(() => {
     if (!open) return;
@@ -433,7 +516,7 @@ export default function CommandPalette(props: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-char/20 backdrop-blur-[2px] pt-24 animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-char/20 pt-24 animate-fadeIn"
       onMouseDown={onClose}
     >
       <div
@@ -446,7 +529,7 @@ export default function CommandPalette(props: Props) {
             ref={inputRef}
             value={q}
             onChange={(e) => { setQ(e.target.value); setCursor(0); }}
-            placeholder="Search notes, jump to a path, or do something…"
+            placeholder={t("modals.commandPalette.placeholder")}
             className="flex-1 bg-transparent outline-none text-char placeholder:text-t3 text-base"
           />
           <Kbd>esc</Kbd>
@@ -454,9 +537,11 @@ export default function CommandPalette(props: Props) {
 
         <div ref={listRef} className="max-h-[400px] overflow-y-auto py-1">
           {actions.length === 0 && (
-            <div className="px-4 py-8 text-center text-sm text-t3">
-              Nothing matched "{q}".
-            </div>
+            <EmptyState
+              kind="search"
+              hint={q.trim() ? t("modals.commandPalette.nothingMatched", { query: q.trim() }) : undefined}
+              size="tight"
+            />
           )}
           {actions.map((a, i) => (
             <div
@@ -489,13 +574,13 @@ export default function CommandPalette(props: Props) {
 
         <div className="px-4 py-2 border-t border-bd bg-s1 text-2xs text-t3 flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5">
-            <Kbd>↑↓</Kbd> move
+            <Kbd>↑↓</Kbd> {t("modals.commandPalette.move")}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Kbd><EnterKeyIcon /></Kbd> run
+            <Kbd><EnterKeyIcon /></Kbd> {t("modals.commandPalette.run")}
           </span>
           <span className="ml-auto inline-flex items-center gap-1.5">
-            <Kbd>{SK.palette}</Kbd> to toggle
+            <Kbd>{SK.palette}</Kbd> {t("modals.commandPalette.toggle")}
           </span>
         </div>
       </div>

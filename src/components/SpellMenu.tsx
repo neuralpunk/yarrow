@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useT } from "../lib/i18n";
 
 export interface SpellMenuProps {
   word: string;
@@ -22,6 +23,7 @@ export default function SpellMenu({
   word, suggestions, from, to, x, y, onClose, onAddToDictionary,
 }: SpellMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const t = useT();
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -60,7 +62,7 @@ export default function SpellMenu({
         “{word}”
       </div>
       {suggestions.length === 0 ? (
-        <div className="px-3 py-2 italic text-t3 font-serif">No suggestions.</div>
+        <div className="px-3 py-2 italic text-t3 font-serif">{t("modals.spell.noSuggestions")}</div>
       ) : (
         <ul className="max-h-44 overflow-y-auto">
           {suggestions.map((s) => (
@@ -80,7 +82,7 @@ export default function SpellMenu({
           onClick={() => { onAddToDictionary(word); onClose(); }}
           className="w-full text-left px-3 py-1.5 text-t2 hover:bg-s2 hover:text-char"
         >
-          Add “{word}” to dictionary
+          {t("modals.spell.addToDictionary", { word })}
         </button>
       </div>
     </div>

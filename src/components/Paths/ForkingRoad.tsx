@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "rea
 import type { NoteSummary, PathCollection } from "../../lib/types";
 import { isGhostPath } from "../../lib/types";
 import { relativeTime } from "../../lib/format";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   collections: PathCollection[];
@@ -83,6 +84,7 @@ function ForkingRoadInner({
   currentPathName,
   onDropNoteOnPath,
 }: Props) {
+  const t = useT();
   // Display mode: "ink" renders tapered filled ribbons + the full
   // DestinationCard (default — rich, editorial). "ribbon" switches to
   // thin gradient strokes between parent and child colours with compact
@@ -460,7 +462,7 @@ function ForkingRoadInner({
   if (!rootNode) {
     return (
       <div className="w-full h-full flex items-center justify-center p-10 text-t3 italic">
-        Loading paths…
+        {t("paths.road.loading")}
       </div>
     );
   }
@@ -479,20 +481,20 @@ function ForkingRoadInner({
       onMouseLeave={onPanEnd}
       onClick={onCanvasClick}
     >
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-s1/95 border border-bd rounded-md shadow-sm px-1 py-1 backdrop-blur" data-road-interactive>
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-s1/95 border border-bd rounded-md shadow-sm px-1 py-1" data-road-interactive>
         {/* Display-mode segmented control: ink = default tapered filled
             ribbons + cards, ribbon = thin gradient strokes + pill nodes. */}
         <div className="flex items-center border border-bd rounded overflow-hidden mr-1">
           <button
             onClick={(e) => { e.stopPropagation(); setDisplayMode("ink"); }}
             className={`px-2 h-6 text-2xs ${displayMode === "ink" ? "bg-yelp text-yeld" : "text-t2 hover:text-char hover:bg-s2"}`}
-            title="Tapered ink — full cards, filled ribbon connectors"
-          >ink</button>
+            title={t("paths.road.modeInkTitle")}
+          >{t("paths.road.modeInk")}</button>
           <button
             onClick={(e) => { e.stopPropagation(); setDisplayMode("ribbon"); }}
             className={`px-2 h-6 text-2xs ${displayMode === "ribbon" ? "bg-yelp text-yeld" : "text-t2 hover:text-char hover:bg-s2"}`}
-            title="Gradient ribbon — thin strokes that blend parent colour into child, compact pill nodes"
-          >ribbon</button>
+            title={t("paths.road.modeRibbonTitle")}
+          >{t("paths.road.modeRibbon")}</button>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); setZoom((z) => Math.min(2.5, z * 1.15)); }}
@@ -508,7 +510,7 @@ function ForkingRoadInner({
         <button
           onClick={(e) => { e.stopPropagation(); resetView(); }}
           className="px-2 h-7 text-2xs text-t2 hover:text-char hover:bg-s2 rounded"
-        >fit</button>
+        >{t("paths.road.fit")}</button>
       </div>
 
       <div
@@ -638,7 +640,7 @@ function ForkingRoadInner({
                 style={{ fontSize: 10, fill: "var(--yeld)", letterSpacing: "0.2em" }}
                 className="mono"
               >
-                MAIN
+                {t("paths.road.cardMain")}
               </text>
             </g>
           )}
@@ -903,7 +905,7 @@ function ForkingRoadInner({
             style={{ left, top }}
           >
             <div className="text-2xs font-mono uppercase tracking-wider text-t3 mb-1">
-              {isCurrent ? "current path" : "path preview"}
+              {isCurrent ? t("paths.road.popoverCurrent") : t("paths.road.popoverPreview")}
             </div>
             <div className="font-serif text-base text-char truncate" title={coll.name}>
               {coll.name}
@@ -914,19 +916,21 @@ function ForkingRoadInner({
               </div>
             )}
             <div className="text-2xs text-t3 mt-1">
-              {coll.members.length} note{coll.members.length === 1 ? "" : "s"}
+              {coll.members.length === 1
+                ? t("paths.road.popoverNote", { count: String(coll.members.length) })
+                : t("paths.road.popoverNotePlural", { count: String(coll.members.length) })}
             </div>
 
             {!isCurrent && currentPathName && (gained.length > 0 || lost.length > 0) && (
               <div className="mt-2 pt-2 border-t border-bd flex items-center gap-3 text-2xs font-mono">
-                {gained.length > 0 && <span className="text-yeld">+{gained.length} gained</span>}
-                {lost.length > 0 && <span className="text-danger">−{lost.length} lost</span>}
+                {gained.length > 0 && <span className="text-yeld">{t("paths.road.popoverGained", { count: String(gained.length) })}</span>}
+                {lost.length > 0 && <span className="text-danger">{t("paths.road.popoverLost", { count: String(lost.length) })}</span>}
               </div>
             )}
 
             <div className="mt-2 pt-2 border-t border-bd">
               <div className="text-2xs font-mono uppercase tracking-wider text-t3 mb-1">
-                In this path
+                {t("paths.road.popoverInPath")}
               </div>
               <ul className="text-xs text-char space-y-0.5 max-h-40 overflow-hidden">
                 {coll.members.slice(0, 7).map((slug) => (
@@ -937,12 +941,12 @@ function ForkingRoadInner({
                 ))}
                 {coll.members.length > 7 && (
                   <li className="text-2xs italic text-t3">
-                    … and {coll.members.length - 7} more
+                    {t("paths.road.popoverMore", { count: String(coll.members.length - 7) })}
                   </li>
                 )}
               </ul>
             </div>
-            <div className="mt-2 text-2xs italic text-t3">click for full detail</div>
+            <div className="mt-2 text-2xs italic text-t3">{t("paths.road.popoverHint")}</div>
           </div>
         );
       })()}
@@ -963,7 +967,8 @@ function Signpost({
   onClick: () => void;
   emphasize: boolean;
 }) {
-  const label = condition || "+ name this fork";
+  const t = useT();
+  const label = condition || t("paths.road.signpostName");
   const maxChars = 38;
   const display = label.length > maxChars ? label.slice(0, maxChars - 1) + "…" : label;
   const textW = Math.max(80, display.length * 6.2 + 20);
@@ -1033,6 +1038,7 @@ function DestinationRibbon({
   x: number;
   y: number;
 }) {
+  const t = useT();
   const nameW = Math.min(180, Math.max(80, name.length * 7 + 26));
   const w = nameW + 38;
   const h = 28;
@@ -1076,7 +1082,7 @@ function DestinationRibbon({
       </text>
       {isCurrent && (
         <circle cx={x + w + 8} cy={y + h / 2} r={3} fill="var(--yeld)">
-          <title>you are here</title>
+          <title>{t("paths.road.youAreHereTooltip")}</title>
         </circle>
       )}
       {condition && (
@@ -1124,6 +1130,7 @@ function DestinationCard({
   y: number;
   width: number;
 }) {
+  const t = useT();
   const h = 84;
   const stroke = isDropTarget
     ? "var(--yel)"
@@ -1153,7 +1160,9 @@ function DestinationCard({
         </text>
       )}
       <text x={x + 14} y={y + h - 10} className="mono" style={{ fontSize: 10, fill: "var(--t3)" }}>
-        {memberCount} note{memberCount === 1 ? "" : "s"} · created {relativeTime(createdAt)}
+        {memberCount === 1
+          ? t("paths.road.cardCreated", { count: String(memberCount), when: relativeTime(createdAt) })
+          : t("paths.road.cardCreatedPlural", { count: String(memberCount), when: relativeTime(createdAt) })}
       </text>
       {isRoot && (
         <text
@@ -1163,7 +1172,7 @@ function DestinationCard({
           className="mono"
           style={{ fontSize: 9, fill: "var(--yeld)", letterSpacing: "0.18em" }}
         >
-          MAIN
+          {t("paths.road.cardMain")}
         </text>
       )}
       {isCurrent && (
@@ -1174,15 +1183,20 @@ function DestinationCard({
           className="mono"
           style={{ fontSize: 9, fill: "var(--yeld)", letterSpacing: "0.18em" }}
         >
-          YOU ARE HERE
+          {t("paths.road.cardYouAreHere")}
         </text>
       )}
       {diffFromCurrent && !isCurrent && (diffFromCurrent.gained > 0 || diffFromCurrent.lost > 0) && (
         <g>
           <title>
-            {`If you switch to "${name}" from your current path: ` +
-              `${diffFromCurrent.gained} note${diffFromCurrent.gained === 1 ? "" : "s"} added, ` +
-              `${diffFromCurrent.lost} removed.`}
+            {t("paths.road.diffTooltip", {
+              name,
+              gained: String(diffFromCurrent.gained),
+              gainedNoteWord: diffFromCurrent.gained === 1
+                ? t("paths.road.diffNoteWord")
+                : t("paths.road.diffNoteWordPlural"),
+              lost: String(diffFromCurrent.lost),
+            })}
           </title>
           <rect
             x={x + width - 78}
@@ -1237,11 +1251,12 @@ function PendingForkStub({
   onCommit: (condition: string) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const t = window.setTimeout(() => inputRef.current?.focus(), 40);
-    return () => window.clearTimeout(t);
+    const tid = window.setTimeout(() => inputRef.current?.focus(), 40);
+    return () => window.clearTimeout(tid);
   }, []);
   // Anchor relative to the parent so ghosts on the left don't skew the stub.
   const stubX = parent.x + COL_W;
@@ -1272,11 +1287,21 @@ function PendingForkStub({
               if (e.key === "Enter") { e.preventDefault(); onCommit(value); }
               else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
             }}
-            placeholder="If the Seattle job comes through…"
+            placeholder={t("paths.road.pendingPlaceholder")}
             className="w-full px-3 py-1.5 bg-bg border border-yel rounded-md text-char text-sm font-serif italic placeholder:not-italic placeholder:text-t3/70 shadow-md outline-none"
           />
           <div className="text-2xs text-t3 italic pl-1">
-            Enter to branch off <span className="text-t2">{parent.coll.name}</span>, Esc to cancel.
+            {(() => {
+              const tpl = t("paths.road.pendingHelp");
+              const parts = tpl.split("{parent}");
+              return (
+                <>
+                  {parts[0]}
+                  <span className="text-t2">{parent.coll.name}</span>
+                  {parts[1] ?? ""}
+                </>
+              );
+            })()}
           </div>
         </div>
       </foreignObject>
@@ -1305,6 +1330,7 @@ function GhostCard({
   y: number;
   width: number;
 }) {
+  const t = useT();
   const h = 78;
   const stroke = isSelected ? "var(--yel2)" : "var(--t3)";
   const sw = isSelected ? 1.6 : 1;
@@ -1340,7 +1366,9 @@ function GhostCard({
         </text>
       )}
       <text x={x + 14} y={y + h - 10} className="mono" style={{ fontSize: 9, fill: "var(--t3)", letterSpacing: "0.12em" }}>
-        {memberCount} note{memberCount === 1 ? "" : "s"} · ghost · {relativeTime(createdAt)}
+        {memberCount === 1
+          ? t("paths.road.cardGhostMeta", { count: String(memberCount), when: relativeTime(createdAt) })
+          : t("paths.road.cardGhostMetaPlural", { count: String(memberCount), when: relativeTime(createdAt) })}
       </text>
       {isAnchor && (
         <text
@@ -1350,7 +1378,7 @@ function GhostCard({
           className="mono"
           style={{ fontSize: 9, fill: "var(--t3)", letterSpacing: "0.18em" }}
         >
-          WAS MAIN
+          {t("paths.road.cardWasMain")}
         </text>
       )}
     </g>

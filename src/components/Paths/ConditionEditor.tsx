@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   branch: string;
@@ -15,15 +16,16 @@ interface Props {
 export default function ConditionEditor({ branch, initial, onSave, onCancel }: Props) {
   const [value, setValue] = useState(initial);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const t = useT();
 
   useEffect(() => {
-    const t = window.setTimeout(() => {
+    const tid = window.setTimeout(() => {
       const el = inputRef.current;
       if (!el) return;
       el.focus();
       el.setSelectionRange(el.value.length, el.value.length);
     }, 30);
-    return () => window.clearTimeout(t);
+    return () => window.clearTimeout(tid);
   }, []);
 
   useEffect(() => {
@@ -36,9 +38,15 @@ export default function ConditionEditor({ branch, initial, onSave, onCancel }: P
 
   const commit = () => onSave(value.trim());
 
+  // Split the heading template so the path-name segment can be rendered
+  // as a styled <span> in the right colour. Translators keep the literal
+  // {name} marker in their string so we can stitch the React node back in
+  // without forcing them to ship raw HTML.
+  const [headingBefore, headingAfter] = t("paths.condition.heading").split("{name}");
+
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-bg/60 backdrop-blur-sm animate-fadeIn"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-bg/60 animate-fadeIn"
       onClick={onCancel}
     >
       <div
@@ -46,15 +54,15 @@ export default function ConditionEditor({ branch, initial, onSave, onCancel }: P
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-2xs uppercase tracking-[0.2em] font-mono text-t3 mb-1">
-          name this path
+          {t("paths.condition.kicker")}
         </div>
         <div className="font-serif text-[22px] text-char leading-tight mb-2">
-          What question is{" "}
-          <span className="italic text-yeld">{branch}</span> asking?
+          {headingBefore}
+          <span className="italic text-yeld">{branch}</span>
+          {headingAfter ?? ""}
         </div>
         <p className="text-xs text-t2 mb-3 leading-relaxed">
-          Start with <span className="italic">If…</span> or <span className="italic">What if…</span> — the condition that
-          made you step off the main road. This is how future-you will recognize it.
+          {t("paths.condition.lead")}
         </p>
         <textarea
           ref={inputRef}
@@ -69,16 +77,16 @@ export default function ConditionEditor({ branch, initial, onSave, onCancel }: P
             }
           }}
           rows={2}
-          placeholder="If the Seattle job comes through…"
+          placeholder={t("paths.condition.placeholder")}
           className="w-full px-3 py-2 bg-bg-soft border border-bd rounded-md text-char text-sm resize-none font-serif italic placeholder:not-italic placeholder:text-t3/70"
         />
         <div className="mt-2 flex flex-wrap gap-1">
           {[
-            "If it rains on the day",
-            "If I get the job",
-            "If the project is denied",
-            "If we stay put",
-            "If I quit",
+            t("paths.condition.preset1"),
+            t("paths.condition.preset2"),
+            t("paths.condition.preset3"),
+            t("paths.condition.preset4"),
+            t("paths.condition.preset5"),
           ].map((s) => (
             <button
               key={s}
@@ -94,22 +102,22 @@ export default function ConditionEditor({ branch, initial, onSave, onCancel }: P
             onClick={onCancel}
             className="px-3 py-1.5 text-sm text-t2 hover:text-char"
           >
-            cancel
+            {t("paths.condition.cancel")}
           </button>
           {initial && (
             <button
               onClick={() => onSave("")}
               className="px-3 py-1.5 text-sm text-t3 hover:text-danger"
-              title="Remove this condition"
+              title={t("paths.condition.clearTitle")}
             >
-              clear
+              {t("paths.condition.clear")}
             </button>
           )}
           <button
             onClick={commit}
             className="btn-yel px-3 py-1.5 text-sm rounded-md"
           >
-            save question
+            {t("paths.condition.save")}
           </button>
         </div>
       </div>

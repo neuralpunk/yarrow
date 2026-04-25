@@ -3,6 +3,7 @@ import { api } from "../../lib/tauri";
 import type { NoteSummary } from "../../lib/types";
 import { parseEmbeds, resolveEmbed, type Embed } from "../../lib/transclusion";
 import { slugify } from "../../lib/format";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   body: string;
@@ -19,6 +20,7 @@ interface Resolved {
 }
 
 function TransclusionsInner({ body, notes, onNavigate, refreshToken }: Props) {
+  const t = useT();
   const [resolved, setResolved] = useState<Resolved[]>([]);
 
   useEffect(() => {
@@ -64,7 +66,7 @@ function TransclusionsInner({ body, notes, onNavigate, refreshToken }: Props) {
     <div className="px-3 py-3 border-t border-bd">
       <div className="flex items-center justify-between mb-2">
         <div className="text-2xs uppercase tracking-wider text-t3 font-semibold">
-          Embedded
+          {t("sidebar.transclusions.title")}
         </div>
         <span className="text-2xs text-t3">{resolved.length}</span>
       </div>
@@ -83,7 +85,7 @@ function TransclusionsInner({ body, notes, onNavigate, refreshToken }: Props) {
               {r.targetTitle}
               {r.embed.heading && <span className="text-t3"> › {r.embed.heading}</span>}
               {r.embed.blockId && <span className="text-t3"> ^{r.embed.blockId}</span>}
-              {!r.targetSlug && <span className="text-danger"> · not found</span>}
+              {!r.targetSlug && <span className="text-danger">{t("sidebar.transclusions.notFound")}</span>}
             </button>
             {r.content && (
               <div className="mt-1 text-2xs text-t2 leading-relaxed whitespace-pre-wrap line-clamp-6">

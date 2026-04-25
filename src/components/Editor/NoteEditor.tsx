@@ -31,6 +31,8 @@ import type { Annotation } from "../../lib/types";
 import calloutsPlugin from "./extensions/callouts";
 import ForkSuggestion from "./ForkSuggestion";
 import TagChips from "./TagChips";
+import TagBouquet from "./TagBouquet";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   note: Note;
@@ -123,6 +125,11 @@ function cellStartAfter(line: { from: number; text: string }, pipeAbs: number): 
 }
 
 function tableTab(view: EditorView): boolean {
+  // Tab during IME composition (CJK candidate selection, etc.) must
+  // pass through to the input method — without this guard, pressing
+  // Tab to confirm a candidate jumps the cursor to the next table cell
+  // and cancels the in-progress composition.
+  if (view.composing) return false;
   const { state } = view;
   const sel = state.selection.main;
   if (!sel.empty) return false;
@@ -182,6 +189,7 @@ function tableTab(view: EditorView): boolean {
 }
 
 function tableShiftTab(view: EditorView): boolean {
+  if (view.composing) return false;
   const { state } = view;
   const sel = state.selection.main;
   if (!sel.empty) return false;
@@ -420,6 +428,7 @@ export default function NoteEditor({
   pathColorOverrides,
   onAnnotationsChange,
 }: Props) {
+  const t = useT();
   // Writing-extras toggles. Each flips dynamic loading of a heavier
   // extension on/off; the editor re-mounts whenever one changes (via the
   // useEffect deps below) so the new extensions set takes effect without
@@ -468,6 +477,7 @@ export default function NoteEditor({
   // suppress the no-op "still 0/0" dispatch on every keystroke while
   // typing without a selection.
   const lastSelectionRef = useRef<{ words: number; chars: number }>({ words: 0, chars: 0 });
+  const lastCursorLineRef = useRef<number>(-1);
   // Keep the latest `onSave` reachable from the editor's unmount cleanup.
   // Without this, a path-switch remount would clear the debounced timer
   // without flushing — losing whatever the user typed in the last <debounce.
@@ -611,6 +621,42 @@ export default function NoteEditor({
         completionSources.push(wl.wikilinkSource(() => notesRef.current));
         extraExtensions.push(wl.wikilinkInputHandler);
         console.info("[yarrow] wikilink autocomplete loaded");
+
+        // @cite picker — same pool, scoped to paper-tagged notes. Lazy-
+        // loaded alongside wikilink so its bundle weight only lands on
+        // mapping-enabled workspaces.
+        //
+        // Trigger pipeline (see citeAutocomplete.ts header for the full
+        // pipeline rationale):
+        //   citeAutoTrigger — primary, post-doc-update watcher
+        //   citeInputHandler — fallback for IME-routed `@` keystrokes
+        //   activateOnTyping — keeps the popup alive as the user types
+        //                      letters after the `@`
+        // Each layer is independently sufficient; layered together they
+        // survive the quirks of any single path failing.
+        const cite = await import("./extensions/citeAutocomplete");
+        if (cancelled) return;
+        completionSources.push(cite.citeSource(() => notesRef.current));
+        extraExtensions.push(cite.citeAutoTrigger);
+        extraExtensions.push(cite.citeInputHandler);
+        console.info("[yarrow] @cite autocomplete loaded");
+      }
+
+      // PHI / de-identification highlighter — only on private notes
+      // (clinical kits set this automatically; users can also set
+      // `private: true` in frontmatter for personal notes they want to
+      // keep off sync). Lazy-loaded so the regex pack + plugin code
+      // never lands on the editor for ordinary notes.
+      const isPrivate =
+        note.frontmatter.private === true ||
+        (note.frontmatter.tags ?? []).some(
+          (t) => t.toLowerCase() === "clinical",
+        );
+      if (isPrivate) {
+        const phi = await import("./extensions/phiHighlight");
+        if (cancelled) return;
+        extraExtensions.push(phi.phiHighlight());
+        console.info("[yarrow] PHI highlighter loaded");
       }
 
       if (completionSources.length > 0) {
@@ -649,7 +695,7 @@ export default function NoteEditor({
           markdownExtension,
           syntaxHighlighting(highlightStyle),
           syntaxHighlighting(defaultHighlightStyle),
-          placeholder("Start writing…"),
+          placeholder(t("editor.note.placeholder")),
           EditorView.lineWrapping,
           wikilinkPlugin(),
           questionPlugin(),
@@ -698,6 +744,18 @@ export default function NoteEditor({
               lastSelectionRef.current = { words: count, chars };
               window.dispatchEvent(new CustomEvent("yarrow:selection-changed", {
                 detail: { words: count, chars },
+              }));
+            }
+            // Cursor-line beacon for the "where you left off" bookmark.
+            // AppShell debounces saves on this; the editor doesn't care
+            // about the persisted state, only that the line number is
+            // available. Emit on selection or doc change since either
+            // can move the cursor.
+            const line = update.state.doc.lineAt(sel.head).number;
+            if (lastCursorLineRef.current !== line) {
+              lastCursorLineRef.current = line;
+              window.dispatchEvent(new CustomEvent("yarrow:cursor-changed", {
+                detail: { line },
               }));
             }
           }
@@ -1034,25 +1092,37 @@ export default function NoteEditor({
     setBlame(null);
   }, [note.slug, note.body, note.frontmatter.title]);
 
-  // Late note.body sync. Path switches remount this component with whatever
-  // activeNote was at click time — AppShell's re-fetch for the new path
-  // resolves a tick later and updates note.body. That prop change doesn't
-  // re-mount (key hasn't changed), so without this the view would show the
-  // previous path's content indefinitely. We only replace the doc when the
-  // view matches the last-saved body: if the user has unflushed edits, the
-  // debounced save (or the onBlur flush) will persist them to the captured
-  // mount path first.
+  // External body swap. Two callers land here:
+  //   (1) Path switches — AppShell re-fetches the note on the new path
+  //       and updates note.body a tick after this component remounts.
+  //   (2) Sync reloads — AppShell invalidates the prefetch cache and
+  //       bumps a nonce after a pull, then the note-load effect re-runs
+  //       and hands down the server's freshly-synced body.
+  //
+  // Previously this guarded against overwriting unflushed local edits
+  // (`if (current !== lastSavedBody.current) return;`). That was wrong
+  // for case (2): the pending debounce save would still fire after the
+  // blocked swap, writing the pre-sync buffer over the freshly-pulled
+  // content and creating a commit that deleted whatever came down from
+  // the server — the exact failure mode behind the history-screenshot
+  // bug. So now we always force-swap AND cancel any pending save.
+  // Losing a handful of unsynced keystrokes is a far better failure
+  // than silently destroying a remote edit we just pulled in.
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
     const current = view.state.doc.toString();
     if (current === note.body) return;
-    if (current !== lastSavedBody.current) return;
+    if (saveTimer.current !== null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
     view.dispatch({
       changes: { from: 0, to: current.length, insert: note.body },
     });
     lastSavedBody.current = note.body;
-  }, [note.body]);
+    onDirtyChange(false);
+  }, [note.body, onDirtyChange]);
 
   // Jump to a specific line
   useEffect(() => {
@@ -1066,6 +1136,40 @@ export default function NoteEditor({
     });
     view.focus();
   }, [jumpToLine]);
+
+  // Content-anchored scroll restoration — the "where you left off" banner
+  // emits `yarrow:scroll-to-line` after opening the saved note. We try
+  // the snippet text first (stable across line-number drift caused by
+  // edits between sessions) and fall back to the bare line number when
+  // the text can't be located.
+  useEffect(() => {
+    const onScroll = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ slug?: string; line?: number; snippet?: string }>).detail;
+      if (!detail) return;
+      if (detail.slug && detail.slug !== note.slug) return;
+      const view = viewRef.current;
+      if (!view) return;
+      const doc = view.state.doc;
+      let pos: number | null = null;
+      const snippet = (detail.snippet || "").trim();
+      if (snippet.length >= 8) {
+        const probe = snippet.length > 60 ? snippet.slice(0, 60) : snippet;
+        const idx = doc.toString().indexOf(probe);
+        if (idx >= 0) pos = idx;
+      }
+      if (pos === null && detail.line && detail.line > 0) {
+        const line = Math.max(1, Math.min(detail.line, doc.lines));
+        pos = doc.line(line).from;
+      }
+      if (pos === null) return;
+      view.dispatch({
+        selection: { anchor: pos, head: pos },
+        scrollIntoView: true,
+      });
+    };
+    window.addEventListener("yarrow:scroll-to-line", onScroll as EventListener);
+    return () => window.removeEventListener("yarrow:scroll-to-line", onScroll as EventListener);
+  }, [note.slug]);
 
   // External text insertion — used by the scratchpad's "send to note" action.
   // Inserts at the current cursor (or doc end if no selection has been placed
@@ -1325,13 +1429,13 @@ export default function NoteEditor({
             justSaved ? "edited-pulse" : ""
           }`}
         >
-          {editorialDate(note.frontmatter.modified)} · written in the{" "}
+          {editorialDate(note.frontmatter.modified)} · {t("editor.note.writtenInThe")}{" "}
           {timeOfDayPhrase(note.frontmatter.modified)}
           <span className="text-t3/70"> · </span>
           <span className="font-mono not-italic text-2xs">{currentPath || "main"}</span>
           <span className="text-t3/70"> · </span>
           <span className="not-italic">
-            {justSaved ? "saved" : "edited"} {relativeTime(note.frontmatter.modified)}
+            {justSaved ? t("editor.note.saved") : t("editor.note.edited")} {relativeTime(note.frontmatter.modified)}
           </span>
         </div>
         <input
@@ -1341,7 +1445,7 @@ export default function NoteEditor({
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
           }}
-          placeholder="Untitled"
+          placeholder={t("editor.note.titlePlaceholder")}
           className="w-full font-serif text-[44px] leading-[1.1] text-char bg-transparent outline-none placeholder:text-t3 tracking-[-1px] mb-2"
         />
         <TagChips
@@ -1349,9 +1453,23 @@ export default function NoteEditor({
           suggestions={tagSuggestions}
           onCommit={(next) => onTagsChange?.(mountedSlugRef.current, next)}
         />
+        <TagBouquet
+          slug={mountedSlugRef.current}
+          title={note.frontmatter.title ?? ""}
+          body={note.body ?? ""}
+          existingTags={note.frontmatter.tags ?? []}
+          locked={note.locked}
+          onAdopt={(t) => {
+            // Append via the same write path the chip input uses — that keeps
+            // frontmatter, graph rebuild, and auto-path reconciliation flowing
+            // through one spot.
+            const next = [...(note.frontmatter.tags ?? []), t];
+            onTagsChange?.(mountedSlugRef.current, next);
+          }}
+        />
         {onAnnotationsChange ? (
           <div className={hasAnnotations ? "yarrow-annotations-layout mt-6" : "mt-6"}>
-            <div ref={hostRef} onBlur={saveNow} className="min-h-[50vh]" />
+            <div ref={hostRef} onBlur={saveNow} className="yarrow-note-host min-h-[50vh]" />
             {hasAnnotations && (
               <aside className="yarrow-annotations-gutter">
                 <AnnotationsGutter
@@ -1362,12 +1480,12 @@ export default function NoteEditor({
             )}
           </div>
         ) : (
-          <div ref={hostRef} onBlur={saveNow} className="min-h-[50vh] mt-6" />
+          <div ref={hostRef} onBlur={saveNow} className="yarrow-note-host min-h-[50vh] mt-6" />
         )}
 
         {note.frontmatter.links.length > 0 && (
           <div className="mt-14 pt-7 border-t border-bd flex items-baseline gap-3 flex-wrap">
-            <span className="font-serif italic text-xs text-t3">This note connects to</span>
+            <span className="font-serif italic text-xs text-t3">{t("editor.note.connectsTo")}</span>
             {note.frontmatter.links.map((l) => (
               <button
                 key={l.target}
@@ -1393,7 +1511,7 @@ export default function NoteEditor({
           style={{ left: blame.x, top: blame.y }}
           className="fixed z-40 pointer-events-none bg-char text-bg text-2xs px-2 py-1 rounded shadow-lg animate-fadeIn"
         >
-          Written {relativeTime(blame.p.timestamp)} · path {blame.p.path_name}
+          {t("editor.note.blame", { when: relativeTime(blame.p.timestamp), path: blame.p.path_name })}
         </div>
       )}
 

@@ -187,6 +187,8 @@ pub fn seed(workspace_root: &Path) -> Result<SampleSeedReport> {
             salt: String::new(),
             nonce: String::new(),
             annotations: vec![],
+            private: false,
+            folder: None,
         };
         notes::write(workspace_root, s.slug, s.body, Some(fm))?;
     }

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fireCenterAction } from "./center/actions";
+import { useT } from "../../lib/i18n";
 
 // ────────────── Radial menu ──────────────
 // A donut-shaped pie menu: right-click in the editor opens this at the
@@ -35,7 +36,13 @@ interface Props {
 const OUTER = 134;
 const INNER = 46;
 const LABEL_RADIUS = (OUTER + INNER) / 2;
-const SVG_SIZE = 320; // comfortably larger than 2*OUTER + padding
+// 2.1 tightened: was 320 (left a visible empty annulus between the
+// wedge ring and the wrapper edge that read as a "white outer halo"
+// on the rose Ashrose palette). Pulling the SVG canvas in to just
+// 8px past 2*OUTER hugs the wedges; foreignObject labels (which can
+// extend ~16px past OUTER on the longest wedges) still render fine
+// because `.radial-menu` has `overflow: visible` set.
+const SVG_SIZE = 284;
 
 // Long-press threshold and double-click window, in ms. Tuned to feel
 // crisp — shorter than most OS defaults so the radial's own gestures
@@ -44,6 +51,7 @@ const LONG_PRESS_MS = 380;
 const DOUBLE_CLICK_MS = 280;
 
 export default function RadialMenu({ open, x, y, items, onClose }: Props) {
+  const t = useT();
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -71,8 +79,15 @@ export default function RadialMenu({ open, x, y, items, onClose }: Props) {
       const rect = el.getBoundingClientRect();
       const centreX = rect.left + rect.width / 2;
       const centreY = rect.top + rect.height / 2;
-      const dx = x - centreX;
-      const dy = y - centreY;
+      // 2.1 sharpness fix: `getBoundingClientRect()` returns fractional
+      // pixels (e.g. left=0.372), and dropping a fractional offset into
+      // the transform makes webkit2gtk rasterize the SVG at sub-pixel
+      // boundaries — every wedge edge gets anti-aliased into a blur.
+      // Math.round snaps to pixel boundaries so the whole radial lands
+      // exactly on a pixel grid and wedge boundaries render as a
+      // single-pixel-wide hard line.
+      const dx = Math.round(x - centreX);
+      const dy = Math.round(y - centreY);
       // Add the correction on top of the half-size translate. If
       // body zoom is 1 (no mismatch), dx/dy resolve to 0.
       el.style.transform =
@@ -305,7 +320,7 @@ export default function RadialMenu({ open, x, y, items, onClose }: Props) {
     >
       <div
         ref={wrapperRef}
-        className="absolute"
+        className="radial-menu-wrapper absolute"
         style={{
           // `left`/`top` are the *initial* anchor. The layout effect
           // above measures where this element actually rendered in
@@ -428,10 +443,7 @@ export default function RadialMenu({ open, x, y, items, onClose }: Props) {
                 receding into the back with one pixel held in
                 focus." All coordinates are ±8 (main) and ±4 (ghost)
                 from centre, well inside the r=43 disc. */}
-            <title>
-              The Still Point · tap for palette · hold for constellation
-              · double-click for zen mode
-            </title>
+            <title>{t("editor.radial.stillPointTitle")}</title>
             <g className="radial-still-point" pointerEvents="none">
               {/* Ghost interstitial layer — 8 barely-visible dots at
                   half the main-grid spacing. Sits under the main

@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { APP_VERSION } from "../lib/version";
+import { useT } from "../lib/i18n";
 
 interface Props {
   workspaceName?: string;
@@ -7,6 +8,7 @@ interface Props {
 
 export default function Titlebar({ workspaceName }: Props) {
   const win = getCurrentWindow();
+  const t = useT();
   return (
     <div
       data-tauri-drag-region
@@ -41,17 +43,17 @@ export default function Titlebar({ workspaceName }: Props) {
         </>
       )}
       <div className="ml-auto flex items-center gap-0.5">
-        <WinBtn onClick={() => win.minimize()} label="Minimize">
+        <WinBtn onClick={() => win.minimize()} label={t("modals.titlebar.minimize")}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M1 5H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
           </svg>
         </WinBtn>
-        <WinBtn onClick={() => win.toggleMaximize()} label="Maximize">
+        <WinBtn onClick={() => win.toggleMaximize()} label={t("modals.titlebar.maximize")}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" strokeWidth="1.2" rx="1" />
           </svg>
         </WinBtn>
-        <WinBtn onClick={() => win.close()} label="Close" danger>
+        <WinBtn onClick={() => win.close()} label={t("modals.titlebar.close")} danger>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
           </svg>

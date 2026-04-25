@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/tauri";
 import type { TrashEntry } from "../lib/types";
 import { relativeTime } from "../lib/format";
+import EmptyState from "./EmptyState";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -14,6 +16,7 @@ export default function Trash({ open, onClose, onChanged }: Props) {
   const [entries, setEntries] = useState<TrashEntry[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!open) return;
@@ -42,7 +45,7 @@ export default function Trash({ open, onClose, onChanged }: Props) {
   };
 
   const purge = async (slug: string) => {
-    if (!confirm(`Permanently delete "${slug}"? This cannot be undone.`)) return;
+    if (!confirm(t("modals.trash.purgeConfirm", { slug }))) return;
     setBusy(slug);
     try {
       await api.purgeFromTrash(slug);
@@ -56,7 +59,7 @@ export default function Trash({ open, onClose, onChanged }: Props) {
 
   const emptyAll = async () => {
     if (entries.length === 0) return;
-    if (!confirm(`Permanently delete all ${entries.length} item${entries.length === 1 ? "" : "s"} in trash?`)) return;
+    if (!confirm(entries.length === 1 ? t("modals.trash.emptyConfirmOne") : t("modals.trash.emptyConfirmMany", { count: String(entries.length) }))) return;
     try {
       await api.emptyTrash();
       await reload();
@@ -67,7 +70,7 @@ export default function Trash({ open, onClose, onChanged }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+      className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center p-6"
       onClick={onClose}
     >
       <div
@@ -76,9 +79,9 @@ export default function Trash({ open, onClose, onChanged }: Props) {
       >
         <div className="flex items-baseline justify-between px-5 py-4 border-b border-bd">
           <div>
-            <div className="font-serif text-xl text-char">Trash</div>
+            <div className="font-serif text-xl text-char">{t("modals.trash.title")}</div>
             <div className="text-2xs text-t3 mt-0.5">
-              Removed notes wait here. Restore brings them back; purge is permanent.
+              {t("modals.trash.subtitle")}
             </div>
           </div>
           <button
@@ -86,7 +89,7 @@ export default function Trash({ open, onClose, onChanged }: Props) {
             disabled={entries.length === 0}
             className="text-xs text-t3 hover:text-danger disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Empty trash
+            {t("modals.trash.empty")}
           </button>
         </div>
 
@@ -98,9 +101,7 @@ export default function Trash({ open, onClose, onChanged }: Props) {
 
         <div className="overflow-y-auto flex-1">
           {entries.length === 0 ? (
-            <div className="px-5 py-12 text-center text-sm text-t3 italic font-serif">
-              Trash is empty.
-            </div>
+            <EmptyState kind="trash" size="roomy" />
           ) : (
             <ul>
               {entries.map((e) => (
@@ -111,7 +112,7 @@ export default function Trash({ open, onClose, onChanged }: Props) {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm text-char truncate">{e.title}</div>
                     <div className="text-2xs text-t3 font-mono mt-0.5 truncate">
-                      {e.slug} · removed {relativeTime(e.deleted_at)}
+                      {e.slug} · {t("modals.trash.removed", { when: relativeTime(e.deleted_at) })}
                     </div>
                   </div>
                   <button
@@ -119,14 +120,14 @@ export default function Trash({ open, onClose, onChanged }: Props) {
                     onClick={() => restore(e.slug)}
                     className="text-xs px-2.5 py-1 rounded bg-yelp text-yeld hover:bg-yel hover:text-on-yel disabled:opacity-50"
                   >
-                    Restore
+                    {t("modals.trash.restore")}
                   </button>
                   <button
                     disabled={busy === e.slug}
                     onClick={() => purge(e.slug)}
                     className="text-xs px-2.5 py-1 rounded text-t3 hover:text-danger hover:bg-danger/10 disabled:opacity-50"
                   >
-                    Purge
+                    {t("modals.trash.purge")}
                   </button>
                 </li>
               ))}
@@ -139,7 +140,7 @@ export default function Trash({ open, onClose, onChanged }: Props) {
             onClick={onClose}
             className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char"
           >
-            Close
+            {t("modals.trash.close")}
           </button>
         </div>
       </div>

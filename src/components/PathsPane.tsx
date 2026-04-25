@@ -7,6 +7,7 @@ import ForkingRoad from "./Paths/ForkingRoad";
 import PathDetail from "./Paths/PathDetail";
 import ConditionEditor from "./Paths/ConditionEditor";
 import PathsEmptyState from "./Paths/PathsEmptyState";
+import { useT } from "../lib/i18n";
 
 interface Props {
   notes: NoteSummary[];
@@ -46,6 +47,7 @@ export default function PathsPane({
   currentPathName,
   onOpenDecisionMatrix,
 }: Props) {
+  const t = useT();
   const [view, setView] = useState<PathCollectionsView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -171,7 +173,7 @@ export default function PathsPane({
   };
 
   const handleRename = async (name: string) => {
-    const next = window.prompt(`Rename path "${name}" to:`, name);
+    const next = window.prompt(t("paths.pane.renamePrompt", { name }), name);
     if (!next || next.trim() === name) return;
     try {
       await api.renamePathCollection(name, next.trim());
@@ -184,9 +186,7 @@ export default function PathsPane({
 
   const handleDelete = async (name: string) => {
     if (name === rootName) return;
-    const ok = window.confirm(
-      `Delete path "${name}"? Its notes stay — only the collection is removed. Children will reattach to its parent.`,
-    );
+    const ok = window.confirm(t("paths.pane.deleteConfirm", { name }));
     if (!ok) return;
     try {
       await api.deletePathCollection(name);
@@ -293,15 +293,25 @@ export default function PathsPane({
     <div
       className="fixed inset-0 z-40 bg-bg flex flex-col animate-fadeIn"
       role="dialog"
-      aria-label="Paths"
+      aria-label={t("paths.pane.title")}
     >
       <header className="px-6 py-4 border-b border-bd bg-bg flex items-center gap-4">
         <div className="flex items-center gap-2.5">
           <NewDirectionIcon />
           <div>
-            <div className="font-serif text-[22px] text-char leading-none">Paths</div>
+            <div className="font-serif text-[22px] text-char leading-none">{t("paths.pane.title")}</div>
             <div className="text-2xs text-t3 italic mt-1">
-              Collections of notes, branching off <span className="text-t2 not-italic">{rootName}</span>.
+              {(() => {
+                const tpl = t("paths.pane.subtitle");
+                const parts = tpl.split("{root}");
+                return (
+                  <>
+                    {parts[0]}
+                    <span className="text-t2 not-italic">{rootName}</span>
+                    {parts[1] ?? ""}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -310,23 +320,23 @@ export default function PathsPane({
             <button
               onClick={() => { onSwitchToRoot(rootName); setSelected(rootName); }}
               className="text-xs px-3 py-1.5 rounded-md border border-yel/70 text-yeld hover:bg-yelp inline-flex items-center gap-1.5"
-              title={`Go back to ${rootName} — the trunk of your thinking`}
+              title={t("paths.pane.backToRootTitle", { root: rootName })}
             >
               <span
                 className="inline-block w-2 h-2 rounded-full"
                 style={{ background: "var(--yel)" }}
               />
-              <span>← Back to {rootName}</span>
+              <span>{t("paths.pane.backToRoot", { root: rootName })}</span>
             </button>
           )}
           {!onlyRoot && (
             <button
               onClick={() => startFork(rootName)}
               className="text-xs px-3 py-1.5 rounded-md bg-yel text-on-yel hover:bg-yel2 inline-flex items-center gap-1.5"
-              title={`Branch a new 'if…' off ${rootName}`}
+              title={t("paths.pane.newPathFromRootTitle", { root: rootName })}
             >
               <NewDirectionIcon />
-              <span>New path from {rootName}</span>
+              <span>{t("paths.pane.newPathFromRoot", { root: rootName })}</span>
             </button>
           )}
           {suggestions.length > 0 && !onlyRoot && (
@@ -337,7 +347,7 @@ export default function PathsPane({
                   ? "bg-yelp text-yeld border border-yel"
                   : "border border-bd text-t2 hover:bg-s2 hover:text-char"
               }`}
-              title="Notes that cluster together but aren't yet a path"
+              title={t("paths.pane.suggestedTitle")}
             >
               <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="4" cy="4" r="1.4" />
@@ -345,20 +355,20 @@ export default function PathsPane({
                 <circle cx="7" cy="10" r="1.4" />
                 <path d="M4.5 4.5L6.5 9.5M9.5 4.5L7.5 9.5M5 4h4" />
               </svg>
-              <span>{suggestions.length} suggested</span>
+              <span>{t("paths.pane.suggestedCount", { count: String(suggestions.length) })}</span>
             </button>
           )}
           {onOpenDecisionMatrix && !onlyRoot && (
             <button
               onClick={onOpenDecisionMatrix}
               className="text-xs px-3 py-1.5 rounded-md border border-bd text-t2 hover:bg-s2 hover:text-char inline-flex items-center gap-1.5"
-              title="Star must-have notes; see at a glance which path satisfies them"
+              title={t("paths.pane.decisionMatrixTitle")}
             >
               <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="1.5" y="1.5" width="11" height="11" rx="1.5"/>
                 <path d="M1.5 5h11M1.5 9h11M5 1.5v11M9 1.5v11"/>
               </svg>
-              <span>Decision matrix</span>
+              <span>{t("paths.pane.decisionMatrix")}</span>
             </button>
           )}
           <button
@@ -366,14 +376,14 @@ export default function PathsPane({
             className={`w-9 h-9 flex items-center justify-center rounded-full transition ${
               helpOpen ? "bg-yelp text-yeld" : "text-t3 hover:bg-s2 hover:text-char"
             }`}
-            title="How to read this"
+            title={t("paths.pane.helpTitle")}
           >
             <HelpIcon />
           </button>
           <button
             onClick={onClose}
             className="w-9 h-9 flex items-center justify-center rounded-full text-t3 hover:bg-s2 hover:text-char"
-            title="Close"
+            title={t("paths.pane.closeTitle")}
           >
             <CloseIcon />
           </button>
@@ -389,9 +399,9 @@ export default function PathsPane({
       {showSuggestions && suggestions.length > 0 && (
         <div className="px-6 py-3 border-b border-bd bg-s1/60">
           <div className="flex items-baseline justify-between mb-2">
-            <div className="font-serif text-sm text-char">Suggested paths</div>
+            <div className="font-serif text-sm text-char">{t("paths.pane.suggestedHeading")}</div>
             <div className="font-serif italic text-2xs text-t3">
-              notes that cluster together — a path candidate you haven't made yet
+              {t("paths.pane.suggestedHelp")}
             </div>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -404,20 +414,23 @@ export default function PathsPane({
                   {s.seed_title}
                 </div>
                 <div className="text-2xs text-t3 font-mono mb-2">
-                  {s.members.length} notes · {s.internal_edges} edges
+                  {t("paths.pane.suggestionEdges", {
+                    count: String(s.members.length),
+                    edges: String(s.internal_edges),
+                  })}
                 </div>
                 <div className="flex flex-wrap gap-1 mb-2">
-                  {s.member_titles.slice(0, 5).map((t, i) => (
+                  {s.member_titles.slice(0, 5).map((title, i) => (
                     <span
                       key={i}
                       className="px-1.5 py-0.5 bg-s2 rounded text-[10px] text-t2 truncate max-w-[120px]"
                     >
-                      {t}
+                      {title}
                     </span>
                   ))}
                   {s.member_titles.length > 5 && (
                     <span className="px-1.5 py-0.5 text-[10px] text-t3 italic">
-                      +{s.member_titles.length - 5} more
+                      {t("paths.pane.suggestionMore", { count: String(s.member_titles.length - 5) })}
                     </span>
                   )}
                 </div>
@@ -426,13 +439,13 @@ export default function PathsPane({
                     onClick={() => acceptSuggestion(s)}
                     className="px-2 py-1 bg-char text-bg rounded text-2xs hover:bg-yeld transition"
                   >
-                    Create path
+                    {t("paths.pane.createPath")}
                   </button>
                   <button
                     onClick={() => dismissSuggestion(s)}
                     className="px-2 py-1 text-2xs text-t3 hover:text-char transition"
                   >
-                    dismiss
+                    {t("paths.pane.dismiss")}
                   </button>
                 </div>
               </div>
@@ -502,17 +515,17 @@ export default function PathsPane({
 
       {!onlyRoot && (
         <footer className="px-6 py-2 border-t border-bd bg-s1 flex items-center gap-4 text-2xs text-t3">
-          <span className="italic">drag to move · scroll to zoom</span>
+          <span className="italic">{t("paths.pane.footerDrag")}</span>
           <span>·</span>
-          <span className="italic">click a path to see what's in it</span>
+          <span className="italic">{t("paths.pane.footerClick")}</span>
           <span>·</span>
-          <span className="italic">+ to branch · ★ marks each path's main note</span>
+          <span className="italic">{t("paths.pane.footerBranch")}</span>
         </footer>
       )}
 
       {helpOpen && (
         <div
-          className="fixed inset-0 z-50 bg-bg/70 backdrop-blur-sm flex items-center justify-center animate-fadeIn"
+          className="fixed inset-0 z-50 bg-bg/70 flex items-center justify-center animate-fadeIn"
           onClick={() => setHelpOpen(false)}
         >
           <div
@@ -520,41 +533,41 @@ export default function PathsPane({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="font-serif text-[22px] text-char mb-1">
-              How paths work now
+              {t("paths.pane.helpTitleHeading")}
             </div>
             <div className="text-xs text-t3 italic mb-4">
-              Paths are named <em>collections of notes</em> that branch off a
-              designated <em>root</em>. Notes are shared — one note can live
-              in many paths. Selecting a path here doesn't change what you can
-              read elsewhere.
+              {t("paths.pane.helpIntro")}
             </div>
             <ul className="space-y-3 text-sm text-t2 leading-relaxed">
               <li>
-                <strong className="font-serif text-char">The root</strong> is
-                the trunk — labeled{" "}
-                <code className="text-yeld not-italic">{rootName}</code>. Every
-                other path descends from it.
+                <strong className="font-serif text-char">{t("paths.pane.helpRootStrong")}</strong>{" "}
+                {(() => {
+                  const tpl = t("paths.pane.helpRootBody");
+                  const parts = tpl.split("{root}");
+                  return (
+                    <>
+                      {parts[0]}
+                      <code className="text-yeld not-italic">{rootName}</code>
+                      {parts[1] ?? ""}
+                    </>
+                  );
+                })()}
               </li>
               <li>
-                <strong className="font-serif text-char">Selecting a node</strong>{" "}
-                highlights its ancestry and everything that branches off it,
-                and opens the detail panel on the right.
+                <strong className="font-serif text-char">{t("paths.pane.helpSelectStrong")}</strong>{" "}
+                {t("paths.pane.helpSelectBody")}
               </li>
               <li>
-                <strong className="font-serif text-char">In the detail panel</strong>:
-                toggle which notes are in this path, mark one as the path's
-                main note (★), and spin any member note off into its own
-                child path.
+                <strong className="font-serif text-char">{t("paths.pane.helpDetailStrong")}</strong>:
+                {" "}{t("paths.pane.helpDetailBody")}
               </li>
               <li>
-                <strong className="font-serif text-char">The map</strong> button
-                opens the connection graph filtered to this path's notes —
-                perfect for "what does this path actually hold together?"
+                <strong className="font-serif text-char">{t("paths.pane.helpMapStrong")}</strong>{" "}
+                {t("paths.pane.helpMapBody")}
               </li>
               <li>
-                <strong className="font-serif text-char">The + button</strong>{" "}
-                on any node starts a child path. Type the <em>if…</em>, press
-                Enter.
+                <strong className="font-serif text-char">{t("paths.pane.helpPlusStrong")}</strong>{" "}
+                {t("paths.pane.helpPlusBody")}
               </li>
             </ul>
             <div className="mt-5 text-right">
@@ -562,7 +575,7 @@ export default function PathsPane({
                 onClick={() => setHelpOpen(false)}
                 className="btn-yel px-3 py-1.5 text-sm rounded-md"
               >
-                got it
+                {t("paths.pane.helpDone")}
               </button>
             </div>
           </div>
@@ -613,12 +626,17 @@ function PromoteConfirm({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const t = useT();
   const [phrase, setPhrase] = useState("");
+  // The "type X to confirm" phrase stays in English on every locale to
+  // keep the mechanical guard predictable: a translator can't subtly break
+  // the safety check by changing word order, and the visible localized
+  // copy explains *what* to type either way.
   const required = `make ${target} main`;
   const matches = phrase.trim().toLowerCase() === required.toLowerCase();
   return (
     <div
-      className="fixed inset-0 z-50 bg-char/40 backdrop-blur-sm flex items-center justify-center animate-fadeIn"
+      className="fixed inset-0 z-50 bg-char/40 flex items-center justify-center animate-fadeIn"
       onMouseDown={onCancel}
     >
       <div
@@ -626,58 +644,64 @@ function PromoteConfirm({
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="font-serif text-[22px] text-char mb-1">
-          {targetIsGhost ? "Bring" : "Promote"}{" "}
+          {targetIsGhost ? t("paths.promote.bringBack") : t("paths.promote.promote")}{" "}
           <span className="text-yeld italic">{target}</span>
-          {targetIsGhost ? " back as main?" : " to main?"}
+          {" "}{targetIsGhost ? t("paths.promote.bringBackSuffix") : t("paths.promote.promoteSuffix")}
         </div>
         <p className="text-xs text-t2 italic mt-1 mb-4 leading-relaxed">
-          This is a structural change. Read before you type.
+          {t("paths.promote.lead")}
         </p>
         <ul className="space-y-2 text-xs text-t2 leading-relaxed mb-4">
           {targetIsGhost ? (
             <>
               <li>
-                <strong className="text-char">{target} returns as the trunk.</strong>
-                {" "}Its era's peers — the paths ghosted alongside it — come
-                back live as its siblings, preserving the shape they had
-                before.
+                <strong className="text-char">
+                  {t("paths.promote.bringBackTrunkStrong", { name: target })}
+                </strong>
+                {" "}{t("paths.promote.bringBackTrunkBody")}
               </li>
               <li>
                 <strong className="text-char">
-                  The current main, <em>{currentRoot}</em>, moves to the ghost
-                  zone.
+                  {t("paths.promote.bringBackOldStrong", { root: currentRoot })}
                 </strong>
-                {" "}Any siblings of the current main go with it, so you can
-                bring them back the same way later.
+                {" "}{t("paths.promote.bringBackOldBody")}
               </li>
             </>
           ) : (
             <>
               <li>
-                <strong className="text-char">{target} becomes the trunk.</strong>
-                {" "}The current main <em>{currentRoot}</em> and its sibling
-                paths move to the ghost zone — preserved as history, rendered
-                faded to the left of the new main.
+                <strong className="text-char">
+                  {t("paths.promote.promoteTrunkStrong", { name: target })}
+                </strong>
+                {" "}{t("paths.promote.promoteTrunkBody", { root: currentRoot })}
               </li>
               <li>
-                <strong className="text-char">The relationships stay intact.</strong>
-                {" "}Ghost peers keep the shape of their era. Promoting any
-                ghost back to main revives that whole era.
+                <strong className="text-char">{t("paths.promote.promoteRelStrong")}</strong>
+                {" "}{t("paths.promote.promoteRelBody")}
               </li>
             </>
           )}
           <li>
-            <strong className="text-char">Your notes don't move.</strong>
-            {" "}Nothing is deleted, nothing is renamed on disk — only the
-            path tree's anchor shifts.
+            <strong className="text-char">{t("paths.promote.notesStayStrong")}</strong>
+            {" "}{t("paths.promote.notesStayBody")}
           </li>
           <li>
-            <strong className="text-char">Reversible.</strong>
-            {" "}Any ghost path can be promoted back later.
+            <strong className="text-char">{t("paths.promote.reversibleStrong")}</strong>
+            {" "}{t("paths.promote.reversibleBody")}
           </li>
         </ul>
         <div className="text-2xs font-mono text-t3 mb-1.5 uppercase tracking-wider">
-          Type <span className="text-yeld">{required}</span> to confirm
+          {(() => {
+            const tpl = t("paths.promote.typeToConfirm");
+            const parts = tpl.split("{phrase}");
+            return (
+              <>
+                {parts[0]}
+                <span className="text-yeld">{required}</span>
+                {parts[1] ?? ""}
+              </>
+            );
+          })()}
         </div>
         <input
           autoFocus
@@ -692,14 +716,14 @@ function PromoteConfirm({
             onClick={onCancel}
             className="px-3 py-1.5 text-sm text-t2 hover:text-char"
           >
-            cancel
+            {t("paths.promote.cancel")}
           </button>
           <button
             disabled={!matches}
             onClick={onConfirm}
             className="px-3 py-1.5 text-sm rounded-md bg-yel text-on-yel font-medium hover:bg-yel2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Promote to main
+            {t("paths.promote.confirm")}
           </button>
         </div>
       </div>

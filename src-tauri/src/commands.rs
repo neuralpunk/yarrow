@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
@@ -14,6 +14,7 @@ use crate::error::{Result, YarrowError};
 use crate::export;
 use crate::find_replace;
 use crate::foreign_import;
+use crate::fuzzy;
 use crate::git;
 use crate::graph;
 use crate::notes;
@@ -41,6 +42,14 @@ pub struct Session {
     /// would only be dropped, leaving the bytes in place until the
     /// allocator reuses them.
     pub history_cache: HashMap<(String, String), Zeroizing<String>>,
+    /// E2E (spec §8.1 option 3). Derived from the user's password at
+    /// connect time via argon2id + AEAD. Used to unwrap workspace
+    /// DEKs locally before each sync so the desktop can POST the
+    /// unwrapped DEK to /workspaces/:id/unlock — the server no
+    /// longer has a copy of our private key. Zeroed on disconnect,
+    /// sign-out, or app quit.
+    pub server_privkey: Option<Zeroizing<[u8; 32]>>,
+    pub server_pubkey: Option<[u8; 32]>,
 }
 
 impl Default for Session {
@@ -49,6 +58,8 @@ impl Default for Session {
             master_key: None,
             last_activity: Instant::now(),
             history_cache: HashMap::new(),
+            server_privkey: None,
+            server_pubkey: None,
         }
     }
 }
@@ -62,6 +73,11 @@ pub struct AppState {
     /// write+checkpoint+rebuild cycle.
     pub repo_lock: Mutex<()>,
     pub session: Mutex<Session>,
+    /// Background WebSocket listener for `/ws` push notifications from the
+    /// currently-connected yarrow-server. One task per active workspace-
+    /// with-server-config; swapped in/out from `cmd_open_workspace`,
+    /// `cmd_server_connect_*`, `cmd_server_disconnect`, `cmd_close_workspace`.
+    pub ws: crate::ws_client::Manager,
 }
 
 /// Recovers the inner value from a poisoned mutex. We prefer "best-effort keep
@@ -135,6 +151,31 @@ impl AppState {
         unpoison(self.session.lock()).master_key.is_some()
     }
 
+    /// Install the user's E2E server privkey + pubkey, derived locally
+    /// from the password by `server::exchange_password_for_pat`. Used
+    /// by `cmd_sync` to unwrap workspace DEKs before each sync run.
+    pub fn set_server_identity(&self, priv_bytes: [u8; 32], pub_bytes: [u8; 32]) {
+        let mut s = unpoison(self.session.lock());
+        s.server_privkey = Some(Zeroizing::new(priv_bytes));
+        s.server_pubkey = Some(pub_bytes);
+    }
+
+    /// Snapshot the installed server identity for use in a sync call.
+    /// Returns `None` when the user hasn't connected in E2E mode yet
+    /// (or has signed out of the server).
+    pub fn server_identity(&self) -> Option<([u8; 32], [u8; 32])> {
+        let s = unpoison(self.session.lock());
+        let priv_b = s.server_privkey.as_ref()?;
+        let pub_b = s.server_pubkey?;
+        Some((**priv_b, pub_b))
+    }
+
+    pub fn forget_server_identity(&self) {
+        let mut s = unpoison(self.session.lock());
+        s.server_privkey = None;
+        s.server_pubkey = None;
+    }
+
     /// Look up a cached decrypted history body.
     pub fn history_cache_get(&self, slug: &str, oid: &str) -> Option<String> {
         unpoison(self.session.lock())
@@ -172,6 +213,34 @@ impl AppState {
 
 fn open_repo(root: &std::path::Path) -> Result<git2::Repository> {
     git::open(root)
+}
+
+/// (Re)start or stop the background WebSocket listener for the workspace
+/// at `root`. Reads the workspace's stored server config + PAT and hands
+/// them to `ws_client::Manager::restart`; if no server is configured the
+/// manager is told to stop. Safe to call from any command that mutates
+/// the sync config — picking up every transition keeps the listener
+/// single-sourced off the persisted config rather than ad-hoc per-caller.
+fn sync_ws_listener(app: &AppHandle, state: &AppState, root: &std::path::Path) {
+    let cfg = match workspace::read_config(root) {
+        Ok(c) => c,
+        Err(_) => {
+            state.ws.stop();
+            return;
+        }
+    };
+    match (cfg.sync.server.as_ref(), cfg.sync.server_pat.as_ref()) {
+        (Some(server), Some(pat)) => {
+            state.ws.restart(
+                server.server_url.clone(),
+                server.email.clone(),
+                pat.clone(),
+                server.insecure_skip_tls_verify,
+                app.clone(),
+            );
+        }
+        _ => state.ws.stop(),
+    }
 }
 
 /// Read the idle-lock timeout from the workspace config, defaulting to 15
@@ -273,11 +342,16 @@ pub fn cmd_set_main_note(
 pub fn cmd_open_workspace(
     path: String,
     state: State<AppState>,
+    app: AppHandle,
 ) -> Result<workspace::WorkspaceConfig> {
     let root = PathBuf::from(path);
     let cfg = workspace::open(&root)?;
     let _ = app_config::remember(&root, &cfg.workspace.name);
-    state.set_root(root);
+    state.set_root(root.clone());
+    // Start the WS listener if this workspace is already connected to a
+    // server. Without this a user who quits + reopens Yarrow would miss
+    // every `workspace.updated` event until they manually synced.
+    sync_ws_listener(&app, &state, &root);
     Ok(cfg)
 }
 
@@ -304,6 +378,10 @@ pub fn cmd_active_workspace(state: State<AppState>) -> Option<String> {
 
 #[tauri::command]
 pub fn cmd_close_workspace(state: State<AppState>) {
+    // Tear down the listener first — leaving it alive would keep firing
+    // Tauri events into a frontend that's no longer mounting a workspace
+    // view.
+    state.ws.stop();
     // Same rationale as `cmd_active_workspace` — closing the workspace
     // is the recovery path a user reaches for *after* something has
     // gone wrong. It must never itself panic due to an inherited
@@ -328,10 +406,256 @@ pub fn cmd_set_remote(
     let mut cfg = workspace::read_config(&root)?;
     cfg.sync.remote_url = Some(url.clone());
     cfg.sync.remote_type = remote_type;
+    let token_is_absent = token.as_deref().map_or(true, |t| t.is_empty());
     cfg.sync.token = token;
     workspace::write_config(&root, &cfg)?;
+    // This command is the user-facing "change my sync config" entry;
+    // an empty/null token means "I want no token stored." write_config
+    // no longer auto-wipes secrets, so clear explicitly here.
+    if token_is_absent {
+        let _ = workspace::clear_stored_secrets_on_disconnect(&root, true, false);
+    }
     let repo = open_repo(&root)?;
     git::set_remote(&repo, "origin", &url)?;
+    Ok(cfg)
+}
+
+// ───────── yarrow-server connect ─────────
+//
+// These commands wrap `server.rs` + the secrets/ config round-trip.
+// They never write the PAT to `config.toml` — it lives in the OS
+// keychain via `secrets::write_server_pat`.
+
+fn token_label(root: &std::path::Path, cfg: &workspace::WorkspaceConfig) -> String {
+    // "<hostname>-<workspace_name>" — matches the label shape the
+    // integration spec recommends.
+    let host = hostname();
+    let name = if cfg.workspace.name.trim().is_empty() {
+        root.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("yarrow")
+            .to_string()
+    } else {
+        cfg.workspace.name.clone()
+    };
+    format!("{host}-{name}")
+}
+
+fn hostname() -> String {
+    // `hostname` pulled without a crate — fall back gracefully.
+    std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "yarrow-desktop".into())
+}
+
+#[tauri::command]
+pub fn cmd_server_connect_password(
+    server_url: String,
+    email: String,
+    password: String,
+    workspace_name: Option<String>,
+    insecure_skip_tls_verify: Option<bool>,
+    state: State<AppState>,
+    app: AppHandle,
+) -> Result<workspace::WorkspaceConfig> {
+    let root = state.require_root()?;
+    let mut cfg = workspace::read_config(&root)?;
+    let server_url = crate::server::normalize_server_url(&server_url)?;
+    let insecure = insecure_skip_tls_verify.unwrap_or(false);
+    let label = token_label(&root, &cfg);
+    let outcome = crate::server::exchange_password_for_pat(
+        &server_url, &email, &password, &label, insecure,
+    )?;
+    // E2E: stash the derived privkey in AppState so subsequent sync
+    // runs can unwrap workspace DEKs locally without asking the user
+    // for their password again. Lives until disconnect / app quit.
+    // Older servers without envelope fields return (None, None) here;
+    // in that case sync will fail loudly with "server too old."
+    //
+    // Also persist to the OS keychain so app restart can re-install
+    // without a password prompt. Keychain-only — never touches the
+    // on-disk credentials file.
+    if let (Some(priv_b), Some(pub_b)) = (outcome.server_privkey, outcome.server_pubkey) {
+        state.set_server_identity(priv_b, pub_b);
+        if let Err(e) = crate::secrets::write_server_privkey(&root, &priv_b, &pub_b) {
+            eprintln!("[yarrow] WARN: couldn't cache server privkey in keychain — next launch will re-prompt ({e})");
+        }
+    }
+    // Password goes out of scope here — Rust's `String` drop doesn't
+    // zero memory, but we've at least stopped referencing it. Anything
+    // stronger would require zeroize-wrapping the IPC arg, which isn't
+    // worth the ergonomic cost given PAT + session cookie bytes live
+    // briefly on the heap too.
+    drop(password);
+    cfg.sync.server = Some(workspace::WorkspaceServerConfig {
+        server_url,
+        email,
+        pat_id: Some(outcome.pat_id),
+        pat_label: Some(outcome.pat_label),
+        workspace_id: None,
+        workspace_name,
+        insecure_skip_tls_verify: insecure,
+    });
+    cfg.sync.server_pat = Some(outcome.token);
+    workspace::write_config(&root, &cfg)?;
+    // Fire up the live-update channel now that we have a valid PAT on
+    // file — without this the user stays in manual-sync-only land until
+    // they restart the app.
+    sync_ws_listener(&app, &state, &root);
+    Ok(cfg)
+}
+
+#[tauri::command]
+pub fn cmd_server_connect_token(
+    server_url: String,
+    email: String,
+    token: String,
+    // E2E (spec §8.1 option 3): the paste-a-token path only provides
+    // auth material, not the password-derived KEK needed to unwrap
+    // the user's private key. To use this path for sync against an
+    // E2E server, the user must ALSO provide their password — we
+    // use it locally to derive the privkey via /me's envelope fields,
+    // then throw the password away. The server never sees it (PAT is
+    // used for /me auth). `None` = legacy pre-E2E server OR user
+    // is OK with sync being broken until they hit password flow.
+    password: Option<String>,
+    workspace_name: Option<String>,
+    insecure_skip_tls_verify: Option<bool>,
+    state: State<AppState>,
+    app: AppHandle,
+) -> Result<workspace::WorkspaceConfig> {
+    let root = state.require_root()?;
+    let mut cfg = workspace::read_config(&root)?;
+    let server_url = crate::server::normalize_server_url(&server_url)?;
+    let insecure = insecure_skip_tls_verify.unwrap_or(false);
+    // Pasted-token path: verify the credential makes it past the git
+    // basic-auth wall *before* persisting anything, so we don't store
+    // a clearly-broken PAT.
+    crate::server::test_pat(&server_url, &email, &token, insecure)?;
+
+    // If the user handed us their password, derive the E2E privkey
+    // right now and stash it — matches what password-path does after
+    // /auth/login. Without this the workspace would be unsyncable
+    // even though the token itself works for auth.
+    if let Some(pw) = password.as_deref() {
+        if !pw.is_empty() {
+            match crate::server::derive_server_privkey_via_me(
+                &server_url, &email, &token, pw, insecure,
+            ) {
+                Ok(Some((priv_b, pub_b))) => {
+                    state.set_server_identity(priv_b, pub_b);
+                    if let Err(e) = crate::secrets::write_server_privkey(&root, &priv_b, &pub_b)
+                    {
+                        eprintln!(
+                            "[yarrow] WARN: couldn't cache server privkey in keychain \
+                             after token+password connect — next launch will re-prompt ({e})"
+                        );
+                    }
+                }
+                Ok(None) => {
+                    // /me didn't include envelope — server is likely
+                    // pre-E2E. Persist anyway; sync will surface the
+                    // mismatch with a clearer error than this path can.
+                    eprintln!(
+                        "[yarrow] WARN: server returned no envelope material on /me; \
+                         E2E unlock will fail on next sync — upgrade the server"
+                    );
+                }
+                Err(e) => {
+                    return Err(YarrowError::Other(format!(
+                        "Token accepted, but deriving your workspace key locally failed: {e}. \
+                         Double-check your password."
+                    )));
+                }
+            }
+        }
+    }
+    // Password never stored. Consumed in memory only.
+    drop(password);
+
+    cfg.sync.server = Some(workspace::WorkspaceServerConfig {
+        server_url,
+        email,
+        pat_id: None,
+        pat_label: None,
+        workspace_id: None,
+        workspace_name,
+        insecure_skip_tls_verify: insecure,
+    });
+    cfg.sync.server_pat = Some(token);
+    workspace::write_config(&root, &cfg)?;
+    sync_ws_listener(&app, &state, &root);
+    Ok(cfg)
+}
+
+#[tauri::command]
+pub fn cmd_server_test_connection(
+    server_url: String,
+    email: String,
+    token: String,
+    insecure_skip_tls_verify: Option<bool>,
+) -> Result<()> {
+    crate::server::test_pat(
+        &server_url,
+        &email,
+        &token,
+        insecure_skip_tls_verify.unwrap_or(false),
+    )
+}
+
+#[tauri::command]
+pub fn cmd_server_disconnect(
+    revoke_on_server: bool,
+    state: State<AppState>,
+) -> Result<workspace::WorkspaceConfig> {
+    // Stop the listener up front — the rest of this command blocks on a
+    // network revoke call that could take several seconds, and we don't
+    // want `workspace.updated` events continuing to flow in the middle
+    // of tearing down the config.
+    state.ws.stop();
+    let root = state.require_root()?;
+    let mut cfg = workspace::read_config(&root)?;
+    let mut revoke_error: Option<String> = None;
+    if revoke_on_server {
+        if let (Some(server), Some(pat)) = (cfg.sync.server.as_ref(), cfg.sync.server_pat.as_ref()) {
+            if let Some(pat_id) = server.pat_id.as_deref() {
+                if let Err(e) = crate::server::revoke_pat(
+                    &server.server_url,
+                    &server.email,
+                    pat,
+                    pat_id,
+                    server.insecure_skip_tls_verify,
+                ) {
+                    // Surface the problem but still clear local state —
+                    // leaving the UI stuck in "connected" when the
+                    // server is unreachable is worse than failing soft.
+                    revoke_error = Some(e.to_string());
+                }
+            }
+        }
+    }
+    cfg.sync.server = None;
+    cfg.sync.server_pat = None;
+    workspace::write_config(&root, &cfg)?;
+    // write_config no longer auto-clears secrets (preferences changes
+    // and other routine writes used to wipe the PAT by accident).
+    // Disconnect is the explicit intent here, so clean up the
+    // keychain + credentials.toml directly.
+    let _ = workspace::clear_stored_secrets_on_disconnect(&root, false, true);
+    // E2E: drop the cached privkey from AppState AND from the OS
+    // keychain. Without this, "disconnect" leaves the key material
+    // behind — next reconnect would silently restore the old identity
+    // even if the user meant to start fresh.
+    state.forget_server_identity();
+    let _ = crate::secrets::clear_server_privkey(&root);
+    if let Some(msg) = revoke_error {
+        // The local state is already cleared; hand the message back
+        // so the UI can nudge the user to finish revocation on the
+        // web. Config reflects the disconnected state.
+        return Err(YarrowError::Other(format!(
+            "Disconnected locally, but revoking on the server didn't succeed: {msg}"
+        )));
+    }
     Ok(cfg)
 }
 
@@ -706,6 +1030,75 @@ pub fn cmd_set_pinned(
     Ok(saved)
 }
 
+/// Move a note into a folder, or out of one. `folder = None` (or an
+/// empty/whitespace-only string from the frontend) clears the folder
+/// and the note re-joins the un-foldered time-based view.
+///
+/// Folders are pure presentation metadata: the file always stays at
+/// `notes/<slug>.md`. The sidebar groups by this field; nothing else
+/// in the app cares about it. That keeps the change zero-risk for
+/// existing users — a workspace with no folders defined renders
+/// exactly as it always did.
+#[tauri::command]
+pub fn cmd_set_note_folder(
+    slug: String,
+    folder: Option<String>,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    let root = state.require_root()?;
+    let mut note = notes::read(&root, &slug)?;
+    // Folder names are pure metadata (the file always lives at
+    // `notes/<slug>.md`), but we still need to keep them sane:
+    //   - control chars (newline / tab / etc.) would corrupt the
+    //     `folder:` line in YAML and could trip downstream parsers.
+    //   - `/` or `\` reads as path nesting, which we don't support and
+    //     which would hide the note from the sidebar's flat folder list.
+    //   - 64 chars is plenty for a label and stops a paste-typo from
+    //     producing a multi-megabyte frontmatter field.
+    // None or empty after trim means "clear the folder", which is the
+    // existing happy path.
+    let cleaned = match folder.map(|f| f.trim().to_string()) {
+        Some(ref f) if f.is_empty() => None,
+        Some(f) => {
+            if f.chars().count() > 64 {
+                return Err(YarrowError::Invalid(
+                    "Folder name is too long — keep it under 64 characters.".into(),
+                ));
+            }
+            if f.chars().any(|c| c.is_control()) {
+                return Err(YarrowError::Invalid(
+                    "Folder name can't contain line breaks or control characters.".into(),
+                ));
+            }
+            if f.contains('/') || f.contains('\\') {
+                return Err(YarrowError::Invalid(
+                    "Folder names are flat — slashes aren't supported.".into(),
+                ));
+            }
+            Some(f)
+        }
+        None => None,
+    };
+    if note.frontmatter.folder == cleaned {
+        return Ok(note);
+    }
+    let prev = note.frontmatter.folder.clone();
+    note.frontmatter.folder = cleaned.clone();
+    let saved = notes::write(&root, &slug, &note.body, Some(note.frontmatter))?;
+    // Skip checkpointing private notes — same rule as everywhere else.
+    if !saved.frontmatter.is_private() {
+        let repo = open_repo(&root)?;
+        let msg = match (prev, cleaned) {
+            (None, Some(to)) => format!("checkpoint: move \"{}\" → folder \"{}\"", slug, to),
+            (Some(_), None) => format!("checkpoint: move \"{}\" → root", slug),
+            (Some(_), Some(to)) => format!("checkpoint: move \"{}\" → folder \"{}\"", slug, to),
+            (None, None) => return Ok(saved),
+        };
+        git::checkpoint(&repo, &msg)?;
+    }
+    Ok(saved)
+}
+
 /// Replace the note's tag list. Tags are stored in YAML frontmatter; the
 /// editor's tag chip-input calls this to merge user edits in. Empty / blank
 /// tags are filtered out and duplicates collapsed (case-sensitive).
@@ -736,6 +1129,32 @@ pub fn cmd_set_tags(
     // reconcile immediately so the paths pane reflects it.
     let _ = reconcile_auto_paths(&root);
     Ok(saved)
+}
+
+/// Tag Bouquet (2.1): given a body + title, return up to `limit` tag
+/// suggestions picked from the note's own words, preferring stems that
+/// already exist as tags somewhere in the vault. Excludes tags the note
+/// already has. Fully local, zero cost when the user doesn't invoke it.
+#[tauri::command]
+pub fn cmd_suggest_tags(
+    body: String,
+    title: String,
+    existing_tags: Vec<String>,
+    limit: Option<usize>,
+    state: State<AppState>,
+) -> Result<Vec<String>> {
+    let root = state.require_root()?;
+    // Collect the vault's full tag set from the scan — cheap enough given
+    // typical vault sizes, and we avoid maintaining a parallel cache.
+    let mut vault_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for s in notes::scan(&root)?.iter() {
+        for t in &s.fm.tags {
+            vault_tags.insert(t.clone());
+        }
+    }
+    let vault: Vec<String> = vault_tags.into_iter().collect();
+    let cap = limit.unwrap_or(5).max(1).min(10);
+    Ok(notes::suggest_tags(&body, &title, &existing_tags, &vault, cap))
 }
 
 /// Replace the note's margin-ink annotations list. Stored in YAML
@@ -860,6 +1279,10 @@ pub fn cmd_render_markdown_html(body: String) -> Result<String> {
 
 fn render_markdown(body: &str) -> Result<String> {
     use pulldown_cmark::{html, Options, Parser};
+    // SECURITY: do NOT add `Options::ENABLE_HTML`. With it omitted,
+    // pulldown-cmark escapes any `<script>` / `<iframe>` / `<svg>` etc.
+    // a user pastes into a note. The defense-in-depth `strip_xss_tripwire`
+    // pass below assumes nothing dangerous makes it past this parser.
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
@@ -868,7 +1291,44 @@ fn render_markdown(body: &str) -> Result<String> {
     let parser = Parser::new_ext(body, options);
     let mut html_out = String::new();
     html::push_html(&mut html_out, parser);
-    Ok(rewrite_callouts(&html_out))
+    Ok(strip_xss_tripwire(&rewrite_callouts(&html_out)))
+}
+
+/// Final-pass tripwire. With `ENABLE_HTML` off the parser already
+/// escapes raw HTML, so in normal operation these regexes never match.
+/// They exist to catch future regressions — if someone enables HTML
+/// pass-through, edits the parser config, or introduces a path that
+/// concatenates user content into the rendered HTML without escaping,
+/// the obvious XSS vectors get neutralised before the WebView sees
+/// them. Cheap because the input is already small (a single rendered
+/// note) and the regexes are compiled once.
+fn strip_xss_tripwire(html: &str) -> String {
+    use regex::Regex;
+    use std::sync::OnceLock;
+    static REGEXES: OnceLock<Vec<Regex>> = OnceLock::new();
+    let res = REGEXES.get_or_init(|| {
+        vec![
+            // `<script>…</script>` and friends. `(?is)` = case-insensitive
+            // + dotall so the body can span newlines.
+            Regex::new(r"(?is)<script\b[^>]*>.*?</script\s*>").expect("static regex"),
+            Regex::new(r"(?is)<iframe\b[^>]*>.*?</iframe\s*>").expect("static regex"),
+            Regex::new(r"(?is)<object\b[^>]*>.*?</object\s*>").expect("static regex"),
+            Regex::new(r"(?is)<embed\b[^>]*/?>").expect("static regex"),
+            // Inline event handlers: ` onclick="…"`, ` onmouseover='…'`,
+            // ` onerror=foo`. The leading whitespace is required so we
+            // don't accidentally match `Notion`, `none`, etc.
+            Regex::new(r#"(?i)\son[a-z]+\s*=\s*"[^"]*""#).expect("static regex"),
+            Regex::new(r"(?i)\son[a-z]+\s*=\s*'[^']*'").expect("static regex"),
+            Regex::new(r"(?i)\son[a-z]+\s*=\s*[^\s>]+").expect("static regex"),
+            // `javascript:` URLs in href / src attributes.
+            Regex::new(r"(?i)javascript\s*:").expect("static regex"),
+        ]
+    });
+    let mut out = html.to_string();
+    for re in res {
+        out = re.replace_all(&out, "").into_owned();
+    }
+    out
 }
 
 /// Transform Obsidian-style `> [!type] Title / > body` blockquotes that
@@ -968,6 +1428,10 @@ pub fn cmd_render_note_html(slug: String, state: State<AppState>) -> Result<Stri
     let parser = Parser::new_ext(&note.body, options);
     let mut body = String::new();
     html::push_html(&mut body, parser);
+    // Same tripwire as `render_markdown` — ENABLE_HTML is off so the
+    // parser already escapes user-supplied HTML; this catches anything
+    // that might slip through if the parser config is ever changed.
+    let body = strip_xss_tripwire(&body);
     let title = if note.frontmatter.title.is_empty() {
         note.slug.clone()
     } else {
@@ -1138,6 +1602,17 @@ pub fn cmd_import_notion_vault(
     let root = state.require_root()?;
     let report = foreign_import::import_notion(&root, std::path::Path::new(&source))?;
     post_import_checkpoint(&root, report.imported, "Notion")?;
+    Ok(report)
+}
+
+#[tauri::command]
+pub fn cmd_import_bibtex(
+    source: String,
+    state: State<AppState>,
+) -> Result<obsidian_import::ImportReport> {
+    let root = state.require_root()?;
+    let report = crate::bibtex_import::import_bibtex(&root, std::path::Path::new(&source))?;
+    post_import_checkpoint(&root, report.imported, "BibTeX")?;
     Ok(report)
 }
 
@@ -1563,14 +2038,43 @@ pub fn cmd_create_from_template(
 ) -> Result<notes::Note> {
     let root = state.require_root()?;
     let tpl = templates::read(&root, &template)?;
+    let kit_kind = templates::extract_kit_kind(&tpl);
     let body = templates::render(&tpl, &title);
     let note = notes::create(&root, &title)?;
-    let saved = notes::write(&root, &note.slug, &body, Some(note.frontmatter))?;
+    // 2.1 kit-aware frontmatter. The kit's `<!-- kit: <kind> -->` flag
+    // tells us how to seed the new note's tags and privacy. Research
+    // kits get `paper` so the @cite picker scopes to them; clinical
+    // kits get `clinical` + `private: true` so they register in
+    // `.git/info/exclude` and never sync.
+    let mut fm = note.frontmatter;
+    match kit_kind.as_deref() {
+        Some("research") => {
+            if !fm.tags.iter().any(|t| t.eq_ignore_ascii_case("paper")) {
+                fm.tags.push("paper".into());
+            }
+        }
+        Some("clinical") => {
+            if !fm.tags.iter().any(|t| t.eq_ignore_ascii_case("clinical")) {
+                fm.tags.push("clinical".into());
+            }
+            fm.private = true;
+        }
+        _ => {}
+    }
+    let saved = notes::write(&root, &note.slug, &body, Some(fm))?;
     let repo = open_repo(&root)?;
-    git::checkpoint(
-        &repo,
-        &format!("checkpoint: new note \"{}\" from template {}", title, template),
-    )?;
+    // Skip checkpointing private notes — they shouldn't enter git
+    // history, even on the local clone, so the workspace's commit log
+    // doesn't leak slug names. The note still saves to disk; just no
+    // commit. (`notes::write` has already registered the path in
+    // .git/info/exclude, so an unrelated checkpoint elsewhere won't
+    // sweep it in either.)
+    if !saved.frontmatter.is_private() {
+        git::checkpoint(
+            &repo,
+            &format!("checkpoint: new note \"{}\" from template {}", title, template),
+        )?;
+    }
     let _ = graph::build(&root);
     Ok(saved)
 }
@@ -2345,13 +2849,512 @@ pub fn cmd_unpin_checkpoint(id: String, state: State<AppState>) -> Result<()> {
 
 #[tauri::command]
 pub fn cmd_sync(state: State<AppState>) -> Result<git::SyncOutcome> {
+    eprintln!("[yarrow] cmd_sync: entry");
     let root = state.require_root()?;
-    let cfg = workspace::read_config(&root)?;
+    let mut cfg = workspace::read_config(&root)?;
+    let repo = open_repo(&root)?;
+    eprintln!(
+        "[yarrow] cmd_sync: root={} server_configured={} pat_present={}",
+        root.display(),
+        cfg.sync.server.is_some(),
+        cfg.sync.server_pat.is_some(),
+    );
+
+    // Capture any pending working-tree edits BEFORE fetching from the
+    // server. Without this, a fast-forward pull would force-checkout
+    // the server's version over the user's unsaved changes, silently
+    // losing whatever hadn't been auto-checkpointed yet (autosave
+    // debounces; users who click Sync mid-typing outrun the timer).
+    // Post-checkpoint the working tree matches HEAD, so force-checkout
+    // after FF is safe, and a real divergence hits the merge path
+    // with the user's intent preserved as a real commit.
+    if repo.head().is_ok() {
+        match git::checkpoint(&repo, "autocheckpoint: pre-sync") {
+            Ok(_) => eprintln!("[yarrow] cmd_sync: pre-sync checkpoint ok"),
+            Err(e) => eprintln!("[yarrow] cmd_sync: pre-sync checkpoint failed: {e}"),
+        }
+    } else {
+        eprintln!("[yarrow] cmd_sync: no HEAD yet — fresh workspace");
+    }
+
+    // Server mode wins when configured. Falls through to the generic
+    // remote only if no Yarrow server is attached to this workspace.
+    if let Some(server) = cfg.sync.server.clone() {
+        eprintln!(
+            "[yarrow] cmd_sync: server path workspace_id={:?} url={}",
+            server.workspace_id, server.server_url
+        );
+        let pat = cfg.sync.server_pat.as_deref().ok_or_else(|| {
+            YarrowError::Other(
+                "Your access token for this server isn't on this machine. Reconnect in Settings.".into(),
+            )
+        })?;
+
+        // First sync? Adopt an existing same-named workspace if the
+        // user already has one on this server, else create a new one.
+        // Adopt-first prevents the duplicate-card race: two concurrent
+        // syncs (autosync + manual click, or two recoveries after a
+        // web-side delete) would each POST /workspaces and mint
+        // different UUIDs, leaving the dashboard showing twin cards.
+        // Listing first makes the create idempotent for this common case.
+        let workspace_id = match server.workspace_id.clone() {
+            Some(id) => id,
+            None => {
+                let name = server
+                    .workspace_name
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| cfg.workspace.name.clone());
+                let id = match crate::server::find_workspace_by_name(
+                    &server.server_url,
+                    &server.email,
+                    pat,
+                    &name,
+                    server.insecure_skip_tls_verify,
+                ) {
+                    Ok(Some(existing)) => {
+                        eprintln!(
+                            "[yarrow] cmd_sync: adopting existing server workspace id={}",
+                            existing.id
+                        );
+                        existing.id
+                    }
+                    _ => {
+                        let created = crate::server::create_workspace(
+                            &server.server_url,
+                            &server.email,
+                            pat,
+                            &name,
+                            server.insecure_skip_tls_verify,
+                        )?;
+                        eprintln!(
+                            "[yarrow] cmd_sync: created new server workspace id={}",
+                            created.id
+                        );
+                        created.id
+                    }
+                };
+                // Persist the id so reconnect flows don't re-list /
+                // re-create every sync.
+                if let Some(s) = cfg.sync.server.as_mut() {
+                    s.workspace_id = Some(id.clone());
+                }
+                workspace::write_config(&root, &cfg)?;
+                id
+            }
+        };
+
+        // E2E (spec §8.1 option 3): unlock the workspace on the server
+        // before the sync runs. The server rejects /git/ with 423
+        // Locked if this hasn't happened for the current session.
+        //
+        // If the in-process AppState doesn't have the privkey (app just
+        // launched), try to restore it from the OS keychain. Only if
+        // BOTH fail do we tell the user to reconnect.
+        let server_identity = match state.server_identity() {
+            Some(id) => Some(id),
+            None => {
+                let restored = crate::secrets::read_server_privkey(&root);
+                if let Some((priv_b, pub_b)) = restored {
+                    state.set_server_identity(priv_b, pub_b);
+                    Some((priv_b, pub_b))
+                } else {
+                    None
+                }
+            }
+        };
+        let Some((server_priv, server_pub)) = server_identity else {
+            eprintln!("[yarrow] cmd_sync: no server identity in AppState or keychain → reconnect error");
+            return Err(YarrowError::Other(
+                "Server requires re-connecting to unlock your workspace. Reconnect \
+                 via Settings → Server to derive the key again (one password prompt)."
+                    .into(),
+            ));
+        };
+        eprintln!("[yarrow] cmd_sync: identity ok, calling /unlock");
+        let workspace_id = match crate::server::unlock_workspace_on_server(
+            &server.server_url,
+            &server.email,
+            pat,
+            &workspace_id,
+            &server_priv,
+            &server_pub,
+            server.insecure_skip_tls_verify,
+        ) {
+            Ok(()) => workspace_id,
+            Err(YarrowError::RemoteWorkspaceGone) => {
+                // The workspace_id we had is dead on the server
+                // (deleted via web, etc). Before POSTing a fresh one,
+                // check whether another device on this account already
+                // recreated a same-named workspace we should adopt —
+                // otherwise two devices recovering in parallel each
+                // mint their own copy and the dashboard ends up with
+                // twin "One month in Europe" cards. Adopt-first makes
+                // the recovery idempotent across clients.
+                eprintln!(
+                    "[yarrow] cmd_sync: server workspace gone — adopting existing or recreating"
+                );
+                let name = server
+                    .workspace_name
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| cfg.workspace.name.clone());
+                let new_id = match crate::server::find_workspace_by_name(
+                    &server.server_url,
+                    &server.email,
+                    pat,
+                    &name,
+                    server.insecure_skip_tls_verify,
+                ) {
+                    Ok(Some(existing)) => {
+                        eprintln!(
+                            "[yarrow] cmd_sync: adopted existing workspace id={}",
+                            existing.id
+                        );
+                        existing.id
+                    }
+                    _ => {
+                        let created = crate::server::create_workspace(
+                            &server.server_url,
+                            &server.email,
+                            pat,
+                            &name,
+                            server.insecure_skip_tls_verify,
+                        )?;
+                        eprintln!(
+                            "[yarrow] cmd_sync: created replacement workspace id={}",
+                            created.id
+                        );
+                        created.id
+                    }
+                };
+                if let Some(s) = cfg.sync.server.as_mut() {
+                    s.workspace_id = Some(new_id.clone());
+                }
+                workspace::write_config(&root, &cfg)?;
+                crate::server::unlock_workspace_on_server(
+                    &server.server_url,
+                    &server.email,
+                    pat,
+                    &new_id,
+                    &server_priv,
+                    &server_pub,
+                    server.insecure_skip_tls_verify,
+                )?;
+                new_id
+            }
+            Err(e) => return Err(e),
+        };
+        eprintln!("[yarrow] cmd_sync: /unlock returned ok");
+
+        // ── pre-push quota check (stage 1 of the trash/quota rework) ──
+        //
+        // Before handing the pack to libgit2, estimate how many net-new
+        // bytes it would ship and compare against the server's current
+        // quota. If the push would exceed the tightest remaining cap
+        // (workspace or user, whichever is lower), bail locally with a
+        // structured SyncOutcome that names the biggest culprit files —
+        // no network upload, no retry loop. Keeps the server's 413 path
+        // as a backstop for older clients.
+        //
+        // Non-fatal on probe or estimate error: fall through to the
+        // existing sync and let the server enforce. The pre-push check
+        // is an optimization, not a correctness gate.
+        let quota_probe = crate::server::fetch_quota(
+            &server.server_url,
+            &server.email,
+            pat,
+            &workspace_id,
+            server.insecure_skip_tls_verify,
+        );
+        if let Ok(quota) = &quota_probe {
+            let branch = git::current_path_name(&repo)
+                .unwrap_or_else(|_| "main".to_string());
+            let tracking_ref = git::server_tracking_ref(&branch);
+            if let Ok(estimate) = git::estimate_push_size(&repo, &tracking_ref) {
+                if let Some(remaining) = quota.tightest_remaining_bytes() {
+                    if estimate.bytes > remaining {
+                        let biggest = estimate
+                            .culprits
+                            .first()
+                            .map(|c| c.path.clone())
+                            .unwrap_or_else(|| "<unknown>".to_string());
+                        let message = format!(
+                            "sync paused: this push would add {} MB but only {} MB is free — delete \
+                             or shrink a file before syncing again",
+                            estimate.bytes / 1_000_000,
+                            remaining / 1_000_000,
+                        );
+                        eprintln!(
+                            "[yarrow] cmd_sync: pre-push quota check blocked: est={} rem={} biggest={}",
+                            estimate.bytes, remaining, biggest
+                        );
+                        return Ok(git::SyncOutcome::blocked_skeleton(
+                            message,
+                            git::QuotaBlockInfo {
+                                estimated_bytes: estimate.bytes,
+                                remaining_bytes: remaining,
+                                culprits: estimate.culprits,
+                                shrink_hint: format!("yarrow shrink {biggest}"),
+                            },
+                        ));
+                    }
+                }
+            }
+        } else if let Err(e) = &quota_probe {
+            eprintln!(
+                "[yarrow] cmd_sync: quota probe failed (non-fatal, falling through): {e}"
+            );
+        }
+
+        let git_url = crate::server::git_url(&server.server_url, &workspace_id)?;
+        eprintln!("[yarrow] cmd_sync: calling sync_to_server url={}", git_url);
+        let outcome = git::sync_to_server(
+            &repo,
+            &git_url,
+            &server.email,
+            pat,
+            server.insecure_skip_tls_verify,
+        );
+        match &outcome {
+            Ok(o) => eprintln!("[yarrow] cmd_sync: sync_to_server ok: {:?}", o),
+            Err(e) => eprintln!("[yarrow] cmd_sync: sync_to_server ERROR: {e}"),
+        }
+
+        // Post-push backstop for the pre-push quota check.
+        //
+        // The pre-push probe in this function can miss a quota
+        // rejection (stale probe, new commit in the few milliseconds
+        // between probe and push, server-side per-user cap tightening
+        // mid-sync, etc.). In that case libgit2 surfaces the server's
+        // 413 as an opaque "unexpected http status code: 413" which
+        // the frontend would otherwise render as a scary raw toast.
+        //
+        // Detect the 413 signature in the outcome message, re-probe
+        // quota + re-estimate culprits, and attach a QuotaBlockInfo so
+        // the shared QuotaBlockedModal surfaces instead of the raw
+        // libgit2 string. If any part of the re-probe fails we still
+        // attach a zeroed QuotaBlockInfo so the user at least sees the
+        // friendly modal + reference code rather than a wall of jargon.
+        if let Ok(mut sync_out) = outcome {
+            if !sync_out.ok
+                && sync_out.quota_blocked.is_none()
+                && looks_like_quota_rejection(&sync_out.message)
+            {
+                let branch = git::current_path_name(&repo)
+                    .unwrap_or_else(|_| "main".to_string());
+                let tracking_ref = git::server_tracking_ref(&branch);
+                let estimate = git::estimate_push_size(&repo, &tracking_ref)
+                    .unwrap_or_else(|_| git::PushEstimate {
+                        bytes: 0,
+                        culprits: Vec::new(),
+                    });
+                let remaining = crate::server::fetch_quota(
+                    &server.server_url,
+                    &server.email,
+                    pat,
+                    &workspace_id,
+                    server.insecure_skip_tls_verify,
+                )
+                .ok()
+                .and_then(|q| q.tightest_remaining_bytes())
+                .unwrap_or(0);
+                let biggest = estimate
+                    .culprits
+                    .first()
+                    .map(|c| c.path.clone())
+                    .unwrap_or_else(|| "your pending changes".to_string());
+                eprintln!(
+                    "[yarrow] cmd_sync: 413 backstop — rewrote outcome to quota_blocked (est={} rem={})",
+                    estimate.bytes, remaining
+                );
+                sync_out.message = "the server doesn't have room for this sync yet"
+                    .to_string();
+                sync_out.quota_blocked = Some(git::QuotaBlockInfo {
+                    estimated_bytes: estimate.bytes,
+                    remaining_bytes: remaining,
+                    culprits: estimate.culprits,
+                    shrink_hint: format!("yarrow shrink {biggest}"),
+                });
+            }
+            return Ok(sync_out);
+        }
+        return outcome.map_err(crate::error::classify_sync_error);
+    }
+
+    eprintln!("[yarrow] cmd_sync: server NOT configured, falling through to generic remote");
     if cfg.sync.remote_url.is_none() {
+        eprintln!("[yarrow] cmd_sync: no remote_url either → NoRemote");
         return Err(YarrowError::NoRemote);
     }
-    let repo = open_repo(&root)?;
     git::sync(&repo, "origin", cfg.sync.token.as_deref())
+        .map_err(crate::error::classify_sync_error)
+}
+
+// ───────── reclaim-space ─────────
+//
+// Lists the biggest files in the workspace's history (including ones
+// that have been deleted locally but are still in git history eating
+// quota), then permanently removes the selected ones via the server's
+// filter-repo endpoint. Irreversible. The server broadcasts
+// `workspace.purged` on success so every device — including this one
+// — should force-reclone after the call returns.
+
+#[tauri::command]
+pub fn cmd_list_large_blobs(
+    state: State<AppState>,
+) -> Result<Vec<crate::server::LargeBlobEntry>> {
+    let root = state.require_root()?;
+    let cfg = workspace::read_config(&root)?;
+    let server = cfg.sync.server.as_ref().ok_or(YarrowError::NoRemote)?;
+    let pat = cfg
+        .sync
+        .server_pat
+        .as_deref()
+        .ok_or(YarrowError::NoRemote)?;
+    let workspace_id = server
+        .workspace_id
+        .as_deref()
+        .ok_or_else(|| YarrowError::Other("this workspace isn't linked to a server yet".into()))?;
+    crate::server::list_large_blobs(
+        &server.server_url,
+        &server.email,
+        pat,
+        workspace_id,
+        server.insecure_skip_tls_verify,
+    )
+}
+
+#[tauri::command]
+pub fn cmd_reclaim_space(
+    state: State<AppState>,
+    paths: Vec<String>,
+    expected_disk_bytes: Option<i64>,
+) -> Result<crate::server::ReclaimSpaceOutcome> {
+    if paths.is_empty() {
+        return Err(YarrowError::Invalid(
+            "select at least one file to permanently delete".into(),
+        ));
+    }
+    let root = state.require_root()?;
+    let cfg = workspace::read_config(&root)?;
+    let server = cfg.sync.server.as_ref().ok_or(YarrowError::NoRemote)?;
+    let pat = cfg
+        .sync
+        .server_pat
+        .as_deref()
+        .ok_or(YarrowError::NoRemote)?;
+    let workspace_id = server
+        .workspace_id
+        .as_deref()
+        .ok_or_else(|| YarrowError::Other("this workspace isn't linked to a server yet".into()))?;
+    crate::server::reclaim_space(
+        &server.server_url,
+        &server.email,
+        pat,
+        workspace_id,
+        &paths,
+        expected_disk_bytes,
+        server.insecure_skip_tls_verify,
+    )
+}
+
+/// Pattern-match a SyncOutcome.message against the shapes the server's
+/// 413 "storage quota exceeded" response can take by the time it has
+/// been translated through libgit2's HTTP transport. Conservative —
+/// erring on false-positive is fine (worst case the modal appears for
+/// a non-quota error and the user sees "0 over" + can dismiss).
+fn looks_like_quota_rejection(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    // Most specific first. The 413 status code surfaces both as
+    // "unexpected http status code: 413" (libgit2's default) and as
+    // "payload too large" (server's human message in the push-ref
+    // rejection line). The "quota" token catches the server's own
+    // message on the push-ref-reject path.
+    lower.contains("413")
+        || lower.contains("payload too large")
+        || lower.contains("storage quota")
+        || lower.contains("over quota")
+        || lower.contains("quota exceeded")
+}
+
+// ───────── discard unsynced local changes ─────────
+//
+// The escape hatch for stage 1's pre-push quota reject: when a too-big
+// file is stuck in unpushed local history and the user doesn't need the
+// commits that contain it, this hard-resets the local branch to the
+// server tip. Any local work since the last sync is lost — the UI
+// warns the user with a preview list before calling this with
+// `confirm=true`.
+
+/// Preview or perform the discard. `confirm=false` returns the list of
+/// commits that would be thrown away without touching the repo;
+/// `confirm=true` runs `git reset --hard <tracking-tip>` and returns
+/// the same summary with `performed: true`.
+#[tauri::command]
+pub fn cmd_discard_unsynced_changes(
+    state: State<AppState>,
+    confirm: bool,
+) -> Result<git::DiscardOutcome> {
+    let root = state.require_root()?;
+    let repo = open_repo(&root)?;
+    let branch = git::current_path_name(&repo)?;
+    let tracking_ref = git::server_tracking_ref(&branch);
+    git::discard_unsynced_commits(&repo, &tracking_ref, confirm)
+}
+
+/// Post-reclaim recovery: fetch the server's new history (no push)
+/// and hard-reset local onto it. Used by the `workspace.purged`
+/// WebSocket handler AND by a user-triggered "my app is stuck" button
+/// in the Storage settings pane.
+///
+/// Why this exists separately from `cmd_sync`: after the server has
+/// rewritten history (filter-repo), the desktop's local branch is on
+/// a lineage the server no longer knows. A plain `cmd_sync` would
+/// try to push those orphaned commits — which re-introduces the
+/// exact blobs the server just purged. We need a one-way "absorb
+/// server state, discard mine" operation instead.
+///
+/// `confirm=false` previews (same semantics as discard_unsynced_changes);
+/// `confirm=true` actually runs the fetch + hard-reset.
+#[tauri::command]
+pub fn cmd_force_align_with_server(
+    state: State<AppState>,
+    confirm: bool,
+) -> Result<git::DiscardOutcome> {
+    let root = state.require_root()?;
+    let cfg = workspace::read_config(&root)?;
+    let server = cfg.sync.server.as_ref().ok_or(YarrowError::NoRemote)?;
+    let pat = cfg
+        .sync
+        .server_pat
+        .as_deref()
+        .ok_or(YarrowError::NoRemote)?;
+    let workspace_id = server
+        .workspace_id
+        .as_deref()
+        .ok_or_else(|| YarrowError::Other("this workspace isn't linked to a server yet".into()))?;
+    let repo = open_repo(&root)?;
+
+    // Refresh the tracking ref first — without this, a stale tracking
+    // ref from a pre-purge sync would make the subsequent hard-reset
+    // a no-op (or worse, reset to the old sha that's gone from the
+    // server). Only runs when `confirm=true`; the preview-only path
+    // uses whatever tracking state is already on disk.
+    if confirm {
+        let git_url = crate::server::git_url(&server.server_url, workspace_id)?;
+        git::fetch_from_server(
+            &repo,
+            &git_url,
+            &server.email,
+            pat,
+            server.insecure_skip_tls_verify,
+        )?;
+    }
+
+    let branch = git::current_path_name(&repo)?;
+    let tracking_ref = git::server_tracking_ref(&branch);
+    git::discard_unsynced_commits(&repo, &tracking_ref, confirm)
 }
 
 // ───────── path diffing ─────────
@@ -2442,6 +3445,26 @@ pub fn cmd_search(
         .map(|c| c.preferences.search_index_enabled)
         .unwrap_or(true);
     search::search(&root, &query, limit.unwrap_or(25), use_index)
+}
+
+/// Fuzzy-rank a list of candidate strings against a query (2.1.0).
+/// Powered by `nucleo-matcher` — the same scoring engine Helix uses.
+/// Returns at most `limit` `{ index, score }` pairs in score-descending
+/// order; missing matches are omitted. An empty/blank query returns
+/// the first `limit` candidates at equal score (preserving their
+/// original order), so the palette can use the same IPC whether or
+/// not the user has typed anything.
+///
+/// This does no I/O and does NOT require an open workspace — it's pure
+/// computation. Kept in `commands.rs` so the Tauri macro picks it up.
+#[tauri::command]
+pub fn cmd_fuzzy_rank(
+    query: String,
+    candidates: Vec<String>,
+    limit: Option<usize>,
+) -> Result<Vec<fuzzy::FuzzyHit>> {
+    let cap = limit.unwrap_or(32).max(1).min(1024);
+    Ok(fuzzy::rank(&query, &candidates, cap))
 }
 
 #[tauri::command]

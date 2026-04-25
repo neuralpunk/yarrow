@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/tauri";
 import type { FindReplaceHit } from "../lib/types";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -29,6 +30,7 @@ export default function FindReplace({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (open) {
@@ -91,7 +93,7 @@ export default function FindReplace({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+      className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center p-6"
       onClick={onClose}
     >
       <div
@@ -99,47 +101,47 @@ export default function FindReplace({
         className="relative w-full max-w-2xl max-h-[85vh] bg-bg border border-bd2 rounded-xl shadow-2xl flex flex-col overflow-hidden"
       >
         <div className="px-5 py-4 border-b border-bd">
-          <div className="font-serif text-xl text-char">Find &amp; replace</div>
+          <div className="font-serif text-xl text-char">{t("modals.find.title")}</div>
           <div className="text-2xs text-t3 mt-0.5">
-            Workspace-wide. One checkpoint covers the whole change so you can roll it back.
+            {t("modals.find.subtitle")}
           </div>
         </div>
 
         <div className="px-5 py-4 space-y-3 border-b border-bd">
           <div>
-            <label className="text-2xs text-t3 uppercase tracking-wider font-mono">Find</label>
+            <label className="text-2xs text-t3 uppercase tracking-wider font-mono">{t("modals.find.findLabel")}</label>
             <input
               ref={inputRef}
               value={pattern}
               onChange={(e) => setPattern(e.target.value)}
-              placeholder="text to find"
+              placeholder={t("modals.find.findPlaceholder")}
               className="mt-1 w-full px-3 py-2 bg-s1 border border-bd rounded text-sm text-char outline-none focus:border-yel"
             />
           </div>
           <div>
-            <label className="text-2xs text-t3 uppercase tracking-wider font-mono">Replace with</label>
+            <label className="text-2xs text-t3 uppercase tracking-wider font-mono">{t("modals.find.replaceLabel")}</label>
             <input
               value={replacement}
               onChange={(e) => setReplacement(e.target.value)}
-              placeholder="(empty deletes the matches)"
+              placeholder={t("modals.find.replacePlaceholder")}
               className="mt-1 w-full px-3 py-2 bg-s1 border border-bd rounded text-sm text-char outline-none focus:border-yel"
             />
           </div>
           <div className="flex items-center gap-4 text-xs flex-wrap">
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" checked={caseInsensitive} onChange={(e) => setCaseInsensitive(e.target.checked)} />
-              <span className="text-t2">Case-insensitive</span>
+              <span className="text-t2">{t("modals.find.caseInsensitive")}</span>
             </label>
             <div className="flex items-center gap-1.5 ml-auto">
-              <span className="text-t3">Scope:</span>
+              <span className="text-t3">{t("modals.find.scopeLabel")}</span>
               <select
                 value={scope}
                 onChange={(e) => setScope(e.target.value as Scope)}
                 className="bg-s1 border border-bd rounded px-2 py-1 text-xs text-char"
               >
-                <option value="workspace">Whole workspace</option>
+                <option value="workspace">{t("modals.find.scopeWorkspace")}</option>
                 {currentPathSlugs && (
-                  <option value="path">Current path ({currentPathName ?? "active"})</option>
+                  <option value="path">{t("modals.find.scopePath", { name: currentPathName ?? t("modals.find.scopePathFallback") })}</option>
                 )}
               </select>
             </div>
@@ -152,11 +154,11 @@ export default function FindReplace({
 
         <div className="overflow-y-auto flex-1 px-5 py-3 text-xs">
           {!pattern ? (
-            <div className="text-t3 italic font-serif text-center py-8">Enter something to find.</div>
+            <div className="text-t3 italic font-serif text-center py-8">{t("modals.find.enterTerm")}</div>
           ) : loading ? (
-            <div className="text-t3 italic text-center py-8">Searching…</div>
+            <div className="text-t3 italic text-center py-8">{t("modals.find.searching")}</div>
           ) : !hits || hits.length === 0 ? (
-            <div className="text-t3 italic text-center py-8">No matches.</div>
+            <div className="text-t3 italic text-center py-8">{t("modals.find.noMatches")}</div>
           ) : (
             <ul className="space-y-3">
               {hits.map((h) => (
@@ -164,7 +166,7 @@ export default function FindReplace({
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="text-sm text-char truncate">{h.title}</div>
                     <div className="text-2xs text-t3 font-mono shrink-0">
-                      {h.matches} match{h.matches === 1 ? "" : "es"}
+                      {h.matches === 1 ? t("modals.find.matchSingular", { count: String(h.matches) }) : t("modals.find.matchPlural", { count: String(h.matches) })}
                     </div>
                   </div>
                   <div className="mt-1.5 space-y-0.5 font-mono text-2xs text-t2">
@@ -183,26 +185,33 @@ export default function FindReplace({
 
         <div className="px-5 py-3 border-t border-bd flex items-center gap-2">
           <div className="text-2xs text-t3 flex-1">
-            {hits && hits.length > 0 && `${totalMatches} total match${totalMatches === 1 ? "" : "es"} in ${hits.length} note${hits.length === 1 ? "" : "s"}`}
+            {hits && hits.length > 0 && (() => {
+              const matches = totalMatches;
+              const notes = hits.length;
+              if (matches === 1 && notes === 1) return t("modals.find.totalSummaryOne", { matches: String(matches), notes: String(notes) });
+              if (matches !== 1 && notes !== 1) return t("modals.find.totalSummaryMany", { matches: String(matches), notes: String(notes) });
+              if (matches !== 1 && notes === 1) return t("modals.find.totalSummaryMixed", { matches: String(matches), notes: String(notes) });
+              return t("modals.find.totalSummaryMatchesOne", { matches: String(matches), notes: String(notes) });
+            })()}
           </div>
           <button
             onClick={onClose}
             className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char"
           >
-            Cancel
+            {t("modals.find.cancel")}
           </button>
           <button
             disabled={!hits || hits.length === 0 || busy}
             onClick={() => setConfirming(true)}
             className="text-xs px-3 py-1.5 rounded bg-yel text-on-yel hover:bg-yeld disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Replace all
+            {t("modals.find.replaceAll")}
           </button>
         </div>
 
         {confirming && hits && (
           <div
-            className="absolute inset-0 z-10 bg-char/40 backdrop-blur-sm flex items-center justify-center p-6 rounded-xl"
+            className="absolute inset-0 z-10 bg-char/40 flex items-center justify-center p-6 rounded-xl"
             onClick={() => !busy && setConfirming(false)}
           >
             <div
@@ -210,11 +219,16 @@ export default function FindReplace({
               className="w-full max-w-sm bg-bg border border-bd2 rounded-lg shadow-2xl overflow-hidden"
             >
               <div className="px-5 py-4">
-                <div className="font-serif text-lg text-char">Replace everywhere?</div>
+                <div className="font-serif text-lg text-char">{t("modals.find.confirmTitle")}</div>
                 <div className="text-xs text-t2 mt-2 leading-relaxed">
-                  This will rewrite <strong>{totalMatches}</strong> occurrence{totalMatches === 1 ? "" : "s"} across
-                  {" "}<strong>{hits.length}</strong> note{hits.length === 1 ? "" : "s"}.
-                  One checkpoint covers the whole change so you can undo from History.
+                  {(() => {
+                    const matches = totalMatches;
+                    const notes = hits.length;
+                    if (matches === 1 && notes === 1) return t("modals.find.confirmBodyOne", { matches: String(matches), notes: String(notes) });
+                    if (matches !== 1 && notes !== 1) return t("modals.find.confirmBodyMany", { matches: String(matches), notes: String(notes) });
+                    if (matches === 1 && notes !== 1) return t("modals.find.confirmBodyMixedA", { matches: String(matches), notes: String(notes) });
+                    return t("modals.find.confirmBodyMixedB", { matches: String(matches), notes: String(notes) });
+                  })()}
                 </div>
               </div>
               <div className="px-5 py-3 border-t border-bd flex justify-end gap-2">
@@ -223,14 +237,14 @@ export default function FindReplace({
                   onClick={() => setConfirming(false)}
                   className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char disabled:opacity-50"
                 >
-                  Cancel
+                  {t("modals.find.cancel")}
                 </button>
                 <button
                   disabled={busy}
                   onClick={apply}
                   className="text-xs px-3 py-1.5 rounded bg-yel text-on-yel hover:bg-yeld disabled:opacity-50"
                 >
-                  {busy ? "Replacing…" : "Replace all"}
+                  {busy ? t("modals.find.replacing") : t("modals.find.replaceAll")}
                 </button>
               </div>
             </div>

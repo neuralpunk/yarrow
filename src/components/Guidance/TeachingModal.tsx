@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import type { GuidanceDef, GuidanceAction } from "../../lib/guidance";
 import { renderInlines } from "../../lib/guidance";
 import { useGuidance, useGuidanceOverrideActions } from "../../lib/guidanceStore";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   def: GuidanceDef;
@@ -27,6 +28,7 @@ function Inlines({ text }: { text: string }) {
 export default function TeachingModal({ def }: Props) {
   const { dismiss, markSeen } = useGuidance();
   const overrides = useGuidanceOverrideActions();
+  const t = useT();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -51,7 +53,7 @@ export default function TeachingModal({ def }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-char/25 backdrop-blur-[3px] animate-fadeIn"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-char/25 animate-fadeIn"
       onMouseDown={dismiss}
     >
       <div
@@ -84,9 +86,9 @@ export default function TeachingModal({ def }: Props) {
             <button
               onClick={() => markSeen(def.key as any)}
               className="text-xs text-t3 hover:text-t2 mr-auto"
-              title="Stop showing only this specific modal. Other guidance stays on. Toggle all guidance under Settings → Guidance."
+              title={t("modals.guidance.stopShowingTitle")}
             >
-              Stop showing this one
+              {t("modals.guidance.stopShowing")}
             </button>
             {def.secondary && (
               <button

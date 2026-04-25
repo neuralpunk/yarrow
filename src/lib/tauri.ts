@@ -1,4 +1,13 @@
-import { invoke } from "@tauri-apps/api/core";
+// Thin typed façade over the transport layer. This file is the
+// pre-refactor `tauri.ts` API surface preserved verbatim — all
+// consumers still import `{ api }` from "../lib/tauri". Only the
+// underlying transport changed: `invoke()` now goes through the
+// pluggable `Transport` in `./transport/`, not `@tauri-apps/api`
+// directly. No file outside `src/lib/transport/` should reference
+// Tauri's `invoke`.
+import { getTransport } from "./transport";
+const invoke = <T>(command: string, args?: Record<string, unknown>) =>
+  getTransport().invoke<T>(command, args);
 import type {
   ActivityDay,
   Annotation,
@@ -24,6 +33,9 @@ import type {
   Provenance,
   RecentWorkspace,
   SearchHit,
+  DiscardOutcome,
+  LargeBlobEntry,
+  ReclaimSpaceOutcome,
   SyncOutcome,
   TemplateInfo,
   TrashEntry,
@@ -56,6 +68,61 @@ export const api = {
   readConfig: () => invoke<WorkspaceConfig>("cmd_read_config"),
   setRemote: (url: string, remoteType: string, token?: string) =>
     invoke<WorkspaceConfig>("cmd_set_remote", { url, remoteType, token }),
+
+  // yarrow-server connect — per-workspace. The PAT returned by the
+  // password flow never reaches TypeScript; the backend stores it in
+  // the OS keychain and only surfaces its presence via `config.sync.server`.
+  serverConnectPassword: (
+    serverUrl: string,
+    email: string,
+    password: string,
+    workspaceName?: string,
+    insecureSkipTlsVerify?: boolean,
+  ) =>
+    invoke<WorkspaceConfig>("cmd_server_connect_password", {
+      serverUrl,
+      email,
+      password,
+      workspaceName: workspaceName ?? null,
+      insecureSkipTlsVerify: insecureSkipTlsVerify ?? false,
+    }),
+  serverConnectToken: (
+    serverUrl: string,
+    email: string,
+    token: string,
+    // Password is E2E-only: the backend uses it once locally to
+    // derive the X25519 privkey from the server's envelope, then
+    // drops it. Never transmitted to the server, never persisted.
+    // Pass undefined when connecting to a pre-E2E server or when
+    // the user explicitly declines — sync will work for auth but
+    // /unlock will fail until they reconnect with a password.
+    password: string | undefined,
+    workspaceName?: string,
+    insecureSkipTlsVerify?: boolean,
+  ) =>
+    invoke<WorkspaceConfig>("cmd_server_connect_token", {
+      serverUrl,
+      email,
+      token,
+      password: password && password.length > 0 ? password : null,
+      workspaceName: workspaceName ?? null,
+      insecureSkipTlsVerify: insecureSkipTlsVerify ?? false,
+    }),
+  serverTestConnection: (
+    serverUrl: string,
+    email: string,
+    token: string,
+    insecureSkipTlsVerify?: boolean,
+  ) =>
+    invoke<void>("cmd_server_test_connection", {
+      serverUrl,
+      email,
+      token,
+      insecureSkipTlsVerify: insecureSkipTlsVerify ?? false,
+    }),
+  serverDisconnect: (revokeOnServer: boolean) =>
+    invoke<WorkspaceConfig>("cmd_server_disconnect", { revokeOnServer }),
+
   setWorkspaceMode: (mode: "mapped" | "basic") =>
     invoke<WorkspaceConfig>("cmd_set_workspace_mode", { mode }),
   setMainNote: (slug: string | null) =>
@@ -129,6 +196,11 @@ export const api = {
     invoke<Note>("cmd_rename_note", { oldSlug, newTitle, rewriteWikilinks }),
   setTags: (slug: string, tags: string[]) =>
     invoke<Note>("cmd_set_tags", { slug, tags }),
+  /** Tag Bouquet (2.1): up to `limit` suggested tags picked from the
+   *  note's own words, preferring stems already used as tags somewhere
+   *  in the vault. Fully local. Never writes anything. */
+  suggestTags: (body: string, title: string, existingTags: string[], limit?: number) =>
+    invoke<string[]>("cmd_suggest_tags", { body, title, existingTags, limit }),
   /** Replace a note's margin-ink annotations. Empty bodies are dropped
    *  server-side and a silent checkpoint lands — annotations are versioned
    *  alongside the body so history scrubbing catches both. */
@@ -151,6 +223,8 @@ export const api = {
     invoke<string>("cmd_note_absolute_path", { slug }),
   setPinned: (slug: string, pinned: boolean) =>
     invoke<Note>("cmd_set_pinned", { slug, pinned }),
+  setNoteFolder: (slug: string, folder: string | null) =>
+    invoke<Note>("cmd_set_note_folder", { slug, folder }),
 
   // links
   addLink: (from: string, to: string, linkType: LinkType) =>
@@ -226,6 +300,17 @@ export const api = {
 
   // sync
   sync: () => invoke<SyncOutcome>("cmd_sync"),
+  discardUnsyncedChanges: (confirm: boolean) =>
+    invoke<DiscardOutcome>("cmd_discard_unsynced_changes", { confirm }),
+  forceAlignWithServer: (confirm: boolean) =>
+    invoke<DiscardOutcome>("cmd_force_align_with_server", { confirm }),
+  listLargeBlobs: () =>
+    invoke<LargeBlobEntry[]>("cmd_list_large_blobs"),
+  reclaimSpace: (paths: string[], expectedDiskBytes: number | null) =>
+    invoke<ReclaimSpaceOutcome>("cmd_reclaim_space", {
+      paths,
+      expectedDiskBytes,
+    }),
 
   // scratchpad
   readScratchpad: () => invoke<string>("cmd_read_scratchpad"),
@@ -243,6 +328,14 @@ export const api = {
    *  still enabled) triggers a full rebuild. Safe to call anytime —
    *  the canonical notes are untouched. */
   clearSearchIndex: () => invoke<void>("cmd_clear_search_index"),
+  /** 2.1 Fuzzy-rank a list of strings against a query using nucleo.
+   *  Returns at most `limit` `{index, score}` pairs in score-
+   *  descending order; non-matches are omitted. Empty query returns
+   *  the first N candidates in input order. */
+  fuzzyRank: (query: string, candidates: string[], limit?: number) =>
+    invoke<{ index: number; score: number }[]>("cmd_fuzzy_rank", {
+      query, candidates, limit,
+    }),
   /** Force a full rebuild of the search cache. Returns the row count. */
   rebuildSearchIndex: () => invoke<number>("cmd_rebuild_search_index"),
   /** Nuke every derived cache — graph index.json and search index.db
@@ -359,6 +452,8 @@ export const api = {
     invoke<ObsidianImportReport>("cmd_import_logseq_vault", { source }),
   importNotionVault: (source: string) =>
     invoke<ObsidianImportReport>("cmd_import_notion_vault", { source }),
+  importBibtex: (source: string) =>
+    invoke<ObsidianImportReport>("cmd_import_bibtex", { source }),
 
   // new-workspace wizard
   defaultWorkspacesRoot: () => invoke<string>("cmd_default_workspaces_root"),

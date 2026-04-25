@@ -98,6 +98,8 @@ fn import_one(
         salt: String::new(),
         nonce: String::new(),
         annotations: vec![],
+        private: false,
+        folder: None,
     };
     notes::write(notes_dir.parent().unwrap(), &slug, body.trim_start_matches('\n'), Some(fm))?;
     Ok(notes_dir.join(format!("{slug}.md")))

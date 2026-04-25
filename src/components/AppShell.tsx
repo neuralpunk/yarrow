@@ -1,8 +1,9 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/tauri";
+import { useT } from "../lib/i18n";
 import { useTheme } from "../lib/theme";
 import { openQuestions } from "../lib/forkDetection";
-import { todayIso } from "../lib/format";
+import { relativeTime, todayIso } from "../lib/format";
 import { prefetchHeavyChunks } from "../lib/prefetch";
 import { getCachedOrReadNote, invalidateAllNotes, invalidateNote } from "../lib/notePrefetch";
 import { SearchIcon, StatusDot, ChevronDownIcon, DeleteIcon, JournalIcon, ActivityIcon } from "../lib/icons";
@@ -11,6 +12,9 @@ import { useShowRawMarkdown, useEditorFont } from "../lib/editorPrefs";
 // and UI scale to the document before first paint, so chrome doesn't
 // flash the defaults on cold start.
 import "../lib/uiPrefs";
+// Same pattern for Paper & Warmth (2.1) — applies saved texture and
+// warmth to <html> before the first paint.
+import "../lib/paperPrefs";
 import { SK } from "../lib/platform";
 import { workspaceAccent } from "../lib/workspaceAccent";
 import RightRail, { type RailOverlay } from "./RightRail";
@@ -43,6 +47,7 @@ import LinkedNotesList from "./RightSidebar/LinkedNotesList";
 import OpenQuestions from "./RightSidebar/OpenQuestions";
 import Transclusions from "./RightSidebar/Transclusions";
 import Modal from "./Modal";
+import QuotaBlockedModal from "./QuotaBlockedModal";
 import ForkMoment from "./ForkMoment";
 import GuidanceHost from "./Guidance/GuidanceHost";
 import PathRibbon from "./Guidance/PathRibbon";
@@ -59,29 +64,117 @@ import {
 import WhereYouLeftOffBanner from "./WhereYouLeftOffBanner";
 
 // Heavy or rarely-used screens: lazy so they're not in the first paint.
-const HistorySlider    = lazy(() => import("./Editor/HistorySlider"));
-const ConnectionGraph  = lazy(() => import("./RightSidebar/ConnectionGraph"));
-const Scratchpad       = lazy(() => import("./Scratchpad"));
-const Trash            = lazy(() => import("./Trash"));
-const FindReplace      = lazy(() => import("./FindReplace"));
-const PathCompare      = lazy(() => import("./PathCompare"));
-const DecisionMatrix   = lazy(() => import("./DecisionMatrix"));
-const ObsidianImport   = lazy(() => import("./ObsidianImport"));
-const SpellMenu        = lazy(() => import("./SpellMenu"));
-const QuickCapture     = lazy(() => import("./QuickCapture"));
-const Settings         = lazy(() => import("./Settings"));
-const CommandPalette   = lazy(() => import("./CommandPalette"));
-const QuickSwitcher    = lazy(() => import("./QuickSwitcher"));
-const ConflictResolver = lazy(() => import("./ConflictResolver"));
-const PathDiff         = lazy(() => import("./PathDiff"));
-const PathsPane        = lazy(() => import("./PathsPane"));
-const ConditionEditor  = lazy(() => import("./Paths/ConditionEditor"));
-const UnlockPrompt     = lazy(() => import("./UnlockPrompt"));
-const WikilinkPicker   = lazy(() => import("./WikilinkPicker"));
-const ActivityHeatmap  = lazy(() => import("./ActivityHeatmap"));
-const TagGraph         = lazy(() => import("./TagGraph"));
-const TableInsertModal = lazy(() => import("./TableInsertModal"));
-const CalloutInsertModal = lazy(() => import("./CalloutInsertModal"));
+// Each `import()` is captured as a thunk so we can call it later from
+// `prewarmLazyChunks` to prime the module cache during idle time —
+// first-open of any modal then bypasses the network fetch + parse +
+// execute cycle and feels instant. Without prewarm, opening Command
+// Palette / Settings / Trash for the first time pays a full chunk
+// cost (~100-300 ms on Linux webkit2gtk) which read as "modal lag".
+const importHistorySlider   = () => import("./Editor/HistorySlider");
+const importConnectionGraph = () => import("./RightSidebar/ConnectionGraph");
+const importScratchpad      = () => import("./Scratchpad");
+const importTrash           = () => import("./Trash");
+const importFindReplace     = () => import("./FindReplace");
+const importPathCompare     = () => import("./PathCompare");
+const importDecisionMatrix  = () => import("./DecisionMatrix");
+const importObsidianImport  = () => import("./ObsidianImport");
+const importSpellMenu       = () => import("./SpellMenu");
+const importQuickCapture    = () => import("./QuickCapture");
+const importSettings        = () => import("./Settings");
+const importCommandPalette  = () => import("./CommandPalette");
+const importQuickSwitcher   = () => import("./QuickSwitcher");
+const importConflictResolver= () => import("./ConflictResolver");
+const importPathDiff        = () => import("./PathDiff");
+const importPathsPane       = () => import("./PathsPane");
+const importConditionEditor = () => import("./Paths/ConditionEditor");
+const importUnlockPrompt    = () => import("./UnlockPrompt");
+const importWikilinkPicker  = () => import("./WikilinkPicker");
+const importActivityHeatmap = () => import("./ActivityHeatmap");
+const importTagGraph        = () => import("./TagGraph");
+const importTableInsertModal= () => import("./TableInsertModal");
+const importJournalKits     = () => import("./JournalKits");
+const importCustomTemplatesModal = () => import("./CustomTemplatesModal");
+const importCalloutInsertModal = () => import("./CalloutInsertModal");
+
+const HistorySlider    = lazy(importHistorySlider);
+const ConnectionGraph  = lazy(importConnectionGraph);
+const Scratchpad       = lazy(importScratchpad);
+const Trash            = lazy(importTrash);
+const FindReplace      = lazy(importFindReplace);
+const PathCompare      = lazy(importPathCompare);
+const DecisionMatrix   = lazy(importDecisionMatrix);
+const ObsidianImport   = lazy(importObsidianImport);
+const SpellMenu        = lazy(importSpellMenu);
+const QuickCapture     = lazy(importQuickCapture);
+const Settings         = lazy(importSettings);
+const CommandPalette   = lazy(importCommandPalette);
+const QuickSwitcher    = lazy(importQuickSwitcher);
+const ConflictResolver = lazy(importConflictResolver);
+const PathDiff         = lazy(importPathDiff);
+const PathsPane        = lazy(importPathsPane);
+const ConditionEditor  = lazy(importConditionEditor);
+const UnlockPrompt     = lazy(importUnlockPrompt);
+const WikilinkPicker   = lazy(importWikilinkPicker);
+const ActivityHeatmap  = lazy(importActivityHeatmap);
+const TagGraph         = lazy(importTagGraph);
+const TableInsertModal = lazy(importTableInsertModal);
+// 2.1 Journal Kits picker — small modal, only shown on explicit invocation.
+const JournalKits      = lazy(importJournalKits);
+const CustomTemplatesModal = lazy(importCustomTemplatesModal);
+const CalloutInsertModal = lazy(importCalloutInsertModal);
+
+/** Walk every lazy chunk during the next idle window and trigger its
+ *  dynamic import. Modules land in the bundler cache so first-open of
+ *  any modal is just a render — the chunk fetch, parse, and execute
+ *  costs already paid. We split into two passes: high-traffic modals
+ *  (the ones a user is likely to hit in their first session) prefetch
+ *  immediately on idle; the long tail waits for a second idle slot so
+ *  we don't blow the network budget on app boot.
+ *
+ *  Soft-failure on every promise: a failed prefetch isn't user-visible
+ *  (the `lazy()` Suspense path will retry on actual open) so we just
+ *  swallow rejections rather than logging noise. */
+function prewarmLazyChunks() {
+  const idle: (cb: () => void, opts?: { timeout: number }) => void =
+    (window as unknown as { requestIdleCallback?: typeof requestIdleCallback })
+      .requestIdleCallback ?? ((cb) => window.setTimeout(cb, 1));
+
+  idle(
+    () => {
+      void importCommandPalette().catch(() => {});
+      void importQuickSwitcher().catch(() => {});
+      void importSettings().catch(() => {});
+      void importHistorySlider().catch(() => {});
+      void importTrash().catch(() => {});
+      void importFindReplace().catch(() => {});
+      void importScratchpad().catch(() => {});
+      void importWikilinkPicker().catch(() => {});
+    },
+    { timeout: 4000 },
+  );
+  idle(
+    () => {
+      void importConnectionGraph().catch(() => {});
+      void importPathsPane().catch(() => {});
+      void importPathCompare().catch(() => {});
+      void importPathDiff().catch(() => {});
+      void importConditionEditor().catch(() => {});
+      void importDecisionMatrix().catch(() => {});
+      void importTagGraph().catch(() => {});
+      void importActivityHeatmap().catch(() => {});
+      void importObsidianImport().catch(() => {});
+      void importJournalKits().catch(() => {});
+      void importCustomTemplatesModal().catch(() => {});
+      void importCalloutInsertModal().catch(() => {});
+      void importTableInsertModal().catch(() => {});
+      void importQuickCapture().catch(() => {});
+      void importSpellMenu().catch(() => {});
+      void importUnlockPrompt().catch(() => {});
+      void importConflictResolver().catch(() => {});
+    },
+    { timeout: 8000 },
+  );
+}
 const WorkspaceSwitcher = lazy(() => import("./WorkspaceSwitcher"));
 // The editor ships its own CodeMirror chunk. Keeping it lazy + idle-warmed
 // shaves the CM parse cost out of first paint without hurting time-to-edit.
@@ -101,6 +194,18 @@ function L({ children }: { children: React.ReactNode }) {
 
 type SyncStatus = "synced" | "pending" | "syncing" | "error" | "no-remote";
 
+/** A workspace has a "remote" in the sync sense if it's either wired
+ *  up to a generic git remote or connected to a Yarrow server. The
+ *  status pill and the handleSync gate must agree — otherwise you get
+ *  "not synced anywhere" staring back at users who've already signed
+ *  into a Yarrow server. */
+function hasRemote(cfg: { sync: { remote_url?: string; server?: unknown } } | null): boolean {
+  if (!cfg) return false;
+  if (cfg.sync.remote_url) return true;
+  if (cfg.sync.server) return true;
+  return false;
+}
+
 interface Props {
   workspacePath: string;
   onClose: () => void;
@@ -110,6 +215,19 @@ interface Props {
 export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: Props) {
   useTheme(); // applies theme class to <html>
   useEditorFont(); // applies editor font-family CSS var to <html>
+  const t = useT();
+
+  // Prewarm every lazy modal chunk on idle so the user's first invocation
+  // of Command Palette / Settings / Trash / etc. is just a render —
+  // the chunk fetch, parse, and execute already happened in the
+  // background. See `prewarmLazyChunks` for the priority split. We
+  // intentionally fire only once per AppShell mount; switching
+  // workspaces remounts AppShell (App.tsx keys by path) which triggers
+  // this again, but webpack/Vite's module cache shortcuts the second
+  // call so it's free.
+  useEffect(() => {
+    prewarmLazyChunks();
+  }, []);
   const [showRawMarkdown, setShowRawMarkdown] = useShowRawMarkdown();
 
   const [config, setConfig] = useState<WorkspaceConfig | null>(null);
@@ -132,6 +250,18 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [orphanSet, setOrphanSet] = useState<Set<string>>(new Set());
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
   const [activeNote, setActiveNote] = useState<Note | null>(null);
+  // Bumped whenever a sync rewrites the active note's file on disk,
+  // forcing the note-load effect below to re-run and swap the editor's
+  // `currentBody` for the server's version. Without this, a background
+  // sync updates disk but the editor keeps displaying — and soon re-
+  // saves — the pre-sync content, clobbering the server's edit.
+  const [noteReloadNonce, setNoteReloadNonce] = useState(0);
+  // Ref mirror of activeSlug + currentPath so the 30 s auto-sync loop
+  // can check "did the pull touch the note I'm looking at right now?"
+  // without restarting the interval every time the user clicks a
+  // different note.
+  const activeSlugRef = useRef<string | null>(null);
+  useEffect(() => { activeSlugRef.current = activeSlug; }, [activeSlug]);
   // "Where you left off" — one-line bookmark captured on unmount, shown
   // on first open until the user resumes / dismisses / hides-always.
   // Picked up synchronously from localStorage so it lands with the first
@@ -179,6 +309,16 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [findReplaceResult, setFindReplaceResult] = useState<
     { changed: number; total: number } | null
   >(null);
+  // Pre-push quota block (stage 1 check triggered, sync aborted locally).
+  // Data lives in `quotaBlock`; visibility in `quotaModalOpen` is
+  // separate so a user can dismiss the modal and still see a small
+  // "Over quota" pill in the status bar — without auto-sync popping
+  // the modal back in their face every 30 seconds. Cleared on any
+  // successful sync or after a successful discard.
+  const [quotaBlock, setQuotaBlock] = useState<
+    import("../lib/types").QuotaBlockInfo | null
+  >(null);
+  const [quotaModalOpen, setQuotaModalOpen] = useState<boolean>(false);
   const [spellMenu, setSpellMenu] = useState<{
     word: string; suggestions: string[]; from: number; to: number; x: number; y: number;
   } | null>(null);
@@ -204,6 +344,32 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [restoreNonce, setRestoreNonce] = useState(0);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("pending");
   const [, setSyncMessage] = useState<string>("");
+  // Unix ms of the most recent successful sync for this workspace.
+  // Persisted per-workspace so the "synced 3 min ago" label survives
+  // reloads. `null` means we have no record — usually a fresh open or
+  // the remote has never been reached.
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(() => {
+    if (!workspacePath) return null;
+    try {
+      const raw = localStorage.getItem(`yarrow.lastSyncedAt:${workspacePath}`);
+      const n = raw ? Number(raw) : NaN;
+      return Number.isFinite(n) && n > 0 ? n : null;
+    } catch {
+      return null;
+    }
+  });
+  // Keep the status pill honest when the user connects or disconnects
+  // a remote mid-session from the Settings panel. Without this, the
+  // pill stays on "not synced anywhere" after a fresh Connect flow
+  // because setConfig is the only thing Settings hands back.
+  const remotePresent = hasRemote(config);
+  useEffect(() => {
+    setSyncStatus((cur) => {
+      if (remotePresent && cur === "no-remote") return "pending";
+      if (!remotePresent && cur !== "no-remote") return "no-remote";
+      return cur;
+    });
+  }, [remotePresent]);
   const [dirty, setDirty] = useState(false);
   const [jumpSignal, setJumpSignal] = useState<{ line: number; nonce: number } | undefined>();
   // Path-view ley pill → editor line jump. The path pane fires this
@@ -232,7 +398,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [connectTarget, setConnectTarget] = useState("");
   const [connectType, setConnectType] = useState<LinkType>("supports");
   const [settingsOpen, setSettingsOpen] = useState<
-    { open: boolean; tab?: "appearance" | "writing" | "templates" | "sync" | "security" | "workspace" | "shortcuts" | "about" }
+    { open: boolean; tab?: "appearance" | "writing" | "templates" | "sync" | "storage" | "security" | "workspace" | "shortcuts" | "about" }
   >({ open: false });
   const [confirmState, setConfirmState] = useState<{
     title: string;
@@ -244,13 +410,29 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   // Toggles the InlineDiffPane for the active note — only applies on a
   // non-root path. Auto-resets whenever the user changes path or note.
   const [inlineDiffOpen, setInlineDiffOpen] = useState(false);
+  // Toasts (2.1 "Warm Toasts"): accept a tone so the renderer can paint a
+  // small dot that matches the feeling of the message. Default tone is
+  // "info" (neutral yellow), "success" is a soft green for milestones, and
+  // "soft" is a muted plum for the gentle-sorry variant ("that didn't work,
+  // nothing was lost"). Plain-string toasts still work — they render as
+  // info with no action.
   const [toast, setToast] = useState<
     | string
-    | { text: string; action: { label: string; run: () => void }; ttlMs?: number }
+    | {
+        text: string;
+        action?: { label: string; run: () => void };
+        ttlMs?: number;
+        tone?: "info" | "success" | "soft";
+      }
     | null
   >(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
+  // Count of user-authored (non-bundled) templates. Drives whether the
+  // new-note modal renders the "Your templates" route tile at all.
+  const customTemplatesCount = templates.filter(
+    (t) => t.is_bundled === false,
+  ).length;
   const [encryption, setEncryption] = useState<EncryptionStatus>({
     enabled: false,
     unlocked: false,
@@ -259,6 +441,9 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [unlockReason, setUnlockReason] = useState<string | undefined>(undefined);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  // 2.1 Journal Kits picker — dedicated warm UI for the kit-flagged templates.
+  const [kitsPickerOpen, setKitsPickerOpen] = useState(false);
+  const [customTemplatesOpen, setCustomTemplatesOpen] = useState(false);
   const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
   const [templateTitle, setTemplateTitle] = useState("");
   // Monotonically-increasing ticket for async work that writes to activeSlug.
@@ -271,6 +456,15 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const selectSlug = useCallback((slug: string | null) => {
     asyncEpoch.current++;
     setActiveSlug(slug);
+    // Feed the wikilink-autocomplete recency tracker so [[ suggestions
+    // bubble up notes the user has actually been reading. The Map is
+    // module-scoped in the autocomplete extension; calling here keeps
+    // the signal current without each navigation source remembering to.
+    if (slug) {
+      void import("./Editor/extensions/wikilinkAutocomplete").then(
+        (m) => m.markOpenedSlug(slug),
+      );
+    }
   }, []);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [newNoteTitle, setNewNoteTitle] = useState("");
@@ -382,7 +576,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     setTemplates(tpls);
     setEncryption(encStatus);
     setNotes(list);
-    setSyncStatus(cfg.sync.remote_url ? "pending" : "no-remote");
+    setSyncStatus(hasRemote(cfg) ? "pending" : "no-remote");
     setFocusMode(cfg.preferences.focus_mode_default);
 
     if (mappingResults) {
@@ -619,7 +813,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       setActiveNote(null);
     });
     return () => { alive = false; };
-  }, [activeSlug, currentPath, collectionsView, encryption.unlocked]);
+  }, [activeSlug, currentPath, collectionsView, encryption.unlocked, noteReloadNonce]);
 
   // Load the workspace's custom dictionary into the spell-checker once per
   // workspace open. Best-effort — a missing dictionary just means the
@@ -706,9 +900,9 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       setTimeout(() => cleanup(0), 30000);
       iframe.srcdoc = html;
     } catch (e) {
-      setToast(`Couldn't prepare print preview: ${e}`);
+      setToast(t("appshell.toast.printError", { error: String(e) }));
     }
-  }, []);
+  }, [t]);
 
   const handleCreateNote = useCallback(() => {
     setNewNoteTitle("");
@@ -741,7 +935,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           setTopology(topo);
           setGraph(g);
           setNotes(list);
-          setToast(`Journal lives on main — jumped there from "${switched_from}"`);
+          setToast({ text: t("appshell.toast.journalSwitched", { from: switched_from }), tone: "soft" });
         }
         setActiveSlug(note.slug);
         setActiveNote(note);
@@ -750,7 +944,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         if (myEpoch === asyncEpoch.current) console.error("open daily failed", e);
       }
     },
-    [],
+    [t],
   );
 
   const refreshEncryption = useCallback(async () => {
@@ -789,8 +983,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         setCurrentBody(n.body);
       } catch {}
     }
-    setToast("Locked — encrypted notes need your password");
-  }, [activeSlug, activeNote?.encrypted, broadcastEncryptionChanged]);
+    setToast({ text: t("appshell.toast.encryptedSession"), tone: "soft" });
+  }, [activeSlug, activeNote?.encrypted, broadcastEncryptionChanged, t]);
 
   const onUnlocked = useCallback(async () => {
     setUnlockOpen(false);
@@ -810,12 +1004,12 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
 
   const handleEncryptNoteBySlug = useCallback(async (slug: string) => {
     if (!encryption.enabled) {
-      setToast("Enable encryption first in Settings → Security");
+      setToast({ text: t("appshell.toast.enableEncryptionFirst"), tone: "soft" });
       setSettingsOpen({ open: true, tab: "security" });
       return;
     }
     if (!encryption.unlocked) {
-      requestUnlock("Unlock to encrypt this note.");
+      requestUnlock(t("appshell.toast.unlockToEncrypt"));
       return;
     }
     try {
@@ -827,16 +1021,16 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       invalidateAllNotes();
       setNotes(await api.listNotes());
       setToast(
-        `🔒 Encrypted "${n.frontmatter.title || slug}" — every past version in history was re-sealed with the same key.`
+        t("appshell.toast.encrypted", { title: n.frontmatter.title || slug })
       );
     } catch (e) {
-      setToast(`Couldn't encrypt: ${e}`);
+      setToast(t("appshell.toast.encryptError", { error: String(e) }));
     }
-  }, [activeSlug, encryption.enabled, encryption.unlocked, requestUnlock]);
+  }, [activeSlug, encryption.enabled, encryption.unlocked, requestUnlock, t]);
 
   const handleDecryptNoteBySlug = useCallback(async (slug: string) => {
     if (!encryption.unlocked) {
-      requestUnlock("Unlock to decrypt this note.");
+      requestUnlock(t("appshell.toast.unlockToDecrypt"));
       return;
     }
     try {
@@ -846,11 +1040,11 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         setCurrentBody(n.body);
       }
       setNotes(await api.listNotes());
-      setToast(`Decrypted "${n.frontmatter.title || slug}"`);
+      setToast({ text: t("appshell.toast.decrypted", { title: n.frontmatter.title || slug }), tone: "success" });
     } catch (e) {
-      setToast(`Couldn't decrypt: ${e}`);
+      setToast(t("appshell.toast.decryptError", { error: String(e) }));
     }
-  }, [activeSlug, encryption.unlocked, requestUnlock]);
+  }, [activeSlug, encryption.unlocked, requestUnlock, t]);
 
   const handleEncryptActiveNote = useCallback(() => {
     if (!activeSlug) return;
@@ -894,12 +1088,182 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         const alive = await api.activityPing();
         if (!alive && encryption.unlocked) {
           await refreshEncryption();
-          setToast("Session locked after idle — unlock to continue");
+          setToast({ text: t("appshell.toast.lockedAfterIdle"), tone: "soft" });
         }
       } catch {}
     }, 60_000);
     return () => window.clearInterval(id);
-  }, [encryption.enabled, encryption.unlocked, refreshEncryption]);
+  }, [encryption.enabled, encryption.unlocked, refreshEncryption, t]);
+
+  // Periodic auto-sync. Mirrors the web build's push-debt loop: fire
+  // `cmd_sync` every 30s when the workspace has a server configured,
+  // and back off exponentially on errors so a flaky network / down
+  // server doesn't hammer the backend. Also listens for the
+  // `workspace.updated` Tauri event our WebSocket client re-emits
+  // — a remote push triggers an immediate sync (pull + push).
+  //
+  // The sync itself is the full fetch+push+merge cycle on desktop, so
+  // this loop carries both directions: our local commits go up, and
+  // anything the server gained since our last sync comes down.
+  useEffect(() => {
+    if (!config?.sync?.server) return;
+    let cancelled = false;
+    let lastError = 0;
+    let backoffMs = 30_000;
+    const maxBackoff = 5 * 60_000;
+
+    const run = async () => {
+      if (cancelled) return;
+      try {
+        const outcome = await api.sync();
+        backoffMs = 30_000;
+        lastError = 0;
+        if (outcome?.quota_blocked) {
+          // Auto-sync hit the pre-push check. Update the DATA so the
+          // status-bar "Over quota" pill stays accurate, but DON'T
+          // forcibly re-open the modal — the user may have dismissed
+          // it on purpose and we shouldn't nag them every 30 s.
+          // The modal is only force-opened if they hadn't seen this
+          // issue yet (quotaBlock was previously null).
+          setQuotaBlock((prev) => {
+            if (prev === null) setQuotaModalOpen(true);
+            return outcome.quota_blocked ?? null;
+          });
+        }
+        if (outcome?.ok) {
+          // Clean sync — the quota issue cleared itself (they cleaned
+          // up on another device, or whatever). Dismiss the indicator.
+          setQuotaBlock(null);
+          setQuotaModalOpen(false);
+          const now = Date.now();
+          setLastSyncedAt(now);
+          try {
+            if (workspacePath) {
+              localStorage.setItem(
+                `yarrow.lastSyncedAt:${workspacePath}`,
+                String(now),
+              );
+            }
+          } catch {}
+        }
+        // Surface conflicts from auto-sync too — silent would mean the
+        // user first hears about divergence by spotting the weird
+        // `.conflict-*` filename in the sidebar, which is a worse story
+        // than a one-line toast.
+        const cc = outcome?.conflicts ?? [];
+        if (cc.length > 0) {
+          const n = cc.length;
+          setToast({
+            text: t(
+              n === 1
+                ? "appshell.toast.autoSyncConflictsSingle"
+                : "appshell.toast.autoSyncConflictsPlural",
+              { count: String(n) },
+            ),
+            tone: "soft",
+            ttlMs: 8000,
+          });
+        }
+        // If the pull rewrote files on disk, drop the cached body for
+        // each one so the next read hits the backend instead of the
+        // now-stale prefetch LRU. Then, if the active note's file is
+        // in that list, bump the nonce to re-run the note-load effect
+        // and swap fresh content into the editor. Doing the cache
+        // invalidation BEFORE the nonce bump is load-bearing — if we
+        // only bumped the nonce, the effect would re-read the same
+        // stale cached entry and the editor would keep the pre-sync
+        // body, leaving the server's edit invisible and primed to be
+        // overwritten the moment any save triggers.
+        const changed = outcome?.files_changed;
+        if (changed && changed.length) {
+          for (const p of changed) {
+            if (p.startsWith("notes/") && p.endsWith(".md")) {
+              invalidateNote(p.slice("notes/".length, -".md".length));
+            }
+          }
+          const slug = activeSlugRef.current;
+          if (slug && changed.includes(`notes/${slug}.md`)) {
+            setNoteReloadNonce((n) => n + 1);
+          }
+        }
+      } catch (err) {
+        lastError = Date.now();
+        backoffMs = Math.min(backoffMs * 2, maxBackoff);
+        console.warn("auto-sync failed — backing off", backoffMs / 1000, "s", err);
+      }
+    };
+
+    // First tick after a short warm-up so we don't race workspace load.
+    const warmup = window.setTimeout(() => void run(), 8_000);
+    const id = window.setInterval(() => void run(), 30_000);
+
+    // React to server pushes delivered via the Tauri WebSocket bridge.
+    // Subscribe through @tauri-apps/api/event (via our shared transport's
+    // subscribe pattern) so we don't care whether the bridge was added
+    // before or after this effect mounts.
+    let unlisten: (() => void) | null = null;
+    let unlistenPurged: (() => void) | null = null;
+    void import("@tauri-apps/api/event")
+      .then(async ({ listen }) => {
+        const fn = await listen("workspace.updated", () => {
+          if (cancelled) return;
+          // Respect the back-off so a storm of WS events can't override
+          // the error cool-down.
+          if (Date.now() - lastError < backoffMs) return;
+          void run();
+        });
+        if (cancelled) fn();
+        else unlisten = fn;
+
+        // Stage-3: a server-side reclaim-space just rewrote this
+        // workspace's git history. Our local branch is on a lineage
+        // the server no longer knows about. A plain `api.sync()` would
+        // fetch the new history AND try to push our old commits — which
+        // would just re-upload the blobs the server just purged and
+        // put us right back where we started. `cmd_force_align_with_server`
+        // is a one-way operation: fetch server state, hard-reset
+        // local onto it, discard our diverged commits. Also clears
+        // the quota pill since reaching this handler means the server
+        // definitely freed space.
+        const purgedFn = await listen("workspace.purged", () => {
+          if (cancelled) return;
+          setToast({
+            text: t("appshell.toast.workspacePurged"),
+            tone: "soft",
+            ttlMs: 6000,
+          });
+          void (async () => {
+            try {
+              await api.forceAlignWithServer(true);
+              setQuotaBlock(null);
+              setQuotaModalOpen(false);
+              setNoteReloadNonce((n) => n + 1);
+              invalidateAllNotes();
+            } catch (err) {
+              console.warn("post-purge force-align failed:", err);
+              setToast({
+                text: t("appshell.toast.workspacePurgedFailed"),
+                tone: "soft",
+                ttlMs: 8000,
+              });
+            }
+          })();
+        });
+        if (cancelled) purgedFn();
+        else unlistenPurged = purgedFn;
+      })
+      .catch(() => {
+        /* web build or pre-2.x tauri — no listener, that's fine */
+      });
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(warmup);
+      window.clearInterval(id);
+      if (unlisten) unlisten();
+      if (unlistenPurged) unlistenPurged();
+    };
+  }, [config?.sync?.server, t]);
 
   const handleCreateFromTemplate = useCallback((templateName: string) => {
     setPendingTemplate(templateName);
@@ -920,9 +1284,9 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       setOrphanSet(new Set(await fetchOrphans()));
     } catch (e) {
       console.error("create from template failed", e);
-      setToast(`Couldn't create note from template: ${e}`);
+      setToast(t("appshell.toast.createFromTemplateError", { error: String(e) }));
     }
-  }, [pendingTemplate, templateTitle]);
+  }, [pendingTemplate, templateTitle, t]);
 
   const confirmCreateNote = useCallback(async () => {
     const title = newNoteTitle.trim();
@@ -1049,8 +1413,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         : typeof toast === "object"
           ? 6500
           : 4200;
-    const t = setTimeout(() => setToast(null), ttl);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setToast(null), ttl);
+    return () => clearTimeout(timer);
   }, [toast]);
 
   // "Where you left off" persistence. Debounced: every time the active
@@ -1058,21 +1422,66 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   // idle. On workspace close (unmount), we flush whatever we have so
   // the next open can greet the user with it. Hidden-always respects
   // the user's pref — if they clicked "hide next time" we stop writing.
+  //
+  // The cursor line travels with the bookmark so the next reopen can
+  // scroll-restore. NoteEditor emits `yarrow:cursor-changed` on every
+  // selection move; we hold the latest value in a ref so the debounced
+  // save reads the most recent line at flush time, not stale state.
+  //
+  // Privacy gate (2.1): notes that are encrypted or marked private
+  // (clinical kits, `private: true` in frontmatter, or tag `clinical`)
+  // are NEVER bookmarked — neither title, path, snippet, nor cursor
+  // line ever touches localStorage. This is the same security stance
+  // the rest of the app takes: PHI and sealed notes never leak into
+  // surfaces that survive across sessions.
   const leftOffWriteTimer = useRef<number | null>(null);
+  const cursorLineRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const onCursor = (e: Event) => {
+      const d = (e as CustomEvent<{ line: number }>).detail;
+      if (d && typeof d.line === "number") cursorLineRef.current = d.line;
+    };
+    window.addEventListener("yarrow:cursor-changed", onCursor as EventListener);
+    return () => window.removeEventListener("yarrow:cursor-changed", onCursor as EventListener);
+  }, []);
+  // Reset the cursor cache whenever the active note flips so a stale
+  // line from a previous note can't leak into the next one's bookmark
+  // before NoteEditor reports the fresh position.
+  useEffect(() => { cursorLineRef.current = undefined; }, [activeSlug]);
+
+  // Single source of truth for "is this note off-limits to bookmarking?"
+  // Read directly off the live `activeNote` so a frontmatter toggle (tag
+  // added, `private: true` set, encryption enabled) takes effect on the
+  // very next save without waiting for a list refresh.
+  const isOffLimitsForBookmark = (n: Note | null): boolean => {
+    if (!n) return false;
+    if (n.encrypted || n.locked) return true;
+    if (n.frontmatter.private) return true;
+    const tags = n.frontmatter.tags ?? [];
+    return tags.some((t) => t.toLowerCase() === "clinical");
+  };
+
   useEffect(() => {
     if (!activeNote || !activeSlug) return;
     if (isHiddenLeftOff(workspacePath)) return;
+    // Privacy gate — leftOff simply never runs on private or encrypted
+    // notes. No save, no debounce timer, no side-effects. Cleanup of
+    // any stale entry from before a tag/encryption toggle lives in the
+    // sweep-on-open effect below; this branch just opts out cleanly.
+    if (isOffLimitsForBookmark(activeNote)) return;
     if (leftOffWriteTimer.current) window.clearTimeout(leftOffWriteTimer.current);
     const slug = activeSlug;
     const title = activeNote.frontmatter.title || activeNote.slug;
     const path = currentPath;
     const body = currentBody || activeNote.body;
     leftOffWriteTimer.current = window.setTimeout(() => {
+      const cursorLine = cursorLineRef.current;
       saveLeftOff(workspacePath, {
         slug,
         title,
         path,
-        snippet: snippetFromBody(body),
+        snippet: snippetFromBody(body, cursorLine),
+        cursorLine,
         at: Date.now(),
       });
     }, 900);
@@ -1082,20 +1491,52 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   }, [activeSlug, activeNote, currentPath, currentBody, workspacePath]);
   // Flush on unmount — the active-change effect debounces, which would
   // lose the final state when the user closes the workspace mid-wait.
+  // Same privacy gate as above: never run for protected notes.
   useEffect(() => {
     return () => {
       if (!activeNote || !activeSlug) return;
       if (isHiddenLeftOff(workspacePath)) return;
+      if (isOffLimitsForBookmark(activeNote)) return;
+      const cursorLine = cursorLineRef.current;
       saveLeftOff(workspacePath, {
         slug: activeSlug,
         title: activeNote.frontmatter.title || activeNote.slug,
         path: currentPath,
-        snippet: snippetFromBody(currentBody || activeNote.body),
+        snippet: snippetFromBody(currentBody || activeNote.body, cursorLine),
+        cursorLine,
         at: Date.now(),
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Stale-state sweep: once the notes list resolves, if the persisted
+  // bookmark points at a note that's now private or encrypted, wipe
+  // it. Catches the upgrade case (a 2.0 workspace's localStorage may
+  // hold a snippet from a note that has since been sealed) and the
+  // toggle case (a note tagged `clinical` after the last bookmark).
+  useEffect(() => {
+    if (!leftOff || notes.length === 0) return;
+    const target = notes.find((n) => n.slug === leftOff.slug);
+    if (target && (target.encrypted || target.private)) {
+      forgetLeftOff(workspacePath);
+      setLeftOff(null);
+    }
+  }, [leftOff, notes, workspacePath]);
+
+  // Display gate. The banner shows only once we can confirm the
+  // target note exists in the loaded list AND isn't private or
+  // encrypted. Holding back until `notes` resolves closes the brief
+  // race window between the synchronous localStorage read and the
+  // async list load — a stale snippet can never paint, even for one
+  // frame, before the sweep above has had a chance to wipe it.
+  const showLeftOffBanner = useMemo(() => {
+    if (!leftOff) return false;
+    if (notes.length === 0) return false;
+    const target = notes.find((n) => n.slug === leftOff.slug);
+    if (target && (target.encrypted || target.private)) return false;
+    return true;
+  }, [leftOff, notes]);
 
   // Listen for editor selection changes so the status bar can show
   // "238 selected" while the user has a range highlighted. Emitted by
@@ -1267,13 +1708,13 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         // body may have changed too — invalidate cached reads.
         if (rewriteWikilinks) invalidateAllNotes();
       } catch (e) {
-        setToast(`Couldn't rename: ${e}`);
+        setToast(t("appshell.toast.renameError", { error: String(e) }));
         // Rename failed — tell the editor to put the old title back so
         // the input isn't showing a name the file doesn't have.
         setTitleRevertNonce((n) => n + 1);
       }
     },
-    [activeSlug],
+    [activeSlug, t],
   );
 
   const handleRenameNote = useCallback(
@@ -1297,6 +1738,26 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     setNotes(list);
   }, []);
 
+  // 2.1 Folders. Move a note into / out of a folder. The on-disk file
+  // never leaves `notes/<slug>.md` — only the frontmatter `folder`
+  // field changes. The notes list refresh picks up the new grouping.
+  const handleMoveToFolder = useCallback(
+    async (slug: string, folder: string | null) => {
+      try {
+        await api.setNoteFolder(slug, folder);
+        const list = await api.listNotes();
+        setNotes(list);
+        const label = folder
+          ? t("appshell.toast.movedToFolder", { folder })
+          : t("appshell.toast.movedOutOfFolder");
+        setToast({ text: label, tone: "success" });
+      } catch (e) {
+        setToast({ text: t("appshell.toast.moveError", { error: String(e) }), tone: "soft" });
+      }
+    },
+    [t],
+  );
+
   const handleDeleteNote = useCallback(
     async (slug: string) => {
       // Grab the content *before* deletion so undo can rebuild the note
@@ -1315,8 +1776,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         };
       } catch {
         setConfirmState({
-          title: "Delete this note?",
-          body: "Can't show an undo for this note (it's locked). Delete anyway? Past versions remain in history.",
+          title: t("appshell.deleteLocked.title"),
+          body: t("appshell.deleteLocked.body"),
           onConfirm: async () => {
             await api.deleteNote(slug);
             const list = await api.listNotes();
@@ -1342,9 +1803,9 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       // the undo window renaming another note into this slot, but the
       // content is never lost.
       setToast({
-        text: `Deleted "${snapshot.title}."`,
+        text: t("appshell.toast.deleted", { title: snapshot.title }),
         action: {
-          label: "Undo",
+          label: t("appshell.toast.undoLabel"),
           run: async () => {
             try {
               const fresh = await api.createNote(snapshot.title);
@@ -1355,13 +1816,13 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               setOrphanSet(new Set(await fetchOrphans()));
               setActiveSlug(fresh.slug);
             } catch (e) {
-              setToast(`Couldn't undo delete: ${String(e)}`);
+              setToast(t("appshell.toast.undoError", { error: String(e) }));
             }
           },
         },
       });
     },
-    [activeSlug],
+    [activeSlug, t],
   );
 
   const handleRevealNote = useCallback(async (slug: string) => {
@@ -1370,9 +1831,9 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
       await revealItemInDir(abs);
     } catch (e) {
-      setToast(`Couldn't reveal file: ${String(e)}`);
+      setToast(t("appshell.toast.revealError", { error: String(e) }));
     }
-  }, []);
+  }, [t]);
 
   const handleSendSelectionToScratchpad = useCallback(async (text: string) => {
     try {
@@ -1381,17 +1842,17 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       // file instead of sitting on stale content.
       setScratchpadReloadNonce((n) => n + 1);
       if (!scratchpadOpen) setScratchpadOpen(true);
-      setToast(`Sent ${text.trim().match(/\S+/g)?.length ?? 0} words to scratchpad.`);
+      setToast({ text: t("appshell.toast.sentToScratchpad", { count: String(text.trim().match(/\S+/g)?.length ?? 0) }), tone: "success" });
     } catch (e) {
-      setToast(`Couldn't send to scratchpad: ${String(e)}`);
+      setToast(t("appshell.toast.scratchpadError", { error: String(e) }));
     }
-  }, [scratchpadOpen]);
+  }, [scratchpadOpen, t]);
 
   const handleCopyNoteAsMarkdown = useCallback(async (slug: string) => {
     try {
       const n = await api.readNote(slug);
       if (n.locked) {
-        setToast("Unlock the note first to copy its contents.");
+        setToast({ text: t("appshell.toast.unlockToCopy"), tone: "soft" });
         return;
       }
       // Reconstruct what a human would paste: visible title as H1, body
@@ -1400,18 +1861,20 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       const title = n.frontmatter.title?.trim() || n.slug;
       const md = `# ${title}\n\n${n.body}`.trimEnd() + "\n";
       await navigator.clipboard.writeText(md);
-      setToast(`Copied "${title}" as markdown.`);
+      setToast({ text: t("appshell.toast.copiedAsMarkdown", { title }), tone: "success" });
     } catch (e) {
-      setToast(`Couldn't copy: ${String(e)}`);
+      setToast(t("appshell.toast.copyError", { error: String(e) }));
     }
-  }, []);
+  }, [t]);
 
   const handleDeleteMany = useCallback(
     (slugs: string[]) => {
       if (slugs.length === 0) return;
       setConfirmState({
-        title: `Delete ${slugs.length} note${slugs.length === 1 ? "" : "s"}?`,
-        body: "They disappear from the list. Past versions on this path remain in history.",
+        title: slugs.length === 1
+          ? t("appshell.deleteMany.titleSingle", { count: String(slugs.length) })
+          : t("appshell.deleteMany.titlePlural", { count: String(slugs.length) }),
+        body: t("appshell.deleteMany.body"),
         onConfirm: async () => {
           for (const s of slugs) {
             try { await api.deleteNote(s); } catch (e) { console.error("delete failed", s, e); }
@@ -1427,7 +1890,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         },
       });
     },
-    [activeSlug],
+    [activeSlug, t],
   );
 
   const handleCreatePath = useCallback(async () => {
@@ -1631,7 +2094,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   );
 
   const handleSync = useCallback(async () => {
-    if (!config?.sync.remote_url) {
+    if (!hasRemote(config)) {
       setSettingsOpen({ open: true, tab: "sync" });
       return;
     }
@@ -1640,11 +2103,96 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       const r = await api.sync();
       setSyncStatus(r.ok ? "synced" : "error");
       setSyncMessage(r.message);
+      if (r.ok) {
+        const now = Date.now();
+        setLastSyncedAt(now);
+        try {
+          if (workspacePath) {
+            localStorage.setItem(
+              `yarrow.lastSyncedAt:${workspacePath}`,
+              String(now),
+            );
+          }
+        } catch {}
+      } else if (r.quota_blocked) {
+        // Manual sync — the user explicitly asked, so open the modal
+        // AND refresh the data. If the issue was already known, this
+        // just re-opens; otherwise this is the first notice.
+        setQuotaBlock(r.quota_blocked);
+        setQuotaModalOpen(true);
+      } else {
+        setToast({ text: t("appshell.toast.syncIssue", { message: r.message }), tone: "soft" });
+      }
+      if (r.ok) {
+        // A clean sync means the quota issue (if any) is resolved.
+        setQuotaBlock(null);
+        setQuotaModalOpen(false);
+      }
+      // Surface conflict copies so the user knows their local version
+      // is safe (and knows where to find it). Without this, the sibling
+      // `.conflict-*` files are silent — the user sees the server's
+      // version in the note and has no cue that a copy was kept.
+      const cc = r.conflicts ?? [];
+      if (cc.length > 0) {
+        const n = cc.length;
+        setToast({
+          text: t(
+            n === 1
+              ? "appshell.toast.syncConflictsSingle"
+              : "appshell.toast.syncConflictsPlural",
+            { count: String(n) },
+          ),
+          tone: "soft",
+          ttlMs: 8000,
+        });
+      }
+      // See the auto-sync loop above for the failure mode these two
+      // steps guard against. Cache invalidation is required because
+      // the reload effect reads via getCachedOrReadNote, which would
+      // otherwise hand back the pre-sync body and keep the editor
+      // displaying content the pull has already replaced on disk.
+      if (r.files_changed && r.files_changed.length) {
+        for (const p of r.files_changed) {
+          if (p.startsWith("notes/") && p.endsWith(".md")) {
+            invalidateNote(p.slice("notes/".length, -".md".length));
+          }
+        }
+        const slug = activeSlugRef.current;
+        if (slug && r.files_changed.includes(`notes/${slug}.md`)) {
+          setNoteReloadNonce((n) => n + 1);
+        }
+      }
     } catch (e) {
       setSyncStatus("error");
       setSyncMessage(String(e));
     }
-  }, [config]);
+  }, [config, t]);
+
+  // Auto-sync on the interval configured in preferences.autosync_minutes.
+  // `0` disables; any positive value ticks a periodic sync. Only fires
+  // when a sync remote is configured AND the tab is visible (so a laptop
+  // left open on a dashboard doesn't burn the auth-endpoint rate limiter
+  // overnight). Window focus also triggers an immediate extra sync so
+  // coming back from lunch doesn't leave stale state.
+  useEffect(() => {
+    if (!config) return;
+    const minutes = config.preferences?.autosync_minutes ?? 0;
+    if (minutes <= 0) return;
+    if (!hasRemote(config)) return;
+
+    const fire = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      void handleSync();
+    };
+    const intervalMs = minutes * 60 * 1000;
+    const id = window.setInterval(fire, intervalMs);
+    const onFocus = () => fire();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [config, handleSync]);
 
   const openHistory = useCallback(async () => {
     if (!activeSlug) return;
@@ -1665,12 +2213,12 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         await api.pinCheckpoint(activeSlug, oid, label, note);
         const all = await api.listPinnedCheckpoints();
         setKeepsakes(all.filter((k) => k.slug === activeSlug));
-        setToast(`Kept — "${label}" will survive future pruning`);
+        setToast({ text: t("appshell.toast.kept", { label }), tone: "success" });
       } catch (e) {
-        setToast(`Couldn't pin: ${e}`);
+        setToast(t("appshell.toast.pinError", { error: String(e) }));
       }
     },
-    [activeSlug],
+    [activeSlug, t],
   );
 
   const unpinHistoryCheckpoint = useCallback(
@@ -1679,12 +2227,12 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         await api.unpinCheckpoint(id);
         const all = await api.listPinnedCheckpoints();
         setKeepsakes((activeSlug ? all.filter((k) => k.slug === activeSlug) : all));
-        setToast("Unpinned — this checkpoint is no longer protected from pruning");
+        setToast({ text: t("appshell.toast.unpinned"), tone: "soft" });
       } catch (e) {
-        setToast(`Couldn't unpin: ${e}`);
+        setToast(t("appshell.toast.unpinError", { error: String(e) }));
       }
     },
-    [activeSlug],
+    [activeSlug, t],
   );
 
   const previewAtCheckpoint = useCallback(
@@ -1706,9 +2254,9 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       setRestoreNonce((x) => x + 1);
       setHistoryOpen(false);
       setNotes(await api.listNotes());
-      setToast("Restored — the previous version stays safely in history");
+      setToast({ text: t("appshell.toast.restored"), tone: "success" });
     },
-    [activeSlug],
+    [activeSlug, t],
   );
 
   const closeWorkspace = useCallback(async () => {
@@ -1788,11 +2336,13 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       const overrides = await api.listPathOverrides(promotedName).catch(() => [] as string[]);
       const count = overrides.length;
       setConfirmState({
-        title: `Promote “${promotedName}” to main?`,
+        title: t("appshell.promote.title", { path: promotedName }),
         body:
           count === 0
-            ? "This path has no edits yet, so promoting it just archives it. Continue?"
-            : `${count} note${count === 1 ? "" : "s"} edited on this path will be applied to main. The path itself will be archived. This cannot be undone automatically (older versions stay in history).`,
+            ? t("appshell.promote.bodyEmpty")
+            : count === 1
+              ? t("appshell.promote.bodyEditsSingle", { count: String(count) })
+              : t("appshell.promote.bodyEditsPlural", { count: String(count) }),
         onConfirm: async () => {
           setConfirmState(null);
           try {
@@ -1818,14 +2368,14 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             }
             guidance.trigger("path.promoted");
           } catch (e) {
-            setToast(`Couldn't promote: ${e}`);
+            setToast(t("appshell.toast.promoteError", { error: String(e) }));
           }
         },
       });
     } catch (e) {
       console.error("promote failed", e);
     }
-  }, [currentPath, collectionsView, activeSlug, refreshPathAwareness, guidance]);
+  }, [currentPath, collectionsView, activeSlug, refreshPathAwareness, guidance, t]);
 
   const handleThrowAwayPath = useCallback(async () => {
     if (!currentPath) return;
@@ -1837,11 +2387,13 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     const overrides = await api.listPathOverrides(discarded).catch(() => [] as string[]);
     const count = overrides.length;
     setConfirmState({
-      title: `Throw away “${discarded}”?`,
+      title: t("appshell.throwAway.title", { path: discarded }),
       body:
         count === 0
-          ? "This path has no edits yet. Discarding just removes the path entry."
-          : `${count} edited note${count === 1 ? "" : "s"} on this path will be lost. Main is unaffected. Continue?`,
+          ? t("appshell.throwAway.bodyEmpty")
+          : count === 1
+            ? t("appshell.throwAway.bodyEditsSingle", { count: String(count) })
+            : t("appshell.throwAway.bodyEditsPlural", { count: String(count) }),
       onConfirm: async () => {
         setConfirmState(null);
         try {
@@ -1850,11 +2402,11 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           setCurrentPath(rootName);
           setInlineDiffOpen(false);
         } catch (e) {
-          setToast(`Couldn't discard: ${e}`);
+          setToast(t("appshell.toast.discardError", { error: String(e) }));
         }
       },
     });
-  }, [currentPath, collectionsView, refreshPathAwareness]);
+  }, [currentPath, collectionsView, refreshPathAwareness, t]);
 
   const filteredNotes = useMemo(() => {
     if (!tagFilter) return notes;
@@ -1864,6 +2416,18 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   // Stable empty-fallback so memoized children don't see a fresh `[]`
   // array reference on every parent render before the graph has loaded.
   const tagCounts = useMemo(() => graph?.tags ?? [], [graph]);
+
+  // H4. Air-gap visibility — count of notes that the sync pipeline will
+  // never push (either `private: true` in frontmatter, or tagged
+  // `clinical`). Drives the "N off-server" pill in the status bar.
+  // Re-derived only when notes change.
+  const privateNoteCount = useMemo(
+    () =>
+      notes.filter(
+        (n) => n.private || (n.tags?.includes("clinical") ?? false),
+      ).length,
+    [notes],
+  );
 
   // Memoized clear so NoteList's `memo` boundary actually holds. An inline
   // arrow recreated each render defeats it for free.
@@ -1912,8 +2476,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                     ? "bg-yelp border-yel"
                     : "bg-bg border-bd hover:bg-s2 hover:border-bd2"
                 }`}
-                title={`Switch workspace · ${SK.switchWorkspace}`}
-                aria-label="Switch workspace"
+                title={t("appshell.workspace.switchTitle", { shortcut: SK.switchWorkspace })}
+                aria-label={t("appshell.workspace.switchAria")}
                 aria-expanded={workspaceSwitcherOpen}
               >
                 <span
@@ -1927,10 +2491,22 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                     className="font-serif text-[15px] text-char leading-tight truncate"
                     title={config?.workspace.name ?? workspacePath}
                   >
-                    {config?.workspace.name ?? "Workspace"}
+                    {config?.workspace.name ?? t("appshell.workspace.fallbackName")}
                   </div>
                   <div className="text-2xs text-t3 leading-tight truncate">
-                    {notes.length} note{notes.length === 1 ? "" : "s"} · {paths.length} path{paths.length === 1 ? "" : "s"}
+                    {t(
+                      notes.length === 1
+                        ? (paths.length === 1
+                            ? "appshell.workspace.notesPathsSingleSingle"
+                            : "appshell.workspace.notesPathsSinglePlural")
+                        : (paths.length === 1
+                            ? "appshell.workspace.notesPathsPluralSingle"
+                            : "appshell.workspace.notesPathsPluralPlural"),
+                      {
+                        notes: String(notes.length),
+                        paths: String(paths.length),
+                      },
+                    )}
                   </div>
                 </div>
                 <span className={`text-t3 group-hover:text-char transition shrink-0 ${workspaceSwitcherOpen ? "rotate-180 text-yeld" : ""}`}>
@@ -1955,7 +2531,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                 className="w-full flex items-center gap-2 px-4 py-2 rounded-full bg-s2 text-t3 hover:text-char hover:bg-s3 transition text-xs"
               >
                 <SearchIcon size={13} />
-                <span>Find anything</span>
+                <span>{t("appshell.sidebar.findAnything")}</span>
               </button>
             </div>
             <div className="flex-1 min-h-0 flex flex-col">
@@ -1980,6 +2556,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                 onDecryptNote={handleDecryptNoteBySlug}
                 onReveal={handleRevealNote}
                 onCopyAsMarkdown={handleCopyNoteAsMarkdown}
+                onMoveToFolder={handleMoveToFolder}
+                workspacePath={workspacePath}
                 pathCount={stableCollections.filter((c) => c.name !== stableRootName).length}
               />
             </div>
@@ -1989,22 +2567,22 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             <div className="shrink-0 border-t border-bd/60 px-3 py-2 flex items-center gap-1">
               <SidebarUtilityButton
                 onClick={() => handleOpenDaily()}
-                title="Today's journal entry"
-                label="Journal"
+                title={t("appshell.sidebar.journalTitle")}
+                label={t("appshell.sidebar.journalLabel")}
               >
                 <JournalIcon size={13} />
               </SidebarUtilityButton>
               <SidebarUtilityButton
                 onClick={() => setActivityOpen(true)}
-                title="Writing activity heatmap"
-                label="Activity"
+                title={t("appshell.sidebar.activityTitle")}
+                label={t("appshell.sidebar.activityLabel")}
               >
                 <ActivityIcon size={13} />
               </SidebarUtilityButton>
               <SidebarUtilityButton
                 onClick={() => setTrashOpen(true)}
-                title="Restore or permanently remove deleted notes"
-                label="Trash"
+                title={t("appshell.sidebar.trashTitle")}
+                label={t("appshell.sidebar.trashLabel")}
               >
                 <DeleteIcon size={13} />
               </SidebarUtilityButton>
@@ -2067,7 +2645,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               onThrowAway={handleThrowAwayPath}
             />
           )}
-          {leftOff && (
+          {showLeftOffBanner && leftOff && (
             <WhereYouLeftOffBanner
               state={leftOff}
               onResume={() => {
@@ -2087,7 +2665,21 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                   );
                   if (exists) handleSwitchPath(leftOff.path);
                 }
-                selectSlug(leftOff.slug);
+                const slug = leftOff.slug;
+                const cursorLine = leftOff.cursorLine;
+                const snippet = leftOff.snippet;
+                selectSlug(slug);
+                // Wait for NoteEditor to mount the new note (the slug
+                // change unmounts the previous editor and remounts a
+                // fresh one). 200 ms is enough on every machine I've
+                // tested without being noticeable as a delay; if the
+                // editor isn't ready in time the user just lands at the
+                // top, which is the prior behaviour.
+                window.setTimeout(() => {
+                  window.dispatchEvent(new CustomEvent("yarrow:scroll-to-line", {
+                    detail: { slug, line: cursorLine, snippet },
+                  }));
+                }, 200);
                 setLeftOff(null);
               }}
               onDismiss={() => setLeftOff(null)}
@@ -2098,7 +2690,10 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               }}
             />
           )}
-          <div className="flex-1 overflow-hidden flex flex-col relative">
+          {/* `yarrow-paper` scopes the Paper & Warmth texture to the
+              writing canvas only — Settings, modals, and the command
+              palette stay flat. See index.css `.yarrow-paper`. */}
+          <div className="yarrow-paper flex-1 overflow-hidden flex flex-col relative yarrow-paint-island">
             {activeNote ? (
               activeNote.locked ? (
                 <LockedNoteHero
@@ -2160,10 +2755,10 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                         setNotes(await api.listNotes());
                         try { setGraph(await fetchGraph()); } catch {}
                       } catch (e) {
-                        setToast(`Couldn't update tags: ${e}`);
+                        setToast(t("appshell.toast.tagsError", { error: String(e) }));
                       }
                     }}
-                    tagSuggestions={tagCounts.map((t) => t.tag)}
+                    tagSuggestions={tagCounts.map((tg) => tg.tag)}
                     pathColorOverrides={pathColorOverrides}
                     onAnnotationsChange={async (slug, annotations) => {
                       try {
@@ -2171,7 +2766,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                         invalidateNote(slug);
                         if (slug === activeSlug) setActiveNote(updated);
                       } catch (e) {
-                        setToast(`Couldn't save annotation: ${e}`);
+                        setToast(t("appshell.toast.annotationSaveError", { error: String(e) }));
                       }
                     }}
                     onTitleChange={(title) => handleRenameNote(activeNote.slug, title)}
@@ -2253,7 +2848,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
 
         {renamePrompt && (
           <div
-            className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+            className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center p-6"
             onClick={cancelRename}
           >
             <div
@@ -2261,22 +2856,22 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               className="w-full max-w-md bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden"
             >
               <div className="px-5 py-4 border-b border-bd">
-                <div className="font-serif text-xl text-char">Rename note</div>
+                <div className="font-serif text-xl text-char">{t("appshell.rename.title")}</div>
                 <div className="text-2xs text-t3 mt-1 leading-relaxed">
-                  <span className="text-char">{renamePrompt.refs}</span> other note{renamePrompt.refs === 1 ? "" : "s"}
-                  {" "}link{renamePrompt.refs === 1 ? "s" : ""} to this one with a <code>[[wikilink]]</code>.
-                  Updating them rewrites their bodies — recorded as one checkpoint, so it's easy to roll back from History.
+                  {renamePrompt.refs === 1
+                    ? t("appshell.rename.refsBodySingle", { count: String(renamePrompt.refs) })
+                    : t("appshell.rename.refsBodyPlural", { count: String(renamePrompt.refs) })}
                 </div>
               </div>
               <div className="px-5 py-4 text-xs text-t2">
-                Rename to <span className="font-serif text-base text-char">"{renamePrompt.nextTitle}"</span>?
+                <span className="font-serif text-base text-char">{t("appshell.rename.confirmQuestion", { title: renamePrompt.nextTitle })}</span>
               </div>
               <div className="px-5 py-3 border-t border-bd flex justify-end gap-2 flex-wrap">
                 <button
                   onClick={cancelRename}
                   className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char"
                 >
-                  Cancel
+                  {t("appshell.rename.cancel")}
                 </button>
                 <button
                   onClick={() => {
@@ -2286,7 +2881,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                   }}
                   className="text-xs px-3 py-1.5 rounded bg-s2 text-char hover:bg-s3"
                 >
-                  Rename only this note
+                  {t("appshell.rename.onlyThis")}
                 </button>
                 <button
                   onClick={() => {
@@ -2296,7 +2891,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                   }}
                   className="text-xs px-3 py-1.5 rounded bg-yel text-on-yel hover:bg-yel2"
                 >
-                  Rename and update wikilinks
+                  {t("appshell.rename.andUpdate")}
                 </button>
               </div>
             </div>
@@ -2305,7 +2900,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
 
         {findReplaceResult && (
           <div
-            className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+            className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center p-6"
             onClick={() => setFindReplaceResult(null)}
           >
             <div
@@ -2313,15 +2908,24 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               className="w-full max-w-md bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden"
             >
               <div className="px-5 py-5">
-                <div className="font-serif text-xl text-char">Replacements done</div>
+                <div className="font-serif text-xl text-char">{t("appshell.findReplaceResult.title")}</div>
                 <div className="text-sm text-t2 mt-2 leading-relaxed">
-                  Replaced <span className="text-char font-medium">{findReplaceResult.total}</span>
-                  {" "}occurrence{findReplaceResult.total === 1 ? "" : "s"} across
-                  {" "}<span className="text-char font-medium">{findReplaceResult.changed}</span>
-                  {" "}note{findReplaceResult.changed === 1 ? "" : "s"}.
+                  {t(
+                    findReplaceResult.total === 1
+                      ? (findReplaceResult.changed === 1
+                          ? "appshell.findReplaceResult.bodySingle"
+                          : "appshell.findReplaceResult.bodyMixed2")
+                      : (findReplaceResult.changed === 1
+                          ? "appshell.findReplaceResult.bodyMixed1"
+                          : "appshell.findReplaceResult.bodyPlural"),
+                    {
+                      total: String(findReplaceResult.total),
+                      changed: String(findReplaceResult.changed),
+                    },
+                  )}
                 </div>
                 <div className="text-2xs text-t3 mt-2 italic">
-                  One checkpoint records the whole change — undo via History on any affected note.
+                  {t("appshell.findReplaceResult.checkpointHint")}
                 </div>
               </div>
               <div className="px-5 py-3 border-t border-bd flex justify-end">
@@ -2329,7 +2933,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                   onClick={() => setFindReplaceResult(null)}
                   className="text-xs px-3 py-1.5 rounded bg-yel text-on-yel hover:bg-yel2"
                 >
-                  Done
+                  {t("appshell.findReplaceResult.done")}
                 </button>
               </div>
             </div>
@@ -2433,7 +3037,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                 // Jump straight to the freshly-kept note so the user sees
                 // that "Keep as note" actually produced something tangible.
                 selectSlug(newSlug);
-                setToast("Kept as a note.");
+                setToast({ text: t("appshell.toast.keptAsNote"), tone: "success" });
               }}
             />
           </L>
@@ -2462,6 +3066,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               setRailOverlay(railOverlay === k ? null : k);
             }}
             onToggleScratchpad={() => setScratchpadOpen((o) => !o)}
+            onOpenKits={() => setKitsPickerOpen(true)}
             onOpenSettings={() => setSettingsOpen({ open: true })}
             onSetReadingWriting={async (writing) => {
               // Flush a pending debounced edit before flipping to reading
@@ -2492,18 +3097,33 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         >
           <div className="text-center mb-3 -mt-1">
             <div className="font-serif text-[32px] text-char tracking-tight leading-none">
-              {mapFilter ? `Map · ${mapFilter.collectionName}` : "Connections"}
+              {mapFilter
+                ? t("appshell.map.titleFiltered", { pathName: mapFilter.collectionName })
+                : t("appshell.map.title")}
             </div>
             <div className="mt-2 text-2xs text-t3 font-mono uppercase tracking-[0.2em]">
               {mapFilter ? (() => {
                 const c = collectionsView?.collections.find((x) => x.name === mapFilter.collectionName);
                 const n = c?.members.length ?? 0;
-                return `${n} note${n === 1 ? "" : "s"} in this path`;
+                return t(
+                  n === 1
+                    ? "appshell.map.notesInPathSingle"
+                    : "appshell.map.notesInPathPlural",
+                  { count: String(n) },
+                );
               })() : (
                 <>
-                  {(activeNote?.frontmatter.title || activeSlug || "this note")}
+                  {(activeNote?.frontmatter.title || activeSlug || t("appshell.map.thisNote"))}
                   {" · "}
-                  {mapNeighborCount(graph, activeSlug)} neighbor{mapNeighborCount(graph, activeSlug) === 1 ? "" : "s"}
+                  {(() => {
+                    const neighborCount = mapNeighborCount(graph, activeSlug);
+                    return t(
+                      neighborCount === 1
+                        ? "appshell.map.neighborsSingle"
+                        : "appshell.map.neighborsPlural",
+                      { count: String(neighborCount) },
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -2540,7 +3160,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         <Modal
           open
           onClose={() => setRailOverlay(null)}
-          title="Links from this note"
+          title={t("appshell.links.title")}
         >
           <div className="max-h-[60vh] overflow-y-auto -mx-4 px-4">
             <LinkedNotesList
@@ -2630,7 +3250,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                 invalidateNote(activeNote.slug);
                 if (activeNote.slug === activeSlug) setActiveNote(updated);
               } catch (e) {
-                setToast(`Couldn't add annotation: ${e}`);
+                setToast(t("appshell.toast.annotationAddError", { error: String(e) }));
               }
             })();
           },
@@ -2721,64 +3341,128 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         </Suspense>
       )}
 
-      {toast && (
-        <div
-          className="fixed bottom-10 z-40 max-w-[460px] bg-char text-bg text-xs px-3.5 py-2 rounded-md shadow-lg animate-fadeIn flex items-center gap-3"
-          style={{
-            // Center in the visible editor area — slide leftward so the
-            // docked scratchpad never covers the toast.
-            left: "50%",
-            transform: `translateX(calc(-50% - ${scratchpadOpen ? scratchpadWidth / 2 : 0}px))`,
-          }}
-        >
-          <span>{typeof toast === "string" ? toast : toast.text}</span>
-          {typeof toast === "object" && toast.action && (
-            <button
-              onClick={() => {
-                // Run the action first, then dismiss — running after dismiss
-                // creates a flash of the toast disappearing before the action
-                // result (e.g. the undone note popping back) registers.
-                toast.action.run();
-                setToast(null);
-              }}
-              className="px-2 py-0.5 rounded border border-bg/40 hover:bg-bg/10 font-medium uppercase tracking-wider text-2xs"
-            >
-              {toast.action.label}
-            </button>
-          )}
-          <button
-            onClick={() => setToast(null)}
-            className="opacity-70 hover:opacity-100 text-bg"
-            aria-label="Dismiss"
+      {toast && (() => {
+        // 2.1 Warm Toasts: the outer chip takes a subtle tinted wash matching
+        // the tone (still over bg-char so it reads against dark editorial
+        // paper), and a small dot in the corresponding hue sits beside the
+        // text. Plain-string toasts stay "info".
+        const tt = typeof toast === "string" ? { text: toast } : toast;
+        const tone = (typeof toast === "object" && toast.tone) || "info";
+        const dotStyle =
+          tone === "success"
+            ? { background: "var(--accent2)", boxShadow: "0 0 0 3px rgba(91,122,94,0.22)" }
+            : tone === "soft"
+              ? { background: "var(--yel)", boxShadow: "0 0 0 3px rgba(122,78,110,0.22)" }
+              : { background: "#E8C97A", boxShadow: "0 0 0 3px rgba(232,201,122,0.22)" };
+        return (
+          <div
+            className="fixed bottom-10 z-40 max-w-[480px] bg-char text-bg text-xs px-3.5 py-2 rounded-md shadow-lg animate-fadeIn flex items-center gap-3"
+            style={{
+              // Center in the visible editor area — slide leftward so the
+              // docked scratchpad never covers the toast.
+              left: "50%",
+              transform: `translateX(calc(-50% - ${scratchpadOpen ? scratchpadWidth / 2 : 0}px))`,
+            }}
           >
-            ×
-          </button>
-        </div>
-      )}
+            <span
+              aria-hidden
+              className="inline-block w-2 h-2 rounded-full shrink-0"
+              style={dotStyle}
+            />
+            <span className="leading-snug">{tt.text}</span>
+            {tt.action && (
+              <button
+                onClick={() => {
+                  // Run the action first, then dismiss — running after
+                  // dismiss creates a flash of the toast disappearing before
+                  // the action result (e.g. the undone note popping back)
+                  // registers.
+                  tt.action!.run();
+                  setToast(null);
+                }}
+                className="px-2 py-0.5 rounded border border-bg/40 hover:bg-bg/10 font-medium uppercase tracking-wider text-2xs"
+              >
+                {tt.action.label}
+              </button>
+            )}
+            <button
+              onClick={() => setToast(null)}
+              className="opacity-70 hover:opacity-100 text-bg"
+              aria-label={t("appshell.toast.dismiss")}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Status bar */}
       <div className="h-7 bg-s2 border-t border-bd flex items-center px-3 text-2xs text-t2 gap-3 font-mono">
-        <span>{notes.length} notes</span>
+        <span>{t("appshell.status.notes", { count: String(notes.length) })}</span>
         <span className="text-t3">·</span>
-        <span>{pathCount} paths</span>
+        <span>{t("appshell.status.paths", { count: String(pathCount) })}</span>
         <span className="text-t3">·</span>
-        <span className="truncate">on path: {currentPath || "—"}</span>
+        <span className="truncate">
+          {currentPath
+            ? t("appshell.status.onPath", { path: currentPath })
+            : t("appshell.status.onPathNone")}
+        </span>
         {activeNote && !activeNote.locked && (
           <>
             <span className="text-t3">·</span>
             {selectionWords > 0 ? (
-              <span className="text-yeld" title={`${selectionChars} chars selected`}>
-                {selectionWords} selected
+              <span className="text-yeld" title={t("appshell.status.selectedTitle", { count: String(selectionChars) })}>
+                {t("appshell.status.selected", { count: String(selectionWords) })}
               </span>
             ) : (
-              <span title={`~${Math.max(1, Math.round(noteWordCount / 220))} min read`}>
-                {noteWordCount.toLocaleString()} word{noteWordCount === 1 ? "" : "s"}
+              <span title={t("appshell.status.wordCountTitle", { minutes: String(Math.max(1, Math.round(noteWordCount / 220))) })}>
+                {t(
+                  noteWordCount === 1
+                    ? "appshell.status.wordCountSingle"
+                    : "appshell.status.wordCountPlural",
+                  { count: noteWordCount.toLocaleString() },
+                )}
               </span>
             )}
           </>
         )}
         <span className="ml-auto flex items-center gap-2 truncate">
-          <SyncStatusPill status={syncStatus} />
+          {quotaBlock !== null && !quotaModalOpen && (
+            <button
+              type="button"
+              onClick={() => setQuotaModalOpen(true)}
+              title={t("appshell.status.overStorageTitle")}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-danger/10 text-danger border border-danger/30 hover:bg-danger/20 transition"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-danger" />
+              {t("appshell.status.overStorage")}
+            </button>
+          )}
+          {/* 2.1 H4 — air-gap visibility. When a remote is configured AND
+              the workspace has private notes, surface the count next to
+              the sync pill so it's never a surprise that "sync" excludes
+              clinical/private material. Stays silent when there's
+              nothing to disclose. */}
+          {remotePresent && privateNoteCount > 0 && (
+            <span
+              title={t(
+                privateNoteCount === 1
+                  ? "appshell.status.offServerSingleTitle"
+                  : "appshell.status.offServerPluralTitle",
+                { count: String(privateNoteCount) },
+              )}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border"
+              style={{
+                color: "#c97a3a",
+                borderColor: "rgba(201,122,58,0.35)",
+                background: "rgba(201,122,58,0.08)",
+              }}
+            >
+              <span style={{ fontSize: 11, lineHeight: 1 }}>⊘</span>
+              {t("appshell.status.offServerCount", { count: String(privateNoteCount) })}
+            </span>
+          )}
+          <SyncStatusPill status={syncStatus} lastSyncedAt={lastSyncedAt} />
         </span>
       </div>
 
@@ -2809,6 +3493,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             templates={templates.map((t) => ({ name: t.name, label: t.label }))}
             onNewFromTemplate={handleCreateFromTemplate}
             onOpenTemplatePicker={() => setTemplatePickerOpen(true)}
+            onOpenJournalKits={() => setKitsPickerOpen(true)}
             encryption={encryption}
             activeIsEncrypted={!!activeNote?.encrypted}
             onLockEncryption={handleLockEncryption}
@@ -2817,7 +3502,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             onDecryptActiveNote={handleDecryptActiveNote}
             onOpenSecurity={() => setSettingsOpen({ open: true, tab: "security" })}
             onSwitchWorkspace={() => setWorkspaceSwitcherOpen(true)}
-            onOpenNewWindow={() => api.openNewWindow().catch((e) => setToast(`Couldn't open window: ${e}`))}
+            onOpenNewWindow={() => api.openNewWindow().catch((e) => setToast(t("appshell.toast.openWindowError", { error: String(e) })))}
             onFindReplace={() => setFindReplaceOpen(true)}
             onPrintActiveNote={activeSlug ? () => printActiveNote(activeSlug) : undefined}
             onOpenTrash={() => setTrashOpen(true)}
@@ -2855,6 +3540,10 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             onConfigChange={setConfig}
             onSyncNow={handleSync}
             onCloseWorkspace={closeWorkspace}
+            onImport={() => {
+              setSettingsOpen({ open: false });
+              setObsidianImportOpen(true);
+            }}
           />
         </L>
       )}
@@ -2862,6 +3551,48 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       <ForkMoment
         pathName={forkMoment}
         onDone={() => setForkMoment(null)}
+      />
+
+      <QuotaBlockedModal
+        open={quotaModalOpen && quotaBlock !== null}
+        blockInfo={quotaBlock}
+        onClose={() => setQuotaModalOpen(false)}
+        onDiscarded={(out) => {
+          // Discard just succeeded — immediately retry sync so the
+          // user sees the green "synced" status instead of having to
+          // click the sync button a second time.
+          setToast({
+            text: t(
+              out.commits_ahead === 1
+                ? "appshell.toast.discardSyncingSingle"
+                : "appshell.toast.discardSyncingPlural",
+              { count: String(out.commits_ahead) },
+            ),
+            tone: "soft",
+            ttlMs: 4000,
+          });
+          void (async () => {
+            try {
+              const r = await api.sync();
+              if (r.ok) {
+                setSyncStatus("synced");
+                setSyncMessage("synced");
+                setQuotaBlock(null);
+                setQuotaModalOpen(false);
+              } else {
+                setSyncStatus("error");
+                setSyncMessage(r.message);
+              }
+            } catch (e) {
+              setSyncStatus("error");
+              setSyncMessage(String(e));
+            }
+          })();
+        }}
+        onOpenManageStorage={() => {
+          setQuotaModalOpen(false);
+          setSettingsOpen({ open: true, tab: "storage" });
+        }}
       />
 
       <GuidanceHost />
@@ -2965,27 +3696,41 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           setNewPathCondition("");
           setNewPathFrom("");
         }}
-        title="Start a new path"
+        title={t("appshell.newPath.title")}
       >
-        <p className="text-xs text-t2 mb-3 leading-relaxed">
-          A path is an <span className="italic">if…</span>. Write the question
-          — that's all. The version you have now stays safely on{" "}
-          <span className="font-medium text-yeld">{collectionsView?.root || "main"}</span>.
-        </p>
+        {(() => {
+          const introParts = t("appshell.newPath.intro", {
+            root: "{{ROOT}}",
+          }).split("{{ROOT}}");
+          return (
+            <p className="text-xs text-t2 mb-3 leading-relaxed">
+              {introParts[0]}
+              <span className="font-medium text-yeld">{collectionsView?.root || "main"}</span>
+              {introParts[1] ?? ""}
+            </p>
+          );
+        })()}
 
         <div className="mb-4 px-3 py-2 bg-yelp/40 border border-yel/40 rounded-md flex items-center gap-2">
           <span className="inline-block w-2 h-2 rounded-full bg-yel shrink-0" />
-          <span className="text-2xs text-t2 leading-snug">
-            Every path branches from{" "}
-            <span className="font-medium text-yeld">
-              {collectionsView?.root || "main"}
-            </span>
-            . One trunk, many branches.
-          </span>
+          {(() => {
+            const trunkParts = t("appshell.newPath.trunkHint", {
+              root: "{{ROOT}}",
+            }).split("{{ROOT}}");
+            return (
+              <span className="text-2xs text-t2 leading-snug">
+                {trunkParts[0]}
+                <span className="font-medium text-yeld">
+                  {collectionsView?.root || "main"}
+                </span>
+                {trunkParts[1] ?? ""}
+              </span>
+            );
+          })()}
         </div>
 
         <label className="block text-2xs uppercase tracking-[0.18em] font-mono text-t3 mb-1.5">
-          the question this path asks
+          {t("appshell.newPath.questionLabel")}
         </label>
         <textarea
           autoFocus
@@ -2998,15 +3743,15 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             }
           }}
           rows={2}
-          placeholder="If the Seattle job comes through…"
+          placeholder={t("appshell.newPath.placeholder")}
           className="w-full px-4 py-2.5 bg-bg-soft border border-bd rounded-md text-char font-serif italic placeholder:not-italic placeholder:text-t3/70 text-[15px] resize-none leading-snug"
         />
         <div className="mt-2 flex flex-wrap gap-1">
           {[
-            "If it rains on the day",
-            "If the project gets denied",
-            "If I quit to write",
-            "If we have a kid this year",
+            t("appshell.newPath.suggestion1"),
+            t("appshell.newPath.suggestion2"),
+            t("appshell.newPath.suggestion3"),
+            t("appshell.newPath.suggestion4"),
           ].map((s) => (
             <button
               key={s}
@@ -3020,13 +3765,13 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
 
         <details className="mt-4 group">
           <summary className="cursor-pointer text-2xs text-t3 hover:text-char select-none">
-            name it yourself (optional)
+            {t("appshell.newPath.nameYourselfSummary")}
           </summary>
           <input
             value={newPathName}
             onChange={(e) => setNewPathName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleCreatePath(); }}
-            placeholder={newPathCondition ? "auto: derived from your question" : "the-seattle-job"}
+            placeholder={newPathCondition ? t("appshell.newPath.namePlaceholderAuto") : t("appshell.newPath.namePlaceholderEmpty")}
             className="mt-2 w-full px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-xs"
           />
         </details>
@@ -3041,64 +3786,64 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               setNewPathFrom("");
             }}
           >
-            not now
+            {t("appshell.newPath.notNow")}
           </button>
           <button
             className="btn-yel px-4 py-1.5 text-sm rounded-md"
             onClick={handleCreatePath}
             disabled={!newPathCondition.trim() && !newPathName.trim()}
           >
-            start exploring
+            {t("appshell.newPath.startExploring")}
           </button>
         </div>
         <div className="mt-3 text-2xs text-t3 text-center italic">
-          tip: ⌘⇧B works from anywhere
+          {t("appshell.newPath.tipShortcut")}
         </div>
       </Modal>
 
       <Modal
         open={connectOpen}
         onClose={() => setConnectOpen(false)}
-        title="Connect this note"
+        title={t("appshell.connect.title")}
       >
-        <label className="text-xs text-t2 block mb-1">to</label>
+        <label className="text-xs text-t2 block mb-1">{t("appshell.connect.toLabel")}</label>
         <select
           value={connectTarget}
           onChange={(e) => setConnectTarget(e.target.value)}
           className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char mb-3"
         >
-          <option value="">— choose a note —</option>
+          <option value="">{t("appshell.connect.choosePlaceholder")}</option>
           {notes.filter((n) => n.slug !== activeSlug).map((n) => (
             <option key={n.slug} value={n.slug}>{n.title}</option>
           ))}
         </select>
-        <label className="text-xs text-t2 block mb-1">as</label>
+        <label className="text-xs text-t2 block mb-1">{t("appshell.connect.asLabel")}</label>
         <select
           value={connectType}
           onChange={(e) => setConnectType(e.target.value as LinkType)}
           className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char"
         >
-          <option value="supports">supports</option>
-          <option value="challenges">challenges</option>
-          <option value="came-from">came from</option>
-          <option value="open-question">open question</option>
+          <option value="supports">{t("appshell.connect.typeSupports")}</option>
+          <option value="challenges">{t("appshell.connect.typeChallenges")}</option>
+          <option value="came-from">{t("appshell.connect.typeCameFrom")}</option>
+          <option value="open-question">{t("appshell.connect.typeOpenQuestion")}</option>
         </select>
         <p className="text-2xs text-t3 mt-2">
-          A reverse link is added to the other note automatically.
+          {t("appshell.connect.reverseHint")}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <button
             className="px-3 py-1.5 text-sm text-t2 hover:text-char"
             onClick={() => setConnectOpen(false)}
           >
-            cancel
+            {t("appshell.connect.cancel")}
           </button>
           <button
             className="btn-yel px-3 py-1.5 text-sm rounded-md"
             onClick={handleAddConnection}
             disabled={!connectTarget}
           >
-            connect
+            {t("appshell.connect.connect")}
           </button>
         </div>
       </Modal>
@@ -3114,13 +3859,13 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             className="px-3 py-1.5 text-sm text-t2 hover:text-char"
             onClick={() => setConfirmState(null)}
           >
-            keep it
+            {t("appshell.confirm.keepIt")}
           </button>
           <button
             className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90"
             onClick={confirmState?.onConfirm}
           >
-            yes, delete
+            {t("appshell.confirm.yesDelete")}
           </button>
         </div>
       </Modal>
@@ -3128,84 +3873,137 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
       <Modal
         open={newNoteOpen}
         onClose={() => setNewNoteOpen(false)}
-        width="w-[560px]"
+        width="w-[640px] max-w-[94vw]"
       >
-        <div className="mb-1">
-          <div className="font-serif text-[28px] text-char tracking-tight leading-tight">
-            Start from
+        {/* 2.1 redesign: three big route buttons up top, then the
+            title input. The kits + custom-templates pickers each live
+            in their own modal — that keeps this surface a clean "what
+            kind of note?" decision instead of a scrolling tile grid
+            that grew unwieldy as the kit roster expanded.
+            • Blank note → keep using this modal, fill in the title,
+              hit create.
+            • Kits → close this, open the kits picker (curated, grouped).
+            • Your templates → close this, open the user-authored
+              templates picker. Hidden when the user has none. */}
+        <div className="flex flex-col">
+          <div className="shrink-0">
+            <div className="font-serif text-[28px] text-char tracking-tight leading-tight">
+              {t("appshell.newNote.title")}
+            </div>
+            <div className="font-serif italic text-sm text-t2 mt-1">
+              {t("appshell.newNote.subtitle")}
+            </div>
           </div>
-          <div className="font-serif italic text-sm text-t2 mt-1">
-            Pick a template, or a blank page. Edit them in Settings.
-          </div>
-        </div>
 
-        <div className="grid grid-cols-2 gap-2.5 mt-5">
-          <TemplateTile
-            active={newNoteTemplate === null}
-            onClick={() => setNewNoteTemplate(null)}
-            onDoubleClick={() => { if (newNoteTitle.trim()) confirmCreateNote(); }}
-            title="Blank note"
-            sub="Nothing to get in the way"
-            glyph={<BlankGlyph />}
-          />
-          {templates.map((t) => (
-            <TemplateTile
-              key={t.name}
-              active={newNoteTemplate === t.name}
-              onClick={() => setNewNoteTemplate(t.name)}
-              onDoubleClick={() => { if (newNoteTitle.trim()) confirmCreateNote(); }}
-              title={t.label}
-              sub={templateSubtitle(t.name)}
-              glyph={<TemplateGlyph name={t.name} />}
+          <div className={`mt-5 grid ${customTemplatesCount > 0 ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
+            <NewNoteRouteTile
+              active={newNoteTemplate === null}
+              onClick={() => setNewNoteTemplate(null)}
+              title={t("appshell.newNote.tileBlankTitle")}
+              sub={t("appshell.newNote.tileBlankSub")}
+              glyph={<BlankGlyph />}
             />
-          ))}
-        </div>
+            <NewNoteRouteTile
+              active={false}
+              onClick={() => {
+                setNewNoteOpen(false);
+                setKitsPickerOpen(true);
+              }}
+              title={t("appshell.newNote.tileKitsTitle")}
+              sub={t("appshell.newNote.tileKitsSub")}
+              glyph={<KitsRouteGlyph />}
+            />
+            {customTemplatesCount > 0 && (
+              <NewNoteRouteTile
+                active={false}
+                onClick={() => {
+                  setNewNoteOpen(false);
+                  setCustomTemplatesOpen(true);
+                }}
+                title={t("appshell.newNote.tileTemplatesTitle")}
+                sub={t(
+                  customTemplatesCount === 1
+                    ? "appshell.newNote.tileTemplatesSubSingle"
+                    : "appshell.newNote.tileTemplatesSubPlural",
+                  { count: String(customTemplatesCount) },
+                )}
+                glyph={<CustomTemplatesRouteGlyph />}
+              />
+            )}
+          </div>
 
-        <div className="mt-6 pt-5 border-t border-bd">
-          <label className="text-2xs uppercase tracking-wider text-t3 font-semibold block mb-2">
-            Title · lands on {currentPath || "main"}
-          </label>
-          <input
-            autoFocus
-            value={newNoteTitle}
-            onChange={(e) => setNewNoteTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") confirmCreateNote(); }}
-            placeholder="e.g. notes on attention"
-            className="w-full px-4 py-2.5 bg-bg border border-bd rounded-full text-sm text-char placeholder:text-t3 focus:outline-none focus:border-bd2 transition"
-          />
-        </div>
+          <div className="mt-5 pt-5 border-t border-bd">
+            <label className="text-2xs uppercase tracking-wider text-t3 font-semibold block mb-2">
+              {t("appshell.newNote.titleLabel", { path: currentPath || "main" })}
+            </label>
+            <input
+              autoFocus
+              value={newNoteTitle}
+              onChange={(e) => setNewNoteTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") confirmCreateNote(); }}
+              placeholder={t("appshell.newNote.titlePlaceholder")}
+              className="w-full px-4 py-2.5 bg-bg border border-bd rounded-full text-sm text-char placeholder:text-t3 focus:outline-none focus:border-bd2 transition"
+            />
+          </div>
 
-        <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            className="px-3 py-1.5 text-sm text-t2 hover:text-char"
-            onClick={() => setNewNoteOpen(false)}
-          >
-            cancel
-          </button>
-          <button
-            className="btn-yel px-4 py-2 text-sm rounded-full"
-            onClick={confirmCreateNote}
-            disabled={!newNoteTitle.trim()}
-          >
-            {newNoteTemplate ? "create from template" : "create note"}
-          </button>
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <button
+              className="px-3 py-1.5 text-sm text-t2 hover:text-char"
+              onClick={() => setNewNoteOpen(false)}
+            >
+              {t("appshell.newNote.cancel")}
+            </button>
+            <button
+              className="btn-yel px-4 py-2 text-sm rounded-full"
+              onClick={confirmCreateNote}
+              disabled={!newNoteTitle.trim()}
+            >
+              {t("appshell.newNote.createBlank")}
+            </button>
+          </div>
         </div>
       </Modal>
+
+      {customTemplatesOpen && (
+        <L>
+          <CustomTemplatesModal
+            open={customTemplatesOpen}
+            templates={templates}
+            onClose={() => setCustomTemplatesOpen(false)}
+            onPick={async (name, title) => {
+              setCustomTemplatesOpen(false);
+              try {
+                const n = await api.createFromTemplate(name, title);
+                const list = await api.listNotes();
+                setNotes(list);
+                setActiveSlug(n.slug);
+                setGraph(await fetchGraph());
+                setOrphanSet(new Set(await fetchOrphans()));
+                setToast({ text: t("appshell.toast.createdTitle", { title }), tone: "success" });
+              } catch (e) {
+                setToast({ text: t("appshell.toast.createFromTemplateGenericError", { error: String(e) }), tone: "soft" });
+              }
+            }}
+          />
+        </L>
+      )}
 
       <Modal
         open={!!pendingTemplate}
         onClose={() => { setPendingTemplate(null); setTemplateTitle(""); }}
-        title={`New note from "${templates.find((t) => t.name === pendingTemplate)?.label ?? pendingTemplate}"`}
+        title={t("appshell.templateName.title", {
+          label: templates.find((tpl) => tpl.name === pendingTemplate)?.label ?? pendingTemplate ?? "",
+        })}
       >
         <p className="text-xs text-t2 mb-3 leading-relaxed">
-          Give it a title. The template's scaffolding fills in from there.
+          {t("appshell.templateName.body")}
         </p>
         <input
           autoFocus
           value={templateTitle}
           onChange={(e) => setTemplateTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") confirmCreateFromTemplate(); }}
-          placeholder="e.g. project kickoff"
+          placeholder={t("appshell.templateName.placeholder")}
           className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char"
         />
         <div className="mt-4 flex justify-end gap-2">
@@ -3213,41 +4011,65 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             className="px-3 py-1.5 text-sm text-t2 hover:text-char"
             onClick={() => { setPendingTemplate(null); setTemplateTitle(""); }}
           >
-            cancel
+            {t("appshell.templateName.cancel")}
           </button>
           <button
             className="btn-yel px-3 py-1.5 text-sm rounded-md"
             onClick={confirmCreateFromTemplate}
             disabled={!templateTitle.trim()}
           >
-            create
+            {t("appshell.templateName.create")}
           </button>
         </div>
       </Modal>
 
+      {kitsPickerOpen && (
+        <L>
+          <JournalKits
+            open={kitsPickerOpen}
+            templates={templates}
+            onClose={() => setKitsPickerOpen(false)}
+            onPick={async (name, title) => {
+              setKitsPickerOpen(false);
+              try {
+                const n = await api.createFromTemplate(name, title);
+                const list = await api.listNotes();
+                setNotes(list);
+                setActiveSlug(n.slug);
+                setGraph(await fetchGraph());
+                setOrphanSet(new Set(await fetchOrphans()));
+                setToast({ text: t("appshell.toast.startedKit", { title }), tone: "success" });
+              } catch (e) {
+                setToast({ text: t("appshell.toast.createFromKitError", { error: String(e) }), tone: "soft" });
+              }
+            }}
+          />
+        </L>
+      )}
+
       <Modal
         open={templatePickerOpen}
         onClose={() => setTemplatePickerOpen(false)}
-        title="New note from template"
+        title={t("appshell.templatePicker.title")}
       >
         {templates.length === 0 ? (
-          <p className="text-sm text-t2">No templates yet. Add one in Settings → Templates.</p>
+          <p className="text-sm text-t2">{t("appshell.templatePicker.empty")}</p>
         ) : (
           <ul className="space-y-1 max-h-[60vh] overflow-y-auto">
-            {templates.map((t) => (
-              <li key={t.name}>
+            {templates.map((tpl) => (
+              <li key={tpl.name}>
                 <button
                   onClick={() => {
                     setTemplatePickerOpen(false);
-                    handleCreateFromTemplate(t.name);
+                    handleCreateFromTemplate(tpl.name);
                   }}
                   className="w-full text-left px-3 py-2 rounded-md hover:bg-s2 flex items-center gap-2"
                 >
-                  <span className="text-char">{t.label}</span>
-                  {t.is_daily && (
-                    <span className="text-2xs px-1.5 py-px bg-yelp text-yeld rounded">daily</span>
+                  <span className="text-char">{tpl.label}</span>
+                  {tpl.is_daily && (
+                    <span className="text-2xs px-1.5 py-px bg-yelp text-yeld rounded">{t("appshell.templatePicker.dailyBadge")}</span>
                   )}
-                  <span className="ml-auto text-2xs text-t3 font-mono">{t.name}</span>
+                  <span className="ml-auto text-2xs text-t3 font-mono">{tpl.name}</span>
                 </button>
               </li>
             ))}
@@ -3308,6 +4130,7 @@ function LockedNoteHero({
   onUnlock: () => void;
   onUnlocked: () => void | Promise<void>;
 }) {
+  const t = useT();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3344,12 +4167,15 @@ function LockedNoteHero({
           </svg>
         </div>
         <div className="font-serif text-2xl text-char mb-2 tracking-tight">
-          This note is locked
+          {t("appshell.locked.title")}
         </div>
         <p className="text-xs text-t2 mb-6 leading-relaxed font-serif italic">
-          Encrypted locally with ChaCha20-Poly1305.
-          <br />
-          Enter your passphrase to read it.
+          {t("appshell.locked.body").split("\n").map((line, i, arr) => (
+            <span key={i}>
+              {line}
+              {i < arr.length - 1 && <br />}
+            </span>
+          ))}
         </p>
 
         <form
@@ -3361,7 +4187,7 @@ function LockedNoteHero({
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="passphrase"
+            placeholder={t("appshell.locked.passphrasePlaceholder")}
             className="flex-1 px-4 py-2 bg-bg border border-bd rounded-full text-sm text-char font-mono placeholder:text-t3 focus:outline-none focus:border-bd2 transition"
           />
           <button
@@ -3369,7 +4195,7 @@ function LockedNoteHero({
             disabled={!password || busy}
             className="btn-yel px-4 py-2 rounded-full text-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {busy ? "…" : "unlock"}
+            {busy ? t("appshell.locked.unlockBusy") : t("appshell.locked.unlock")}
           </button>
         </form>
 
@@ -3378,18 +4204,18 @@ function LockedNoteHero({
         )}
 
         <div className="flex items-center justify-center gap-3 text-2xs text-t3 font-mono uppercase tracking-wider">
-          <span>local locks</span>
+          <span>{t("appshell.locked.localLocks")}</span>
           <span className="w-1 h-1 rounded-full bg-t3" />
-          <span>no network</span>
+          <span>{t("appshell.locked.noNetwork")}</span>
           <span className="w-1 h-1 rounded-full bg-t3" />
-          <span>no accounts</span>
+          <span>{t("appshell.locked.noAccounts")}</span>
         </div>
 
         <button
           onClick={onUnlock}
           className="mt-5 text-2xs text-t3 hover:text-t2 transition"
         >
-          I forgot my passphrase
+          {t("appshell.locked.forgotPassphrase")}
         </button>
       </div>
     </div>
@@ -3403,29 +4229,29 @@ function EmptyWorkspaceHero({
   onNewNote: () => void;
   onOpenPalette: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="max-w-sm text-center">
         <div className="font-serif text-3xl text-char mb-3 tracking-tight">
-          A blank page, and everything ahead of it
+          {t("appshell.empty.title")}
         </div>
         <p className="text-sm text-t2 mb-6 leading-relaxed">
-          Yarrow saves every word automatically. Every time you branch, the
-          original stays safe. Nothing you write here can get lost.
+          {t("appshell.empty.body")}
         </p>
         <div className="flex gap-2 justify-center">
           <button
             onClick={onNewNote}
             className="btn-yel px-4 py-2 rounded-md text-sm"
           >
-            Start your first note
+            {t("appshell.empty.startFirstNote")}
           </button>
           <button
             onClick={onOpenPalette}
             className="inline-flex items-center gap-2 px-4 py-2 bg-s2 text-ch2 rounded-md hover:bg-s3 text-sm transition"
           >
             <SearchIcon size={14} />
-            <span>Find a note</span>
+            <span>{t("appshell.empty.findNote")}</span>
           </button>
         </div>
       </div>
@@ -3433,12 +4259,38 @@ function EmptyWorkspaceHero({
   );
 }
 
-function SyncStatusPill({ status }: { status: SyncStatus }) {
-  const { color, label, pulse } = syncStatusPresentation(status);
+function SyncStatusPill({
+  status,
+  lastSyncedAt,
+}: {
+  status: SyncStatus;
+  lastSyncedAt: number | null;
+}) {
+  const t = useT();
+  const { color, label, pulse } = syncStatusPresentation(status, t);
+  // Tick every 15 s so the "3 min ago" label keeps up with wall time
+  // without us having to manage time-of-day in AppShell's render path.
+  // Browser throttles setInterval in hidden tabs, so this stays cheap
+  // when the user is off the window.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (lastSyncedAt == null) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 15_000);
+    return () => window.clearInterval(id);
+  }, [lastSyncedAt]);
+  const showAge =
+    lastSyncedAt != null && status !== "syncing" && status !== "no-remote";
   return (
     <span className="inline-flex items-center gap-1.5">
       <StatusDot color={color} size={7} className={pulse ? "animate-pulse2" : ""} />
       <span>{label}</span>
+      {showAge && (
+        <span className="text-t3" title={new Date(lastSyncedAt).toLocaleString()}>
+          {/* relativeTime takes unix *seconds* when passed a number
+              (see src/lib/format.ts); lastSyncedAt is ms from Date.now(). */}
+          · {relativeTime(Math.floor(lastSyncedAt / 1000))}
+        </span>
+      )}
     </span>
   );
 }
@@ -3453,17 +4305,18 @@ function mapNeighborCount(graph: Graph | null, slug: string | null): number {
   return set.size;
 }
 
-function TemplateTile({
+/** Big route tile for the new-note modal. Shown at three sizes — Blank,
+ *  Kits, Your templates — and acts as a top-level navigation choice
+ *  rather than a per-template selector. */
+function NewNoteRouteTile({
   active,
   onClick,
-  onDoubleClick,
   title,
   sub,
   glyph,
 }: {
   active: boolean;
   onClick: () => void;
-  onDoubleClick?: () => void;
   title: string;
   sub: string;
   glyph: React.ReactNode;
@@ -3472,113 +4325,76 @@ function TemplateTile({
     <button
       type="button"
       onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      className={`tile-press text-left flex items-start gap-3 p-3 rounded-xl border ${
+      className={`tile-press text-left flex flex-col gap-3 p-5 rounded-xl border min-h-[150px] ${
         active
           ? "border-yel bg-yelp shadow-sm"
-          : "border-bd bg-bg hover:bg-s2/60 hover:border-bd2"
+          : "border-bd bg-bg hover:bg-yelp/30 hover:border-yel"
       }`}
     >
       <div
-        className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${
-          active ? "bg-yel/20 text-yeld" : "bg-s2 text-t3"
+        className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+          active ? "bg-yel/25 text-yeld" : "bg-s2 text-yeld"
         }`}
       >
         {glyph}
       </div>
       <div className="min-w-0 flex-1">
-        <div className={`text-sm font-medium truncate ${active ? "text-char" : "text-char"}`}>
+        <div className="font-serif text-[17px] text-char leading-tight">
           {title}
         </div>
-        <div className="text-2xs text-t3 mt-0.5 truncate font-mono">{sub}</div>
+        <div className="text-2xs text-t2 mt-1.5 leading-relaxed">
+          {sub}
+        </div>
       </div>
     </button>
   );
 }
 
-function templateSubtitle(name: string): string {
-  switch (name) {
-    case "daily":    return "{{date}} · morning · notes";
-    case "meeting":  return "Who · what · next";
-    case "book":     return "Quotes, questions, carried forward";
-    case "vacation": return "Shape, stay, eat, skip";
-    case "project":  return "Problem · shape · proof";
-    case "morning":  return "Three pages, no editing";
-    default:         return name;
-  }
-}
-
-function BlankGlyph() {
+function KitsRouteGlyph() {
   return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3.5 2.5h6L12.5 5.5v8a.5.5 0 0 1-.5.5h-8.5a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5z" />
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1.2" />
+      <rect x="12" y="3" width="7" height="7" rx="1.2" />
+      <rect x="3" y="12" width="7" height="7" rx="1.2" />
+      <rect x="12" y="12" width="7" height="7" rx="1.2" />
     </svg>
   );
 }
 
-function TemplateGlyph({ name }: { name: string }) {
-  switch (name) {
-    case "daily":
-      return (
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="8" cy="8" r="5.5" />
-          <path d="M8 3.5l1.2 2.6 2.8.3-2.1 1.9.6 2.8L8 9.8l-2.5 1.3.6-2.8L4 6.4l2.8-.3L8 3.5z" fill="currentColor" fillOpacity="0.35" />
-        </svg>
-      );
-    case "meeting":
-      return (
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="5" cy="6" r="2" />
-          <circle cx="11" cy="6" r="2" />
-          <path d="M2 13c0-2 1.5-3.3 3-3.3S8 11 8 13M8 13c0-2 1.5-3.3 3-3.3S14 11 14 13" />
-        </svg>
-      );
-    case "book":
-      return (
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 3h10v10H3zM8 3v10" />
-          <path d="M5 6h2M5 8.5h2M10 6h1.5M10 8.5h1.5" />
-        </svg>
-      );
-    case "vacation":
-      return (
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M8 2v6" />
-          <path d="M8 2a4 4 0 0 1 4 4H8z" fill="currentColor" fillOpacity="0.3" />
-          <path d="M4 14c0-2 1-3 2-3 1.5 0 2 2 2 2s.5-2 2-2c1 0 2 1 2 3" />
-        </svg>
-      );
-    case "project":
-      return (
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M8 2L14 5v6L8 14L2 11V5z" />
-          <path d="M8 2v12M2 5l6 3 6-3" />
-        </svg>
-      );
-    case "morning":
-      return (
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M2 11h12" />
-          <path d="M8 3v4" />
-          <path d="M5 7L8 4l3 3" />
-        </svg>
-      );
-    default:
-      return <BlankGlyph />;
-  }
+function CustomTemplatesRouteGlyph() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 5h14" />
+      <path d="M4 11h14" />
+      <path d="M4 17h9" />
+      <circle cx="17" cy="17" r="2" />
+    </svg>
+  );
 }
 
-function syncStatusPresentation(s: SyncStatus): {
+function BlankGlyph() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 3h7L17 7v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M12 3v4h5" />
+    </svg>
+  );
+}
+
+function syncStatusPresentation(
+  s: SyncStatus,
+  t: ReturnType<typeof useT>,
+): {
   color: string;
   label: string;
   pulse: boolean;
 } {
   switch (s) {
-    case "synced":    return { color: "var(--yel)",    label: "synced", pulse: false };
-    case "pending":   return { color: "var(--accent2)", label: "local changes", pulse: false };
-    case "syncing":   return { color: "var(--yel)",    label: "syncing…", pulse: true };
-    case "error":     return { color: "var(--danger)", label: "sync failed", pulse: false };
-    case "no-remote": return { color: "var(--t3)",     label: "not synced anywhere", pulse: false };
+    case "synced":    return { color: "var(--yel)",    label: t("appshell.sync.synced"), pulse: false };
+    case "pending":   return { color: "var(--accent2)", label: t("appshell.sync.localChanges"), pulse: false };
+    case "syncing":   return { color: "var(--yel)",    label: t("appshell.sync.syncing"), pulse: true };
+    case "error":     return { color: "var(--danger)", label: t("appshell.sync.failed"), pulse: false };
+    case "no-remote": return { color: "var(--t3)",     label: t("appshell.sync.notAnywhere"), pulse: false };
   }
 }
 

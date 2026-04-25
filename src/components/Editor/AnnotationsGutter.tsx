@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Annotation } from "../../lib/types";
 import { relativeTime } from "../../lib/format";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   annotations: Annotation[];
@@ -18,6 +19,7 @@ interface Props {
  * (fired by the editor's right-click "Annotate selection" item).
  */
 export default function AnnotationsGutter({ annotations, onChange }: Props) {
+  const t = useT();
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [draft, setDraft] = useState<string>("");
 
@@ -77,11 +79,11 @@ export default function AnnotationsGutter({ annotations, onChange }: Props) {
         return (
           <div key={i} className={`yarrow-annotation${editing ? " is-editing" : ""}`}>
             <div className="meta">
-              <span>{when != null ? relativeTime(when) : "note"}</span>
+              <span>{when != null ? relativeTime(when) : t("editor.annotations.note")}</span>
               <button
                 onClick={() => remove(i)}
-                title="Remove this annotation"
-                aria-label="Remove annotation"
+                title={t("editor.annotations.removeTitle")}
+                aria-label={t("editor.annotations.removeAria")}
               >
                 ×
               </button>
@@ -110,7 +112,7 @@ export default function AnnotationsGutter({ annotations, onChange }: Props) {
                 onClick={() => startEdit(i)}
                 style={{ cursor: "text", whiteSpace: "pre-wrap" }}
               >
-                {a.body || <em style={{ color: "var(--t3)" }}>empty — click to write</em>}
+                {a.body || <em style={{ color: "var(--t3)" }}>{t("editor.annotations.empty")}</em>}
               </div>
             )}
           </div>

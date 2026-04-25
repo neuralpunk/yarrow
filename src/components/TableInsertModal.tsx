@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Modal from "./Modal";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -26,6 +27,7 @@ export default function TableInsertModal({ open, onClose, onInsert }: Props) {
   const [body, setBody] = useState<string[][]>(() => emptyBody(3, 3));
   /** Column alignment: left, center, right. Same length as `cols`. */
   const [align, setAlign] = useState<Alignment[]>(() => Array(3).fill("left"));
+  const t = useT();
 
   useEffect(() => {
     if (!open) return;
@@ -125,19 +127,19 @@ export default function TableInsertModal({ open, onClose, onInsert }: Props) {
   return (
     <Modal open={open} onClose={onClose} width="w-[780px]">
       <div className="flex items-baseline justify-between mb-4">
-        <h2 className="font-serif text-xl text-char">Insert table</h2>
+        <h2 className="font-serif text-xl text-char">{t("modals.table.title")}</h2>
         <span className="font-serif italic text-2xs text-t3">
-          Tab moves between cells · ⌘↵ inserts
+          {t("modals.table.shortcutHint")}
         </span>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <Stepper label="Columns" value={cols} min={1} max={8} onChange={setCols} />
-        <Stepper label="Rows"    value={rows} min={1} max={20} onChange={setRows} />
+        <Stepper label={t("modals.table.columns")} value={cols} min={1} max={8} onChange={setCols} />
+        <Stepper label={t("modals.table.rows")}    value={rows} min={1} max={20} onChange={setRows} />
       </div>
 
       <div className="mb-4">
-        <div className="font-serif italic text-2xs text-t3 mb-2">Fill it in</div>
+        <div className="font-serif italic text-2xs text-t3 mb-2">{t("modals.table.fillInLabel")}</div>
         <div className="border border-bd rounded-md bg-s1 overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -150,13 +152,13 @@ export default function TableInsertModal({ open, onClose, onInsert }: Props) {
                         value={h}
                         onChange={(e) => setHeader(c, e.target.value)}
                         onKeyDown={onCellKeyDown(-1, c)}
-                        placeholder={`Column ${c + 1}`}
+                        placeholder={t("modals.table.columnPlaceholder", { n: String(c + 1) })}
                         className="flex-1 min-w-0 px-2 py-1 bg-transparent border-0 outline-0 font-serif italic text-sm text-char placeholder:text-t3/70 focus:bg-bg/60 rounded"
                       />
                       <button
                         type="button"
                         onClick={() => rotateAlign(c)}
-                        title={`Column alignment: ${align[c]}. Click to cycle.`}
+                        title={t("modals.table.alignmentTitle", { align: align[c] })}
                         className="w-7 rounded text-t2 hover:text-char hover:bg-s2 flex items-center justify-center font-mono text-2xs"
                       >
                         {alignGlyph(align[c])}
@@ -188,7 +190,7 @@ export default function TableInsertModal({ open, onClose, onInsert }: Props) {
       </div>
 
       <div className="mb-4">
-        <div className="font-serif italic text-2xs text-t3 mb-1">Markdown preview</div>
+        <div className="font-serif italic text-2xs text-t3 mb-1">{t("modals.table.markdownPreview")}</div>
         <pre className="font-mono text-[11px] text-t2 bg-s1 border border-bd rounded-md p-3 overflow-x-auto whitespace-pre max-h-[180px]">
           {preview.trim()}
         </pre>
@@ -199,13 +201,13 @@ export default function TableInsertModal({ open, onClose, onInsert }: Props) {
           onClick={onClose}
           className="px-3 py-1.5 text-xs text-t2 hover:text-char transition"
         >
-          Cancel
+          {t("modals.table.cancel")}
         </button>
         <button
           onClick={commit}
           className="px-3 py-1.5 text-xs rounded-md bg-char text-bg hover:bg-yeld transition"
         >
-          Insert
+          {t("modals.table.insert")}
         </button>
       </div>
     </Modal>

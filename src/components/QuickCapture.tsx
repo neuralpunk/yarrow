@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/tauri";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -11,6 +12,7 @@ export default function QuickCapture({ open, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (open) {
@@ -48,9 +50,9 @@ export default function QuickCapture({ open, onClose }: Props) {
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-2 border-b border-bd bg-s1 flex items-center gap-2">
-          <span className="font-serif text-base text-char">Quick capture</span>
-          <span className="text-2xs text-t3">appends to scratchpad · nothing is committed</span>
-          <span className="ml-auto text-2xs text-t3 font-mono">Ctrl+Enter to save · Esc to cancel</span>
+          <span className="font-serif text-base text-char">{t("modals.capture.title")}</span>
+          <span className="text-2xs text-t3">{t("modals.capture.subtitle")}</span>
+          <span className="ml-auto text-2xs text-t3 font-mono">{t("modals.capture.shortcutHint")}</span>
         </div>
         <textarea
           ref={ref}
@@ -63,26 +65,26 @@ export default function QuickCapture({ open, onClose }: Props) {
               save();
             }
           }}
-          placeholder="What just crossed your mind?"
+          placeholder={t("modals.capture.placeholder")}
           className="w-full min-h-[140px] max-h-[300px] p-5 bg-bg text-char outline-none resize-none font-sans leading-relaxed"
         />
         <div className="px-4 py-2 border-t border-bd bg-s1 flex items-center">
           {savedFlash && (
-            <span className="text-2xs text-yeld">✓ saved to scratchpad</span>
+            <span className="text-2xs text-yeld">{t("modals.capture.saved")}</span>
           )}
           <div className="ml-auto flex gap-2">
             <button
               onClick={onClose}
               className="px-3 py-1 text-xs text-t2 hover:text-char"
             >
-              cancel
+              {t("modals.capture.cancel")}
             </button>
             <button
               onClick={save}
               disabled={saving || !text.trim()}
               className="btn-yel px-3 py-1 text-xs rounded-md disabled:opacity-40"
             >
-              capture
+              {t("modals.capture.action")}
             </button>
           </div>
         </div>

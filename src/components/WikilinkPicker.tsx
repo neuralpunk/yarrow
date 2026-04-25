@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Modal from "./Modal";
 import type { NoteSummary } from "../lib/types";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -19,6 +20,7 @@ export default function WikilinkPicker({ open, onClose, notes, currentSlug, onIn
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!open) return;
@@ -80,9 +82,11 @@ export default function WikilinkPicker({ open, onClose, notes, currentSlug, onIn
   return (
     <Modal open={open} onClose={onClose} width="w-[480px]">
       <div className="flex items-baseline justify-between mb-3">
-        <h2 className="font-serif text-xl text-char">Insert wikilink</h2>
+        <h2 className="font-serif text-xl text-char">{t("modals.wikilink.title")}</h2>
         <span className="font-mono text-2xs text-t3">
-          {filtered.length} {filtered.length === 1 ? "match" : "matches"}
+          {filtered.length === 1
+            ? t("modals.wikilink.matchOne", { count: String(filtered.length) })
+            : t("modals.wikilink.matchMany", { count: String(filtered.length) })}
         </span>
       </div>
 
@@ -91,7 +95,7 @@ export default function WikilinkPicker({ open, onClose, notes, currentSlug, onIn
         value={query}
         onChange={(e) => { setQuery(e.target.value); setCursor(0); }}
         onKeyDown={onKeyDown}
-        placeholder="Search notes by title or slug…"
+        placeholder={t("modals.wikilink.searchPlaceholder")}
         className="w-full px-3 py-2 bg-s1 border border-bd rounded-md text-sm text-char placeholder:text-t3 outline-none focus:border-yeld"
       />
 
@@ -102,8 +106,8 @@ export default function WikilinkPicker({ open, onClose, notes, currentSlug, onIn
         {filtered.length === 0 ? (
           <div className="px-3 py-8 text-center text-xs text-t3 font-serif italic">
             {notes.length <= 1
-              ? "No other notes in this workspace yet."
-              : "No notes match that search."}
+              ? t("modals.wikilink.empty")
+              : t("modals.wikilink.noMatch")}
           </div>
         ) : (
           filtered.map((n, i) => (
@@ -136,7 +140,7 @@ export default function WikilinkPicker({ open, onClose, notes, currentSlug, onIn
             className="accent-yeld"
           />
           <span>
-            Embed inline (<code className="font-mono text-2xs">![[…]]</code>)
+            {t("modals.wikilink.embedLabel")} (<code className="font-mono text-2xs">![[…]]</code>)
           </span>
         </label>
 
@@ -145,20 +149,20 @@ export default function WikilinkPicker({ open, onClose, notes, currentSlug, onIn
             onClick={onClose}
             className="px-3 py-1.5 text-xs text-t2 hover:text-char transition"
           >
-            Cancel
+            {t("modals.wikilink.cancel")}
           </button>
           <button
             onClick={() => commit()}
             disabled={filtered.length === 0}
             className="px-3 py-1.5 text-xs rounded-md bg-char text-bg hover:bg-yeld transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Insert
+            {t("modals.wikilink.insert")}
           </button>
         </div>
       </div>
 
       <div className="mt-3 font-serif italic text-2xs text-t3">
-        ↑↓ to move · Enter to insert · Esc to cancel
+        {t("modals.wikilink.shortcutHint")}
       </div>
     </Modal>
   );

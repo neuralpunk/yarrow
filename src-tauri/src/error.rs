@@ -25,8 +25,27 @@ pub enum YarrowError {
     MergeConflicts(String),
     #[error("no remote configured")]
     NoRemote,
+    /// The remote workspace we're configured to sync with no longer
+    /// exists (deleted out-of-band via the web UI, server reset, etc).
+    /// `cmd_sync` catches this, clears the stale workspace_id in local
+    /// config, and retries with a fresh `create_workspace` — so a
+    /// deleted workspace cleanly morphs into a new empty one instead
+    /// of leaving the user stuck with "sync failed" forever.
+    #[error("server workspace no longer exists")]
+    RemoteWorkspaceGone,
     #[error("invalid input: {0}")]
     Invalid(String),
+    /// Sync-time authentication failed — bad PAT, expired token, server
+    /// rejected credentials. Distinct from `Other` so the frontend can
+    /// show "your sync token expired — reconnect in Settings" instead of
+    /// the generic toast.
+    #[error("authentication failed: {0}")]
+    AuthFailed(String),
+    /// Sync-time network failure — couldn't reach the remote at all
+    /// (DNS, no route, TLS handshake never completed). Frontend renders
+    /// "check your connection" rather than blaming the user's setup.
+    #[error("network unavailable: {0}")]
+    NetworkUnavailable(String),
     #[error("encryption: {0}")]
     Crypto(String),
     #[error("encrypted notes are locked — unlock to continue")]
@@ -81,4 +100,65 @@ impl From<anyhow::Error> for YarrowError {
     fn from(e: anyhow::Error) -> Self {
         YarrowError::Other(e.to_string())
     }
+}
+
+/// Reclassify a sync-time error into one of the structured variants
+/// (`AuthFailed`, `NetworkUnavailable`, `RemoteWorkspaceGone`) when the
+/// underlying message matches a known shape. Falls through to the
+/// original error otherwise so non-sync failures aren't laundered.
+///
+/// Why text matching? libgit2 surfaces HTTP/2 stream errors and SSL
+/// handshakes as `git2::Error` with class=Net and the actual cause
+/// buried in the message. We pull the cause back out to give the user
+/// a useful toast.
+pub fn classify_sync_error(err: YarrowError) -> YarrowError {
+    let msg_lower;
+    let class_code = match &err {
+        YarrowError::Git(e) => {
+            msg_lower = e.message().to_ascii_lowercase();
+            Some((e.class(), e.code()))
+        }
+        YarrowError::Other(s) => {
+            msg_lower = s.to_ascii_lowercase();
+            None
+        }
+        _ => return err,
+    };
+
+    if let Some((class, code)) = class_code {
+        use git2::ErrorClass as C;
+        use git2::ErrorCode as K;
+        match (class, code) {
+            (_, K::Auth) | (C::Http, _) if msg_lower.contains("401")
+                || msg_lower.contains("authentication") =>
+            {
+                return YarrowError::AuthFailed(msg_lower);
+            }
+            (C::Net, _) | (C::Ssl, _) | (C::Os, _) => {
+                return YarrowError::NetworkUnavailable(msg_lower);
+            }
+            _ => {}
+        }
+    }
+
+    if msg_lower.contains("authentication required")
+        || msg_lower.contains("invalid credentials")
+        || msg_lower.contains("403 forbidden")
+        || msg_lower.contains("401 unauthorized")
+        || msg_lower.contains("bad credentials")
+    {
+        return YarrowError::AuthFailed(msg_lower);
+    }
+    if msg_lower.contains("could not resolve host")
+        || msg_lower.contains("connection refused")
+        || msg_lower.contains("connection reset")
+        || msg_lower.contains("no route to host")
+        || msg_lower.contains("network is unreachable")
+        || msg_lower.contains("operation timed out")
+        || msg_lower.contains("ssl handshake")
+        || msg_lower.contains("tls handshake")
+    {
+        return YarrowError::NetworkUnavailable(msg_lower);
+    }
+    err
 }

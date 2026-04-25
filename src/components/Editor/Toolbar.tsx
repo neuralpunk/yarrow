@@ -3,6 +3,8 @@ import { NewDirectionIcon, StatusDot, JournalIcon } from "../../lib/icons";
 import type { PathCollection } from "../../lib/types";
 import { isGhostPath } from "../../lib/types";
 import { buildPathColorMap, colorForPath, isRoot } from "../../lib/pathAwareness";
+import { useT } from "../../lib/i18n";
+import { SK } from "../../lib/platform";
 
 interface Props {
   /** v2 path collections (source of truth for the switcher). */
@@ -71,6 +73,7 @@ function ToolbarInner({
   dailyDate = null,
   onOpenJournalCalendar,
 }: Props) {
+  const t = useT();
   // Human-readable label for the open journal — uses the browser locale so
   // date formatting matches the rest of the app's "today" pill.
   const dailyLabel = useMemo(() => {
@@ -103,10 +106,10 @@ function ToolbarInner({
   }, [lastSavedAt]);
 
   const saveLabel = dirty
-    ? "editing…"
+    ? t("editor.toolbar.editing")
     : justSaved
-      ? "saved just now"
-      : "saved";
+      ? t("editor.toolbar.savedJustNow")
+      : t("editor.toolbar.saved");
   const saveDotColor = dirty ? "var(--yel)" : justSaved ? "var(--yel)" : "var(--accent2)";
 
   // Switcher dropdown
@@ -138,7 +141,7 @@ function ToolbarInner({
         onOpenJournalCalendar(rect);
       }}
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12.5px] text-yeld bg-yelp/60 hover:bg-yelp transition border border-yel/25"
-      title="Jump to another day — creates the entry if it doesn't exist yet"
+      title={t("editor.toolbar.journalJump")}
     >
       <JournalIcon size={13} />
       <span className="font-serif">{dailyLabel}</span>
@@ -153,7 +156,7 @@ function ToolbarInner({
         <div className="flex-1" />
         {focusMode && <ZenChip onExit={onExitFocus} />}
         <div className="flex items-center gap-3 text-2xs text-t3 shrink-0 whitespace-nowrap">
-          <span className="font-mono">{checkpointCount} checkpoints</span>
+          <span className="font-mono">{t("editor.toolbar.checkpoints", { count: String(checkpointCount) })}</span>
           <span className="flex items-center gap-1.5 transition-[color] duration-500">
             <StatusDot color={saveDotColor} size={5} />
             <span className={justSaved && !dirty ? "text-yeld" : ""}>{saveLabel}</span>
@@ -170,7 +173,7 @@ function ToolbarInner({
         <button
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-2 pl-1.5 pr-3 py-1 rounded-full hover:bg-s2 transition group max-w-[480px]"
-          title="Switch path"
+          title={t("editor.toolbar.switchPath")}
         >
           <span
             className="inline-block w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-bg"
@@ -195,15 +198,15 @@ function ToolbarInner({
                   onEditCurrentCondition();
                 }}
                 role="button"
-                title="What question is this path asking?"
+                title={t("editor.toolbar.namePathTitle")}
               >
-                + name this path
+                {t("editor.toolbar.namePathPrompt")}
               </span>
             )
           )}
           {root && collections.length <= 1 && (
             <span className="text-2xs italic text-t3 leading-none">
-              your only path
+              {t("editor.toolbar.onlyPath")}
             </span>
           )}
           <svg
@@ -230,14 +233,14 @@ function ToolbarInner({
         <button
           onClick={() => onSwitchPath(rootName)}
           className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full border border-yel/70 text-yeld hover:bg-yelp transition group"
-          title={`Go back to ${rootName} — the trunk of your thinking`}
+          title={t("editor.toolbar.backToRoot", { root: rootName })}
         >
           <span
             className="inline-block w-2 h-2 rounded-full shrink-0"
             style={{ background: "var(--yel)" }}
           />
           <span className="font-serif text-[12.5px] leading-none whitespace-nowrap">
-            ← {rootName}
+            {t("editor.toolbar.backArrow", { root: rootName })}
           </span>
         </button>
       )}
@@ -247,35 +250,35 @@ function ToolbarInner({
         <button
           onClick={onBranchFromHere}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12.5px] text-t2 hover:bg-s2 hover:text-char transition"
-          title="Start a path from this note (⌘⇧B)"
+          title={t("editor.toolbar.branchThisTitle", { shortcut: "⌘⇧B" })}
         >
           <NewDirectionIcon />
-          <span>Branch this</span>
+          <span>{t("editor.toolbar.branchThis")}</span>
         </button>
         <button
           onClick={onOpenMap}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12.5px] text-t2 hover:bg-s2 hover:text-char transition"
-          title="Open the connections map"
+          title={t("editor.toolbar.connectionsMapTitle")}
         >
           <ConnectionsMapIcon />
-          <span>Connections Map</span>
+          <span>{t("editor.toolbar.connectionsMap")}</span>
         </button>
         <button
           onClick={onOpenPaths}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12.5px] text-t2 hover:bg-s2 hover:text-char transition"
-          title="Open the paths graph"
+          title={t("editor.toolbar.pathsTitle")}
         >
           <GraphIcon />
-          <span>Paths</span>
+          <span>{t("editor.toolbar.paths")}</span>
         </button>
         {onComparePaths && collections.length > 1 && (
           <button
             onClick={onComparePaths}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12.5px] text-t2 hover:bg-s2 hover:text-char transition"
-            title="Compare two paths side by side"
+            title={t("editor.toolbar.compareTitle")}
           >
             <CompareIcon />
-            <span>Compare</span>
+            <span>{t("editor.toolbar.compare")}</span>
           </button>
         )}
         {journalPill}
@@ -287,7 +290,7 @@ function ToolbarInner({
 
       {/* ── Save status ── */}
       <div className="flex items-center gap-3 text-2xs text-t3 shrink-0 whitespace-nowrap">
-        <span className="font-mono">{checkpointCount} checkpoints</span>
+        <span className="font-mono">{t("editor.toolbar.checkpoints", { count: String(checkpointCount) })}</span>
         <span className="flex items-center gap-1.5 transition-[color] duration-500">
           <StatusDot color={saveDotColor} size={5} />
           <span className={justSaved && !dirty ? "text-yeld" : ""}>{saveLabel}</span>
@@ -302,10 +305,11 @@ function ToolbarInner({
  *  always has a way out — the keyboard shortcut alone isn't enough if
  *  they don't remember they turned it on. */
 function ZenChip({ onExit }: { onExit?: () => void }) {
+  const t = useT();
   return (
     <div
       className="flex items-center gap-2.5 pl-3 pr-1.5 py-1.5 rounded-full bg-yelp border border-yeld/30 shrink-0"
-      title="Zen mode is on — distraction-free writing"
+      title={t("editor.toolbar.zenTitle")}
       // Cranked up on-screen legibility for the small italic serif —
       // webkit2gtk renders sub-14px italics poorly otherwise.
       style={{
@@ -319,14 +323,14 @@ function ZenChip({ onExit }: { onExit?: () => void }) {
         <span className="relative inline-block w-1.5 h-1.5 rounded-full bg-yel" />
       </span>
       <span className="font-serif italic text-[14px] text-yeld leading-[1.1] tracking-[0.01em]">
-        Zen mode
+        {t("editor.toolbar.zenLabel")}
       </span>
       <button
         onClick={onExit}
         className="font-mono text-[11px] text-yeld hover:text-char hover:bg-bg px-2 py-1 rounded-full border border-yeld/35 hover:border-yeld transition leading-none"
-        title="Exit zen mode (⌘\)"
+        title={t("editor.toolbar.zenExitTitle", { shortcut: SK.focusToggle })}
       >
-        exit
+        {t("editor.toolbar.zenExit")}
       </button>
     </div>
   );
@@ -345,6 +349,7 @@ function PathSwitcher({
   onPick: (name: string) => void;
   onOpenPaths: () => void;
 }) {
+  const t = useT();
   const [filter, setFilter] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -400,7 +405,7 @@ function PathSwitcher({
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder={`Switch path · ${collections.length} available`}
+          placeholder={t("editor.pathSwitcher.placeholder", { count: String(collections.length) })}
           className="w-full px-2.5 py-1.5 bg-s1 border border-bd rounded-md text-char text-xs placeholder:text-t3 focus:outline-none focus:border-yel"
         />
       </div>
@@ -408,16 +413,16 @@ function PathSwitcher({
         <button
           onClick={() => onPick(rootName)}
           className="w-full text-left px-3.5 py-1.5 text-xs text-yeld hover:bg-yelp flex items-center gap-2 border-b border-bd"
-          title="Jump back to the trunk"
+          title={t("editor.pathSwitcher.backToRootTitle")}
         >
           <span className="inline-block w-2 h-2 rounded-full bg-yel" />
-          <span className="font-medium">← Back to {rootName}</span>
+          <span className="font-medium">{t("editor.pathSwitcher.backToRoot", { root: rootName })}</span>
         </button>
       )}
       <ul className="max-h-[360px] overflow-y-auto">
         {liveOrdered.length === 0 && ghostOrdered.length === 0 && (
           <li className="px-3.5 py-3 text-xs text-t3 italic">
-            No paths match.
+            {t("editor.pathSwitcher.noMatches")}
           </li>
         )}
         {liveOrdered.map((c) => {
@@ -446,12 +451,12 @@ function PathSwitcher({
                     </span>
                     {isActive && (
                       <span className="text-2xs font-mono text-yeld tracking-wider">
-                        YOU
+                        {t("editor.pathSwitcher.you")}
                       </span>
                     )}
                     {isRootItem && !isActive && (
                       <span className="text-2xs font-mono text-t3 tracking-wider">
-                        MAIN
+                        {t("editor.pathSwitcher.main")}
                       </span>
                     )}
                   </div>
@@ -461,11 +466,13 @@ function PathSwitcher({
                     </div>
                   ) : !isRootItem ? (
                     <div className="text-2xs text-t3 italic truncate mt-0.5">
-                      unnamed path
+                      {t("editor.pathSwitcher.unnamedPath")}
                     </div>
                   ) : null}
                   <div className="text-2xs text-t3 mt-1 font-mono">
-                    {c.members.length} note{c.members.length === 1 ? "" : "s"}
+                    {c.members.length === 1
+                      ? t("editor.pathSwitcher.notesCountOne", { count: String(c.members.length) })
+                      : t("editor.pathSwitcher.notesCountOther", { count: String(c.members.length) })}
                   </div>
                 </div>
               </button>
@@ -474,7 +481,7 @@ function PathSwitcher({
         })}
         {ghostOrdered.length > 0 && (
           <li className="px-3.5 pt-3 pb-1 text-2xs font-mono uppercase tracking-[0.18em] text-t3 border-t border-bd mt-1">
-            ghosts · past eras
+            {t("editor.pathSwitcher.ghostsHeader")}
           </li>
         )}
         {ghostOrdered.map((c) => {
@@ -503,7 +510,7 @@ function PathSwitcher({
                     </span>
                     {isAnchor && (
                       <span className="text-2xs font-mono text-t3 tracking-wider">
-                        WAS MAIN
+                        {t("editor.pathSwitcher.wasMain")}
                       </span>
                     )}
                   </div>
@@ -513,7 +520,9 @@ function PathSwitcher({
                     </div>
                   )}
                   <div className="text-2xs text-t3 mt-1 font-mono">
-                    ghost · {c.members.length} note{c.members.length === 1 ? "" : "s"}
+                    {c.members.length === 1
+                      ? t("editor.pathSwitcher.ghostNotesOne", { count: String(c.members.length) })
+                      : t("editor.pathSwitcher.ghostNotesOther", { count: String(c.members.length) })}
                   </div>
                 </div>
               </button>
@@ -527,7 +536,7 @@ function PathSwitcher({
           className="w-full text-left px-3.5 py-2 text-xs text-t2 hover:bg-s2 hover:text-char flex items-center gap-2 transition"
         >
           <GraphIcon />
-          <span>Open the paths graph</span>
+          <span>{t("editor.toolbar.openPathsGraph")}</span>
         </button>
       </div>
     </div>

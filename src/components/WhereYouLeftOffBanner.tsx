@@ -1,4 +1,5 @@
 import { relativeBanner, type LeftOffState } from "../lib/leftOff";
+import { useT } from "../lib/i18n";
 
 interface Props {
   state: LeftOffState;
@@ -19,12 +20,13 @@ export default function WhereYouLeftOffBanner({
   onDismiss,
   onHideAlways,
 }: Props) {
+  const t = useT();
   const path = state.path || "main";
   return (
     <div className="yarrow-wilo-banner" role="status" aria-live="polite">
-      <div className="l1">welcome back · {relativeBanner(state.at)}</div>
+      <div className="l1">{t("modals.leftOff.welcome", { when: relativeBanner(state.at) })}</div>
       <div className="l2">
-        You paused in <em>{state.title}</em> on the <em>{path}</em> path
+        {t("modals.leftOff.pausedIn")} <em>{state.title}</em> {t("modals.leftOff.onPath")} <em>{path}</em> {t("modals.leftOff.pathSuffix")}
       </div>
       {state.snippet ? <div className="l3">“{state.snippet}”</div> : null}
       <div className="actions">
@@ -32,20 +34,20 @@ export default function WhereYouLeftOffBanner({
           onClick={onResume}
           className="px-3 py-1 text-xs rounded-md bg-yel text-on-yel hover:opacity-95"
         >
-          pick up here →
+          {t("modals.leftOff.pickUp")}
         </button>
         <button
           onClick={onDismiss}
           className="px-3 py-1 text-xs rounded-md bg-bg border border-bd text-t2 hover:text-char hover:border-bd2"
         >
-          start somewhere else
+          {t("modals.leftOff.startElsewhere")}
         </button>
         <button
           onClick={onHideAlways}
           className="hide px-2 py-1 text-2xs rounded-md hover:text-t2"
-          title="Never show this banner again for this workspace"
+          title={t("modals.leftOff.hideTitle")}
         >
-          hide next time
+          {t("modals.leftOff.hideNext")}
         </button>
       </div>
     </div>

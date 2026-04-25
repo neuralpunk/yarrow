@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Yarrow 2.0 User Guide — every feature, explained from scratch</title>
-<meta name="description" content="A complete, no-prior-knowledge guide to Yarrow 2.0 — notes, links, paths, the map, history, sync, encryption, typewriter mode, margin ink, editorial reading, pinned keepsakes. With diagrams." />
+<title>Yarrow 2.1 User Guide — every feature, explained from scratch</title>
+<meta name="description" content="A complete, no-prior-knowledge guide to Yarrow 2.1 — notes, links, paths, the map, history, sync, encryption, kits, clinical workflow, research workflow with BibTeX import, folders, three UI languages, typewriter mode, margin ink, editorial reading, pinned keepsakes. With diagrams." />
 
 <meta id="meta-theme-color" name="theme-color" content="#F6F2EB" />
 
@@ -64,7 +64,7 @@
     <a class="wordmark" href="index.html">
       <span class="mark-svg"><svg><use href="#yarrow-mark"/></svg></span>
       Yarrow
-      <span class="version">User Guide · v2.0</span>
+      <span class="version">User Guide · v2.1</span>
     </a>
     <span></span>
     <div class="mast-nav">
@@ -83,7 +83,7 @@
       </div>
       <a class="btn-mini" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-        Download 2.0
+        Download 2.1
       </a>
     </div>
   </div>
@@ -101,10 +101,21 @@
       <div class="toc-group">
         <span class="toc-group-h">Start here</span>
         <a href="#what-is-yarrow">What Yarrow is</a>
+        <a href="#whats-new-2-1">New in 2.1</a>
         <a href="#whats-new-2">New in 2.0</a>
         <a href="#install">Installing</a>
+        <a href="#install-mac" style="padding-left: 14px; font-size: 12px;">— on macOS</a>
         <a href="#first-workspace">Your first workspace</a>
         <a href="#first-note">Your first note</a>
+      </div>
+      <div class="toc-group">
+        <span class="toc-group-h">New in 2.1</span>
+        <a href="#kits">Kits</a>
+        <a href="#research">Research workflow</a>
+        <a href="#clinical">Clinical workflow</a>
+        <a href="#folders">Folders</a>
+        <a href="#languages">Languages</a>
+        <a href="#perf-2-1">Responsiveness</a>
       </div>
       <div class="toc-group">
         <span class="toc-group-h">New in 2.0</span>
@@ -189,16 +200,18 @@
   <main class="guide-main">
 
     <header class="guide-hero">
-      <div class="eyebrow"><span class="dot"></span> User Guide · Yarrow 2.0</div>
+      <div class="eyebrow"><span class="dot"></span> User Guide · Yarrow 2.1</div>
       <h1>Everything Yarrow does, <em>explained from scratch.</em></h1>
       <p class="lede">
         Welcome! This guide is for everyone — whether you've never used
         a notes app before, or you're already comfortable with computers
         and want to dig into the details. Read it from top to bottom if
         you're new, or use the menu on the left to jump to whatever
-        you're curious about. If you're here because you just updated to
-        2.0, the <a href="#whats-new-2">New in 2.0</a> section up front
-        has everything that's different.
+        you're curious about. If you just updated to 2.1, the
+        <a href="#whats-new-2-1">New in 2.1</a> section up top sums up
+        what's different — kits, a research workflow, a privacy-first
+        clinical surface, optional folders, three UI languages, and
+        a much snappier feel.
       </p>
       <p class="callout">
         <strong>About the keys we mention.</strong> Mac uses the
@@ -237,6 +250,50 @@
         <div class="three-card">
           <h4>Remembers everything</h4>
           <p>Yarrow saves every pause as a tiny snapshot, so you can always scroll back to an older version of a note. Try a different angle on something? Branch into a path; the original waits for you.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════ NEW IN 2.1 ════════════════════ -->
+    <section id="whats-new-2-1" class="guide-section guide-whats-new">
+      <div class="whats-new-header">
+        <span class="whats-new-kicker">New in 2.1</span>
+        <h2>Six new directions in <em>2.1</em></h2>
+        <p class="lede">
+          2.1 is the workflow + warmth release. There's a much bigger
+          set of starter kits, a research-focused workflow with
+          BibTeX import, a privacy-first clinical surface, optional
+          sidebar folders, three UI languages, and a substantial
+          responsiveness pass that makes the whole app feel snappier
+          on every platform. Everything from 2.0 still works exactly
+          the same — these are additive.
+        </p>
+      </div>
+
+      <div class="three-up">
+        <div class="three-card">
+          <h4><a href="#kits">Kits</a></h4>
+          <p>75 curated note skeletons across nine categories — Journal, Research, Clinical, Work, Learning, Writing, Everyday, Decision, Spiritual. Each one is a small markdown scaffold you can start a note from.</p>
+        </div>
+        <div class="three-card">
+          <h4><a href="#research">Research workflow</a></h4>
+          <p>Type <kbd>@</kbd> to insert a wikilink to one of your paper-cards. Import a <code>.bib</code> file from Zotero or BibDesk and Yarrow turns each entry into a paper-card note ready to cite.</p>
+        </div>
+        <div class="three-card">
+          <h4><a href="#clinical">Clinical workflow</a></h4>
+          <p>Mark a note as <em>private</em> and Yarrow keeps it on your machine, full stop — never committed, never synced. An on-device PHI scanner gently flags possible identifiers as you type.</p>
+        </div>
+        <div class="three-card">
+          <h4><a href="#folders">Folders</a></h4>
+          <p>Optional sidebar grouping. Move any note into a named folder; the folder shows up at the top of your sidebar. Pure metadata — the file always stays right where it lives.</p>
+        </div>
+        <div class="three-card">
+          <h4><a href="#languages">Languages</a></h4>
+          <p>The whole interface now reads in English, Latin American Spanish, or Swedish. Switch from Settings → Appearance, or right at the welcome screen if you haven't opened a workspace yet.</p>
+        </div>
+        <div class="three-card">
+          <h4><a href="#perf-2-1">Responsiveness</a></h4>
+          <p>Scrolling, modal opens, hover state changes — everything feels meaningfully smoother. A long pass on the rendering pipeline cut Yarrow's per-frame cost across the board, especially on Linux.</p>
         </div>
       </div>
     </section>
@@ -778,7 +835,7 @@
       <div class="three-up">
         <div class="three-card">
           <h4>Mac</h4>
-          <p>Download the <code>.dmg</code> file, open it, and drag the Yarrow icon into your Applications folder. The first time you open it, right-click on Yarrow and pick "Open" — your Mac will ask if you're sure (we're not yet a "registered" developer with Apple). Click "Open" again and you're set.</p>
+          <p>Download the <code>.dmg</code>, open it, and drag the Yarrow icon into Applications. Because Yarrow isn't yet signed with Apple, you'll need to take one extra step the first time you launch it — see <a href="#install-mac">macOS, in detail</a> just below for the friendly walk-through.</p>
         </div>
         <div class="three-card">
           <h4>Linux</h4>
@@ -789,6 +846,112 @@
           <p>Run the <code>.msi</code> installer to install Yarrow normally, or use the portable <code>.exe</code> if you want to run it without installing. Windows 11 has everything Yarrow needs built in; older versions may ask you to install one small Microsoft component.</p>
         </div>
       </div>
+    </section>
+
+    <!-- ═══ install · macOS in detail ═══ -->
+    <section id="install-mac" class="guide-section">
+      <h2>macOS, in detail</h2>
+      <p>
+        First the reassuring part: <strong>Yarrow is safe.</strong> The
+        whole app is open source on
+        <a href="https://github.com/neuralpunk/yarrow" rel="noopener">GitHub</a>,
+        and the <code>.dmg</code> on the
+        <a href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">downloads page</a>
+        is built straight from the same code by GitHub's own
+        servers — not uploaded by hand. Anyone can read what's inside
+        before they install it. Your notes never leave your machine
+        unless you set up Sync yourself.
+      </p>
+      <p>
+        Now the slightly inconvenient part: macOS will warn you when
+        you first open Yarrow, because we're not yet a paid Apple
+        Developer. This is a one-time thing — every small open-source
+        Mac app you've ever installed went through the same dance.
+        Apple's warning isn't saying Yarrow is bad; it's saying
+        "this came from outside the App Store and we haven't seen it
+        before." Once you click through, macOS remembers your choice
+        and never asks again.
+      </p>
+
+      <h3>Why isn't Yarrow signed?</h3>
+      <p>
+        Apple charges $99/year for the developer membership that lets
+        a small app get a "trusted" stamp on macOS. Yarrow is free
+        and open source, with no subscriptions or accounts; we'd
+        rather keep it that way than pass that cost along. If Yarrow
+        ever charges for something, signing the macOS build will be
+        the first thing we use the money on.
+      </p>
+
+      <h3>The three-step open</h3>
+      <p>
+        Here's exactly what you'll do the first time. After this,
+        Yarrow opens like any other app — by double-click, from the
+        Dock, from Spotlight, anywhere.
+      </p>
+      <ol class="bullet-list">
+        <li>
+          <strong>Open the .dmg and drag Yarrow into Applications.</strong>
+          A Finder window opens with the Yarrow icon and a shortcut
+          to your Applications folder; drag the icon onto the
+          shortcut and let go. Eject the .dmg afterwards (control-click
+          → Eject) so it doesn't sit on your desktop forever.
+        </li>
+        <li>
+          <strong>Open Applications, then control-click Yarrow.</strong>
+          Either right-click or hold <kbd>Control</kbd> and click the
+          Yarrow icon. From the menu that pops up, pick
+          <strong>Open</strong>. (This step is the magic — going through
+          control-click + Open is what tells macOS "yes, I deliberately
+          chose this app." Just double-clicking would show the warning
+          with no obvious way past it.)
+        </li>
+        <li>
+          <strong>Click "Open" in the warning.</strong>
+          A small window appears that says something like <em>"macOS
+          cannot verify the developer of Yarrow. Are you sure you
+          want to open it?"</em> Click <strong>Open</strong>. Yarrow
+          launches, and macOS marks it as trusted from now on — every
+          future launch is just a normal double-click.
+        </li>
+      </ol>
+
+      <p class="callout">
+        <strong>If you don't see "Open" in the warning</strong> — only
+        a "Done" or "Move to Trash" — close it, then open
+        <strong>System Settings → Privacy &amp; Security</strong>,
+        scroll down, and you'll see a line near the bottom that says
+        <em>"Yarrow was blocked from use because it is not from an
+        identified developer."</em> Click <strong>Open Anyway</strong>
+        next to it. Then go back and double-click Yarrow normally.
+        (Apple changed the wording of these dialogs around macOS
+        Sequoia; the underlying step is the same.)
+      </p>
+
+      <h3>Verifying the download (optional, for the curious)</h3>
+      <p>
+        Every release on GitHub publishes a SHA-256 checksum next to
+        each download. If you want to confirm the .dmg you downloaded
+        matches the one we built, open Terminal, navigate to your
+        Downloads folder, and run:
+      </p>
+      <pre><code>shasum -a 256 Yarrow_2.1.0_universal.dmg</code></pre>
+      <p>
+        Compare the long hex string it prints to the
+        <code>.dmg.sha256</code> value listed on the release page. If
+        they match, the file you have is byte-for-byte the file we
+        published. If they don't match, don't open it — let us know.
+      </p>
+
+      <h3>Removing Yarrow</h3>
+      <p>
+        Drag Yarrow from Applications to the Trash, then empty the
+        Trash. Your notes — which Yarrow keeps in whatever folder you
+        chose, never inside the app itself — are completely
+        untouched. If you also want to clear Yarrow's small preference
+        file (the recent-workspaces list, theme choice, font picks),
+        delete <code>~/Library/Preferences/com.yarrow.desktop.plist</code>.
+      </p>
     </section>
 
     <!-- ═══ first workspace ═══ -->
@@ -1689,25 +1852,353 @@ def hello():
     <section id="templates" class="guide-section">
       <h2>Templates</h2>
       <p>
-        When you create a new note (<kbd>⌘N</kbd>) the modal has a
-        <strong>Start from</strong> chip row at the bottom. Pick a
-        template and the new note opens pre-filled with its scaffold.
-        Yarrow ships six:
+        Templates are the small bare-bones scaffolds you can start a
+        new note from. The new-note modal (<kbd>⌘N</kbd>) shows three
+        big route tiles: <strong>Blank</strong> opens an empty note,
+        <strong>Kits</strong> opens a curated picker
+        (<a href="#kits">see the next section</a>), and <strong>Your
+        templates</strong> shows anything you've authored yourself
+        under <strong>Settings → Templates</strong>.
       </p>
-      <ul class="bullet-list">
-        <li><strong>Daily journal</strong> (used automatically by ⌘T)</li>
-        <li><strong>Meeting notes</strong></li>
-        <li><strong>Book notes</strong></li>
-        <li><strong>Vacation planner</strong></li>
-        <li><strong>Project brief</strong></li>
-        <li><strong>Morning pages</strong></li>
-      </ul>
       <p>
-        Edit any of them — and add your own — under
-        <strong>Settings → Templates</strong>. Placeholders supported:
+        Placeholders supported in any template:
         <code>{{date}}</code>, <code>{{date_human}}</code>,
         <code>{{weekday}}</code>, <code>{{title}}</code>,
         <code>{{cursor}}</code> (where the cursor lands after creation).
+        The Daily journal template is what <kbd>⌘T</kbd> uses to
+        seed today's entry.
+      </p>
+    </section>
+
+    <!-- ═══ kits ═══ -->
+    <section id="kits" class="guide-section">
+      <h2>Kits</h2>
+      <p>
+        A <strong>kit</strong> is a curated note skeleton — a few
+        well-chosen headings and prompts in plain markdown — that
+        gives a recurring kind of writing some structure without
+        getting in the way. The Kits picker is where Yarrow's bundled
+        starting points live, organized by what you're trying to do.
+      </p>
+      <p>
+        Open it from the new-note modal (<kbd>⌘N</kbd> → <strong>Kits</strong>),
+        from the Kits button on the right rail, or from the command
+        palette (<kbd>⌘K</kbd> → "kits"). Search filters across
+        every kit; clicking one opens a fresh note pre-filled with
+        the kit's scaffold and a default title you can rename.
+      </p>
+
+      <h3>The nine categories</h3>
+      <p>
+        2.1 ships <strong>75 kits</strong> across nine sections.
+        Every kit is just markdown — there's no proprietary format —
+        so a workspace using kits stays portable to any other
+        markdown app. The nine sections are deliberately broad
+        enough that most kinds of recurring writing fit somewhere:
+      </p>
+      <ul class="bullet-list">
+        <li><strong>Journal</strong> (12) — Daily, Morning pages, Morning Three, Today Kindly, Dear Self, Long Exhale, Sleep Ledger, Three Good Things, Dream Journal, Mood &amp; Energy, Letter to Future Self, Anxiety Unspooler, Annual Review, Grief Check-in.</li>
+        <li><strong>Research</strong> (9) — Paper card, Lit-review summary, Methodology card, Hypothesis card, Experiment log, Annotated bibliography, Conference talk, Data analysis log, Thesis chapter scaffold.</li>
+        <li><strong>Clinical</strong> (14) — SOAP, BIRP, DAP, Supervision prep, Reflective practice, Intake / first session, Crisis safety plan (Stanley-Brown shape), Treatment plan, Risk assessment, Termination summary, Group session, Behavioral chain (DBT), Cognitive distortion log, Case formulation (5 P's). Every clinical kit auto-marks the note as private.</li>
+        <li><strong>Work</strong> (10) — Meeting, Project brief, 1:1 prep, Decision log (ADR), Postmortem, Customer interview, Sprint retrospective, Brag doc, Standup, Status report.</li>
+        <li><strong>Learning</strong> (6) — Book, Cornell notes, Lecture summary, Concept map seed, Reading log, Tutorial walk-through.</li>
+        <li><strong>Writing</strong> (6) — Story idea, Character sheet, Scene beat sheet, Poem draft, Critique notes, Submission tracker.</li>
+        <li><strong>Everyday</strong> (7) — Recipe, Vacation planner, Doctor visit, Symptom journal, Medication tracker, Workout log, Habit streak.</li>
+        <li><strong>Decision</strong> (6) — 10-10-10, WRAP framework, Pre-mortem, Weighted pros &amp; cons, Eisenhower matrix, 5 Whys.</li>
+        <li><strong>Spiritual</strong> (3) — Examen, Lectio divina, Loving-kindness session.</li>
+      </ul>
+
+      <h3>Kits vs. templates</h3>
+      <p>
+        Kits and templates are the same thing under the hood — both
+        live in <code>.yarrow/templates/</code> as markdown files —
+        the only difference is that kits ship with Yarrow and group
+        themselves under a category, while "your templates" are
+        anything you've authored in Settings → Templates. A kit is
+        marked with a small comment near the top of its body that
+        says which section it belongs to:
+      </p>
+      <pre><code>&lt;!-- kit: research --&gt;</code></pre>
+      <p>
+        You can edit a kit (it'll start showing up under <em>Your
+        templates</em> if you change its body), and you can promote
+        any custom template into a kit-style category by adding the
+        same comment yourself.
+      </p>
+    </section>
+
+    <!-- ═══ research workflow ═══ -->
+    <section id="research" class="guide-section">
+      <h2>Research workflow</h2>
+      <p>
+        2.1 introduces three small features that turn Yarrow into a
+        comfortable home for a literature review or thesis chapter:
+        the <strong>paper-card kit</strong>, the
+        <strong><code>@cite</code> picker</strong>, and a
+        <strong>BibTeX import</strong> for everything you already have
+        in Zotero, BibDesk, or wherever else.
+      </p>
+
+      <h3>Paper cards</h3>
+      <p>
+        A paper-card is a kit (under Research) that gives every paper
+        you read its own note: title, authors, year, venue, DOI,
+        citation key, plus headings for <em>In one sentence</em>,
+        <em>Methodology</em>, <em>Key findings</em>, <em>My critique</em>,
+        <em>Open questions</em>, and <em>Connections</em>. It auto-tags
+        the note <code>#paper</code>, which is what the
+        <code>@cite</code> picker uses to surface paper-cards above
+        everything else.
+      </p>
+
+      <h3>The <code>@cite</code> picker</h3>
+      <p>
+        Anywhere in a note, type <kbd>@</kbd> followed by a few
+        letters of the author's name or paper title. A small picker
+        opens, scoped to your <code>#paper</code>-tagged notes. Pick
+        one and Yarrow inserts a regular <code>[[Title]]</code>
+        wikilink — the same kind it inserts everywhere else, so the
+        Connections Map and reciprocal-link machinery handle the
+        rest.
+      </p>
+      <p class="callout">
+        Why a regular wikilink? Because it keeps your prose readable
+        in any markdown app, and because the Connections Map already
+        knows how to draw the relationship. <kbd>@cite</kbd> is
+        purely an on-ramp — there's no separate "citation" data type
+        to maintain.
+      </p>
+      <p>
+        If your workspace doesn't have any <code>#paper</code>-tagged
+        notes yet, the picker quietly falls through to all notes so
+        you can still use it before you've imported anything.
+      </p>
+
+      <h3>BibTeX import</h3>
+      <p>
+        From the welcome screen's <strong>Create a new workspace
+        wizard</strong>, or from <strong>Settings → Workspace →
+        Import notes…</strong>, pick the BibTeX option and point
+        Yarrow at a <code>.bib</code> file. Every entry becomes a
+        paper-card note tagged <code>#paper</code> — Yarrow handles
+        nested braces, quoted values, and the <code>@comment</code> /
+        <code>@preamble</code> / <code>@string</code> directives so
+        a typical Zotero export comes through cleanly. If two
+        entries have the same title, Yarrow appends a number to the
+        slug and surfaces the rename in the import report.
+      </p>
+      <p>
+        After import, you can immediately start typing
+        <code>@</code> in any note to cite — the import flow doubles
+        as a one-shot way to populate the picker.
+      </p>
+    </section>
+
+    <!-- ═══ clinical workflow ═══ -->
+    <section id="clinical" class="guide-section">
+      <h2>Clinical workflow</h2>
+      <p>
+        2.1 ships a small but complete privacy surface aimed at
+        clinicians who want to keep session notes inside Yarrow but
+        well away from any sync, any cloud, and any chance of
+        leaking through a casual surface. Three features carry the
+        weight: the <strong>private flag</strong>,
+        the <strong>PHI scanner</strong>, and the
+        <strong><code>clinical</code> tag</strong>. Together they
+        keep certain notes on your machine, full stop.
+      </p>
+
+      <h3>Private notes (the air-gap)</h3>
+      <p>
+        Mark a note as <em>private</em> and Yarrow registers its
+        path in <code>.git/info/exclude</code> — git's per-clone
+        ignore list. The note still lives in the normal
+        <code>notes/</code> folder on disk and is fully editable;
+        it's just invisible to git, which means it never enters a
+        checkpoint and therefore never enters a sync. The sidebar
+        shows a warm-amber <strong>⊘</strong> badge so you can see at
+        a glance which notes won't sync.
+      </p>
+      <p>
+        You can mark any note private from the right-click menu, or
+        by adding <code>private: true</code> to its frontmatter. Every
+        clinical kit (SOAP, BIRP, DAP, etc.) sets this automatically
+        when it creates the note. Toggling private off is reversible
+        — there's no history rewrite, since the flag never touched
+        git in the first place.
+      </p>
+      <p class="callout">
+        <strong>Heads up.</strong> Private is local-only. If you copy
+        the workspace folder to another machine by hand, the private
+        notes go with it — the air-gap is against sync, not against
+        you. If you want stronger protection, encrypt the note as
+        well (right-click → Encrypt). Encryption seals every past
+        version too, so even history scrubs through ChaCha20-Poly1305.
+      </p>
+
+      <h3>The PHI scanner</h3>
+      <p>
+        Open a private note and a small inline scanner spins up. As
+        you type, it underlines anything that looks like protected
+        health information — SSN, date of birth, phone number,
+        email, street address, MRN, full name in a clinical context.
+        It's deliberately conservative: a date only flags if "DOB"
+        / "born" / "birthday" sits nearby, a full name only flags
+        if it follows "client" / "patient" / "Dr." Hover any
+        underline for a hint about what it spotted, and a small
+        counter in the editor footer tallies the matches.
+      </p>
+      <p>
+        The scanner runs entirely in the browser — no IPC, no
+        upload, ever. It's also debounced and lazy-loaded only on
+        private notes, so a normal note carries no scanning cost.
+      </p>
+
+      <h3>The <code>clinical</code> tag</h3>
+      <p>
+        Tag a note <code>#clinical</code> and Yarrow treats it as
+        private without you having to flip the flag separately —
+        same air-gap, same redacted excerpts in the sidebar, same
+        exclusion from search index and the <code>@cite</code> picker.
+        Tags matching <code>clinical</code> / <code>private</code> /
+        <code>phi</code> / <code>confidential</code> render in a
+        rose accent so they stand out from your everyday gold tag
+        pills.
+      </p>
+
+      <h3>"N off-server" pill</h3>
+      <p>
+        When a workspace has both a configured remote AND any
+        private notes, the status bar surfaces a small pill that
+        reads <strong>N off-server</strong>. Hover it for the full
+        sentence — it's a quiet reassurance that yes, sync excludes
+        these notes by design. It only shows when there's something
+        to surface.
+      </p>
+    </section>
+
+    <!-- ═══ folders ═══ -->
+    <section id="folders" class="guide-section">
+      <h2>Folders</h2>
+      <p>
+        The sidebar's default view is time-based: today, yesterday,
+        this week, older. That works beautifully for journaling and
+        loose thinking, but a workspace that grows a few hundred
+        notes around distinct topics often benefits from
+        coarser-grained grouping. 2.1 adds <strong>optional
+        folders</strong> for that.
+      </p>
+      <p>
+        Right-click any note and pick <strong>Move to folder…</strong>
+        to drop it into a named group. Existing folders show up in
+        the picker; "Create new folder" inline mints a fresh one.
+        Foldered notes group at the top of the sidebar, alphabetically,
+        in collapsible sections; notes without a folder flow into
+        the time-based view exactly as before.
+      </p>
+      <p>
+        Folders are pure metadata — the file always stays at
+        <code>notes/&lt;slug&gt;.md</code>. There's no nested
+        directory structure on disk, no broken wikilinks if you
+        rename a folder, no special syntax. A workspace with no
+        folders renders identically to v2.0; a workspace with
+        folders is just one extra collapsible group at the top of
+        the sidebar.
+      </p>
+      <p class="callout">
+        Folder names are flat (no slashes) and capped at 64
+        characters. We deliberately don't support nesting — the
+        sidebar is for finding notes, not for filing them, and
+        every nested filesystem we've ever used has eventually
+        rotted into "where did I put that?"
+      </p>
+    </section>
+
+    <!-- ═══ languages ═══ -->
+    <section id="languages" class="guide-section">
+      <h2>Languages</h2>
+      <p>
+        Yarrow's interface is now available in three languages:
+      </p>
+      <ul class="bullet-list">
+        <li><strong>English</strong></li>
+        <li><strong>Español (Latinoamericano)</strong> — neutral usted-form, professional vocabulary, no Spain-specific phrasing</li>
+        <li><strong>Svenska</strong> — modern du-form, professional register</li>
+      </ul>
+      <p>
+        Switch from <strong>Settings → Appearance → Language</strong>,
+        or — if you haven't opened a workspace yet — from the small
+        language picker in the top-right of the welcome screen. Your
+        choice is saved on your machine and applies instantly across
+        every surface: toolbar, sidebars, all modals, status bar,
+        command palette, paths views.
+      </p>
+
+      <h3>What's not translated, on purpose</h3>
+      <p>
+        Yarrow translates <strong>chrome</strong> — the buttons,
+        labels, headings, and tooltips that wrap your writing. It
+        does <em>not</em> translate:
+      </p>
+      <ul class="bullet-list">
+        <li>Your notes' content. Your prose stays exactly as you wrote it.</li>
+        <li>Your tags and folder names — those are user-authored.</li>
+        <li>Templates and kits. Their bodies are starting points you'll edit anyway, so we ship the English source rather than a flat machine translation.</li>
+        <li>Brand names: Yarrow, Obsidian, Bear, Logseq, Notion, Markdown, GitHub.</li>
+        <li>Markdown syntax samples in help text (<code>[[wikilinks]]</code>, <code>??</code>, etc.).</li>
+      </ul>
+      <p>
+        The translation glossary keeps Yarrow's specific vocabulary
+        consistent across the whole UI. <em>Path</em> is "ruta" in
+        Spanish and "stig" in Swedish; <em>checkpoint</em> is "punto
+        de control" / "kontrollpunkt"; <em>bring together</em>
+        (Yarrow's word for merging two paths) is "unir" / "föra
+        samman" — every surface uses the same word, so the language
+        feels like one piece of writing rather than a patchwork.
+      </p>
+      <p class="callout">
+        If you're a fluent speaker who'd like to help refine a
+        translation — or contribute a new language — the translation
+        files live at <code>src/lib/i18n/strings/</code>; one file
+        per surface, English at the top of each as the source of
+        truth.
+      </p>
+    </section>
+
+    <!-- ═══ responsiveness ═══ -->
+    <section id="perf-2-1" class="guide-section">
+      <h2>Responsiveness</h2>
+      <p>
+        2.1 includes a substantial pass on Yarrow's rendering
+        pipeline. There's no new feature here — you should just
+        notice that scrolling, hover state changes, and modal opens
+        all feel a step or two smoother. The biggest deltas land on
+        Linux (where the browser engine had been doing more
+        per-frame work than necessary), but all three platforms see
+        a clean win.
+      </p>
+
+      <h3>What got faster</h3>
+      <ul class="bullet-list">
+        <li><strong>Scrolling.</strong> Long lists — the note list, Settings — now skip rendering off-screen rows entirely until they scroll into view, and run on the GPU instead of the CPU.</li>
+        <li><strong>Modal opens.</strong> Every modal Yarrow can open (Command Palette, Settings, Trash, History, Find &amp; replace, the paths views, all the kits and importers) is now prefetched in the background as soon as the app finishes loading. First-open is instant rather than the small pause that used to precede the first appearance.</li>
+        <li><strong>Hover state.</strong> Buttons, sidebar rows, and panel chrome no longer carry an inherited transition tail from a leftover global rule. Hover feels immediate.</li>
+        <li><strong>Theme toggle.</strong> Switching between light, dark, and ashrose still crossfades — but the crossfade is now scoped to a 260ms window during the actual switch instead of being permanently armed.</li>
+        <li><strong>Default settings stay flat.</strong> Yarrow's body element no longer carries a filter or a zoom layer when you're at neutral warmth and the default UI scale. Both only attach when you've actually moved them away from neutral.</li>
+      </ul>
+
+      <p class="callout">
+        <strong>Linux note.</strong> Yarrow uses your system's
+        webview (WebKit on Linux, WebKit on macOS, the Edge engine
+        on Windows). The Linux webview engine is genuinely slower
+        than the others for some operations regardless of how
+        carefully an app is written; 2.1 narrows the gap
+        considerably, but if you've installed Yarrow on an old
+        Linux laptop and it still feels heavy, the easiest single
+        improvement is making sure your system is using GPU
+        acceleration for graphics — most distros ship that on by
+        default but a fresh install on minimal hardware sometimes
+        doesn't.
       </p>
     </section>
 
@@ -2027,7 +2518,7 @@ def hello():
       <div class="cta-row">
         <a class="btn primary" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download 2.0
+          Download 2.1
         </a>
         <a class="btn ghost" href="index.html">
           ← Back to the home page

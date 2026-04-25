@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/tauri";
 import type { ConflictContent } from "../lib/types";
 import Modal from "./Modal";
+import { useT } from "../lib/i18n";
 
 interface Props {
   relpaths: string[];
@@ -24,6 +25,7 @@ export default function ConflictResolver({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmAbort, setConfirmAbort] = useState(false);
+  const t = useT();
 
   const cur = relpaths[idx];
 
@@ -65,53 +67,75 @@ export default function ConflictResolver({
   if (!cur || !conflict) {
     return (
       <div className="fixed inset-0 z-50 bg-bg flex items-center justify-center">
-        <div className="text-t2">Loading conflict…</div>
+        <div className="text-t2">{t("paths.conflict.loading")}</div>
       </div>
     );
   }
 
   const displayName = cur.replace(/^notes\//, "").replace(/\.md$/, "");
 
+  // Body line "You wrote different things about {name} on {currentPath} and
+  // {otherPath}…" — split on each marker so we can render each piece with
+  // its own styling. Keeps translators from having to ship raw HTML.
+  const bodyTpl = t("paths.conflict.body");
+  const bodyParts = splitWithMarkers(bodyTpl, ["{name}", "{currentPath}", "{otherPath}"]);
+
   return (
     <div className="fixed inset-0 z-50 bg-bg flex flex-col animate-fadeIn">
       <div className="px-6 py-4 border-b border-bd flex items-center">
         <div>
           <div className="font-serif text-2xl text-char">
-            Your thinking diverged here
+            {t("paths.conflict.heading")}
           </div>
           <div className="text-sm text-t2 mt-1">
-            You wrote different things about <span className="font-medium text-char">{displayName}</span> on
-            {" "}<span className="px-1.5 py-0.5 bg-yelp text-yeld rounded-sm text-xs">{currentPath}</span>
-            {" "}and{" "}<span className="px-1.5 py-0.5 bg-s3 text-ch2 rounded-sm text-xs">{otherPath}</span>.
-            Which version feels right now? Or combine them.
+            {bodyParts.map((p, i) => {
+              if (p === "{name}") {
+                return <span key={i} className="font-medium text-char">{displayName}</span>;
+              }
+              if (p === "{currentPath}") {
+                return (
+                  <span key={i} className="px-1.5 py-0.5 bg-yelp text-yeld rounded-sm text-xs">
+                    {currentPath}
+                  </span>
+                );
+              }
+              if (p === "{otherPath}") {
+                return (
+                  <span key={i} className="px-1.5 py-0.5 bg-s3 text-ch2 rounded-sm text-xs">
+                    {otherPath}
+                  </span>
+                );
+              }
+              return <span key={i}>{p}</span>;
+            })}
           </div>
         </div>
         <div className="ml-auto text-xs text-t3">
-          {idx + 1} of {relpaths.length}
+          {t("paths.conflict.progress", { idx: String(idx + 1), total: String(relpaths.length) })}
         </div>
       </div>
 
       <div className="flex-1 overflow-hidden flex">
         <Pane
-          title={`On ${currentPath}`}
-          subtitle="your current version"
-          content={conflict.ours ?? "(this path has no version)"}
+          title={t("paths.conflict.onPath", { name: currentPath })}
+          subtitle={t("paths.conflict.subtitleOurs")}
+          content={conflict.ours ?? t("paths.conflict.noVersion")}
           accentClass="border-yel/60"
           onAccept={() => setCombined(conflict.ours ?? "")}
-          acceptLabel="Use this one"
+          acceptLabel={t("paths.conflict.useThis")}
         />
         <Pane
-          title={`On ${otherPath}`}
-          subtitle="version being brought in"
-          content={conflict.theirs ?? "(this path has no version)"}
+          title={t("paths.conflict.onPath", { name: otherPath })}
+          subtitle={t("paths.conflict.subtitleTheirs")}
+          content={conflict.theirs ?? t("paths.conflict.noVersion")}
           accentClass="border-ch2/60"
           onAccept={() => setCombined(conflict.theirs ?? "")}
-          acceptLabel="Use this one"
+          acceptLabel={t("paths.conflict.useThis")}
         />
         <div className="flex-1 min-w-0 flex flex-col border-l border-bd bg-s1/60">
           <div className="px-4 py-2 border-b border-bd">
-            <div className="text-2xs uppercase tracking-wider text-t3">Combined version</div>
-            <div className="text-xs text-t2">This is what will be saved — edit freely.</div>
+            <div className="text-2xs uppercase tracking-wider text-t3">{t("paths.conflict.combinedHeading")}</div>
+            <div className="text-xs text-t2">{t("paths.conflict.combinedHelp")}</div>
           </div>
           <textarea
             value={combined}
@@ -130,7 +154,7 @@ export default function ConflictResolver({
           onClick={abort}
           className="text-xs text-t2 hover:text-char"
         >
-          Stop and go back
+          {t("paths.conflict.stop")}
         </button>
         <div className="ml-auto flex gap-2">
           <button
@@ -138,7 +162,7 @@ export default function ConflictResolver({
             onClick={accept}
             className="px-4 py-1.5 text-sm bg-yel text-on-yel rounded hover:bg-yel2 disabled:opacity-50"
           >
-            {idx === relpaths.length - 1 ? "Save — bring together" : "Save this one & continue"}
+            {idx === relpaths.length - 1 ? t("paths.conflict.acceptFinal") : t("paths.conflict.acceptNext")}
           </button>
         </div>
       </div>
@@ -146,29 +170,47 @@ export default function ConflictResolver({
       <Modal
         open={confirmAbort}
         onClose={() => setConfirmAbort(false)}
-        title="Stop bringing these paths together?"
+        title={t("paths.conflict.abortTitle")}
       >
         <p className="text-sm text-t2 mb-4 leading-relaxed">
-          Your in-progress changes for this merge will be rolled back. The
-          original contents on each path stay exactly as they were.
+          {t("paths.conflict.abortBody")}
         </p>
         <div className="flex justify-end gap-2">
           <button
             className="px-3 py-1.5 text-sm text-t2 hover:text-char"
             onClick={() => setConfirmAbort(false)}
           >
-            keep merging
+            {t("paths.conflict.abortKeep")}
           </button>
           <button
             className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90"
             onClick={confirmAbortNow}
           >
-            yes, stop
+            {t("paths.conflict.abortConfirm")}
           </button>
         </div>
       </Modal>
     </div>
   );
+}
+
+/// Split a template string on a list of literal markers, preserving the
+/// markers in the output so callers can render each segment differently
+/// (text vs styled span) without forcing raw HTML through translations.
+function splitWithMarkers(s: string, markers: string[]): string[] {
+  let parts: string[] = [s];
+  for (const m of markers) {
+    const next: string[] = [];
+    for (const p of parts) {
+      const segs = p.split(m);
+      for (let i = 0; i < segs.length; i++) {
+        if (i > 0) next.push(m);
+        next.push(segs[i]);
+      }
+    }
+    parts = next;
+  }
+  return parts.filter((p) => p !== "");
 }
 
 function Pane({

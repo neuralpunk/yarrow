@@ -3,6 +3,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/tauri";
 import type { WorkspaceMode } from "../lib/types";
 import { YarrowMark } from "./YarrowMark";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -23,35 +24,46 @@ type Origin =
   | { kind: "empty" }
   | { kind: "import"; source: ImportSource; vaultPath: string | null };
 
+/** Each import source has a brand-name label (always verbatim) plus a
+ *  pair of i18n keys for its tagline + pick-help copy. The `id` is used
+ *  to pick which backend importer to run; nothing else. */
 const IMPORT_SOURCES: Array<{
   id: ImportSource;
   label: string;
-  tagline: string;
-  pickHelp: string;
+  taglineKey:
+    | "wizard.import.obsidian.tagline"
+    | "wizard.import.bear.tagline"
+    | "wizard.import.logseq.tagline"
+    | "wizard.import.notion.tagline";
+  pickHelpKey:
+    | "wizard.import.obsidian.pickHelp"
+    | "wizard.import.bear.pickHelp"
+    | "wizard.import.logseq.pickHelp"
+    | "wizard.import.notion.pickHelp";
 }> = [
   {
     id: "obsidian",
     label: "Obsidian",
-    tagline: "a folder of .md files, often with a hidden .obsidian/ sibling",
-    pickHelp: "Pick the folder that IS your vault.",
+    taglineKey: "wizard.import.obsidian.tagline",
+    pickHelpKey: "wizard.import.obsidian.pickHelp",
   },
   {
     id: "bear",
     label: "Bear",
-    tagline: "an exported folder of .md files — no frontmatter, tags live inline",
-    pickHelp: "Pick the folder Bear's Markdown export created.",
+    taglineKey: "wizard.import.bear.tagline",
+    pickHelpKey: "wizard.import.bear.pickHelp",
   },
   {
     id: "logseq",
     label: "Logseq",
-    tagline: "a graph folder containing pages/ and journals/ subfolders",
-    pickHelp: "Pick the top-level graph folder (with pages/).",
+    taglineKey: "wizard.import.logseq.tagline",
+    pickHelpKey: "wizard.import.logseq.pickHelp",
   },
   {
     id: "notion",
     label: "Notion",
-    tagline: "the extracted Markdown & CSV export — Notion IDs get stripped",
-    pickHelp: "Pick the folder you extracted from Notion's export zip.",
+    taglineKey: "wizard.import.notion.tagline",
+    pickHelpKey: "wizard.import.notion.pickHelp",
   },
 ];
 
@@ -64,6 +76,7 @@ const DEFAULT_NAME = "My Yarrow";
  *  name it, choose where it lives, pick the mode, and (for mapped
  *  workspaces) name a starting note. */
 export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
+  const t = useT();
   const [step, setStep] = useState<Step>("shape");
   const [origin, setOrigin] = useState<Origin>({ kind: "empty" });
   const [name, setName] = useState(DEFAULT_NAME);
@@ -143,7 +156,7 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
 
   const goToDetails = () => {
     if (origin.kind === "import" && !origin.vaultPath) {
-      setError("Pick the source folder to continue.");
+      setError(t("wizard.error.pickSourceFolder"));
       return;
     }
     setError(null);
@@ -152,17 +165,17 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
 
   const create = async () => {
     setError(null);
-    if (!parent.trim()) { setError("Pick a location for the new workspace."); return; }
-    if (!name.trim()) { setError("Give the workspace a name."); return; }
+    if (!parent.trim()) { setError(t("wizard.error.pickLocation")); return; }
+    if (!name.trim()) { setError(t("wizard.error.giveName")); return; }
     if (mode === "mapped" && origin.kind === "empty" && !startingTitle.trim()) {
-      setError("Name the starting note — it's the seed of your map.");
+      setError(t("wizard.error.nameStartingNote"));
       return;
     }
     setBusy(true);
     try {
-      setProgress("Creating folder…");
+      setProgress(t("wizard.progress.creatingFolder"));
       const path = await api.createWorkspaceDir(parent.trim(), name.trim());
-      setProgress("Initializing workspace…");
+      setProgress(t("wizard.progress.initializing"));
       await api.initWorkspace(
         path,
         undefined,
@@ -176,7 +189,7 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
       );
       if (origin.kind === "import" && origin.vaultPath) {
         const sourceMeta = IMPORT_SOURCES.find((s) => s.id === origin.source)!;
-        setProgress(`Importing your ${sourceMeta.label} vault…`);
+        setProgress(t("wizard.progress.importing", { source: sourceMeta.label }));
         const report = await (origin.source === "obsidian"
           ? api.importObsidianVault(origin.vaultPath)
           : origin.source === "bear"
@@ -184,8 +197,16 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
             : origin.source === "logseq"
               ? api.importLogseqVault(origin.vaultPath)
               : api.importNotionVault(origin.vaultPath));
+        // Singular vs plural is locale-sensitive, so we ship two keys
+        // and pick the right one rather than splicing English "(s)"
+        // directly into translated copy.
         setProgress(
-          `Imported ${report.imported} note${report.imported === 1 ? "" : "s"} from ${sourceMeta.label}.`,
+          report.imported === 1
+            ? t("wizard.progress.importedOne", { source: sourceMeta.label })
+            : t("wizard.progress.importedMany", {
+                count: String(report.imported),
+                source: sourceMeta.label,
+              }),
         );
       }
       onReady(path);
@@ -199,7 +220,7 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+      className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center p-6"
       onClick={busy ? undefined : onClose}
     >
       <div
@@ -209,15 +230,20 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
         <div className="px-6 py-5 border-b border-bd flex items-center gap-3">
           <YarrowMark size={28} />
           <div>
-            <div className="font-serif text-2xl text-char leading-tight">Create a workspace</div>
+            <div className="font-serif text-2xl text-char leading-tight">
+              {t("wizard.title")}
+            </div>
             <div className="text-2xs text-t3 mt-0.5">
               {step === "shape"
-                ? "Start from scratch, or bring notes you already have."
-                : "Name it, place it, and choose how it should behave."}
+                ? t("wizard.subtitle.shape")
+                : t("wizard.subtitle.details")}
             </div>
           </div>
           <div className="ml-auto text-2xs text-t3 font-mono">
-            Step {step === "shape" ? "1" : "2"} of 2
+            {t("wizard.stepIndicator", {
+              current: step === "shape" ? "1" : "2",
+              total: "2",
+            })}
           </div>
         </div>
 
@@ -232,9 +258,11 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
                   : "border-bd hover:border-bd2 hover:bg-s1"
               }`}
             >
-              <div className="font-serif text-base text-char">Start with a blank notebook</div>
+              <div className="font-serif text-base text-char">
+                {t("wizard.shape.blank.title")}
+              </div>
               <div className="text-xs text-t2 mt-0.5">
-                A fresh workspace. You'll seed it with a starting note, then branch from there.
+                {t("wizard.shape.blank.body")}
               </div>
             </button>
 
@@ -246,16 +274,32 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
               }`}
             >
               <div className="flex items-baseline gap-2">
-                <div className="font-serif text-base text-char">Import from another app</div>
+                <div className="font-serif text-base text-char">
+                  {t("wizard.shape.import.title")}
+                </div>
                 <span className="text-[10px] font-mono uppercase tracking-wider text-t3">
                   {origin.kind === "import" && origin.vaultPath
-                    ? `${origin.source} folder selected`
-                    : "pick a source"}
+                    ? t("wizard.shape.import.statusFolderSelected", {
+                        source: origin.source,
+                      })
+                    : t("wizard.shape.import.statusPickSource")}
                 </span>
               </div>
               <div className="text-xs text-t2 mt-0.5">
-                Copy your notes in. <code>[[Wikilinks]]</code> and <code>#tags</code>{" "}
-                are preserved; per-app config folders are skipped.
+                {/* The body has two inline `<code>` chunks — `[[Wikilinks]]`
+                    and `#tags`. We split the translated string on its
+                    `{wikilinks}` / `{tags}` placeholders and stitch the
+                    code spans back in so translators don't have to ship
+                    raw HTML. */}
+                {splitWithMarkers(t("wizard.shape.import.body"), [
+                  "{wikilinks}",
+                  "{tags}",
+                ]).map((part, i) => {
+                  if (part === "{wikilinks}")
+                    return <code key={i}>[[Wikilinks]]</code>;
+                  if (part === "{tags}") return <code key={i}>#tags</code>;
+                  return <span key={i}>{part}</span>;
+                })}
               </div>
               <div className="mt-3 grid grid-cols-4 gap-2">
                 {IMPORT_SOURCES.map((s) => {
@@ -271,7 +315,7 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
                           ? "bg-char text-bg border-char"
                           : "bg-bg text-t2 border-bd hover:bg-s2 hover:text-char"
                       }`}
-                      title={s.tagline}
+                      title={t(s.taglineKey)}
                     >
                       {s.label}
                     </button>
@@ -281,10 +325,16 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
               {origin.kind === "import" && (
                 <div className="mt-3 rounded-md bg-bg border border-bd px-3 py-2.5 space-y-2">
                   <div className="text-2xs font-serif italic text-t3 leading-relaxed">
-                    {IMPORT_SOURCES.find((s) => s.id === origin.source)!.tagline}
+                    {t(
+                      IMPORT_SOURCES.find((s) => s.id === origin.source)!
+                        .taglineKey,
+                    )}
                   </div>
                   <div className="text-xs text-char leading-relaxed">
-                    {IMPORT_SOURCES.find((s) => s.id === origin.source)!.pickHelp}
+                    {t(
+                      IMPORT_SOURCES.find((s) => s.id === origin.source)!
+                        .pickHelpKey,
+                    )}
                   </div>
                   {origin.vaultPath && (
                     <div className="text-2xs text-t3 font-mono break-all bg-s1 rounded px-2 py-1">
@@ -297,11 +347,13 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
                       disabled={busy}
                       className="text-xs px-3 py-1.5 rounded bg-char text-bg hover:bg-yeld transition disabled:opacity-50"
                     >
-                      {origin.vaultPath ? "Pick a different folder…" : "Browse for folder…"}
+                      {origin.vaultPath
+                        ? t("wizard.shape.import.pickAnotherFolder")
+                        : t("wizard.shape.import.pickFolder")}
                     </button>
                     {origin.vaultPath && (
                       <span className="text-2xs text-t3 italic">
-                        folder selected — you can also re-pick
+                        {t("wizard.shape.import.folderSelectedHint")}
                       </span>
                     )}
                   </div>
@@ -310,8 +362,7 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
             </div>
 
             <div className="pt-2 text-2xs text-t3 leading-relaxed">
-              Already have plain markdown? It drops in fine — point Yarrow at that
-              folder after creating the workspace.
+              {t("wizard.shape.alreadyMarkdown")}
             </div>
 
             {error && <div className="text-xs text-danger mt-2">{error}</div>}
@@ -321,13 +372,13 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
                 onClick={onClose}
                 className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char"
               >
-                Cancel
+                {t("wizard.button.cancel")}
               </button>
               <button
                 onClick={goToDetails}
                 className="text-xs px-3 py-1.5 rounded bg-yel text-on-yel hover:bg-yel2"
               >
-                Next →
+                {t("wizard.button.next")}
               </button>
             </div>
           </div>
@@ -337,19 +388,19 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
           <div className="px-6 py-5 space-y-4">
             <div>
               <label className="text-2xs uppercase tracking-wider text-t3 font-mono">
-                Workspace name
+                {t("wizard.details.nameLabel")}
               </label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Garden plan, Research, Personal"
+                placeholder={t("wizard.details.namePlaceholder")}
                 className="mt-1 w-full px-3 py-2 bg-s1 border border-bd rounded text-sm text-char outline-none focus:border-yel"
               />
             </div>
 
             <div>
               <label className="text-2xs uppercase tracking-wider text-t3 font-mono">
-                Where it lives
+                {t("wizard.details.locationLabel")}
               </label>
               <div className="mt-1 flex gap-2">
                 <input
@@ -361,19 +412,20 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
                   onClick={pickParentFolder}
                   className="px-3 py-2 bg-s2 hover:bg-s3 text-char text-xs rounded border border-bd"
                 >
-                  Browse…
+                  {t("wizard.details.locationBrowse")}
                 </button>
               </div>
               {previewPath && (
                 <div className="text-2xs text-t3 font-mono mt-1.5 break-all">
-                  Will create: <span className="text-char">{previewPath}</span>
+                  {t("wizard.details.willCreate")}{" "}
+                  <span className="text-char">{previewPath}</span>
                 </div>
               )}
             </div>
 
             <div>
               <label className="text-2xs uppercase tracking-wider text-t3 font-mono">
-                How will you use it?
+                {t("wizard.details.modeLabel")}
               </label>
               <div className="mt-1 grid grid-cols-2 gap-2">
                 <button
@@ -382,9 +434,11 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
                     mode === "mapped" ? "border-yel bg-yelp/40" : "border-bd hover:bg-s1"
                   }`}
                 >
-                  <div className="text-sm font-serif text-char">Branch path mapping</div>
+                  <div className="text-sm font-serif text-char">
+                    {t("wizard.details.mode.mapped.title")}
+                  </div>
                   <div className="text-2xs text-t2 mt-0.5">
-                    Notes connect, paths fork, your map grows.
+                    {t("wizard.details.mode.mapped.body")}
                   </div>
                 </button>
                 <button
@@ -393,9 +447,11 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
                     mode === "basic" ? "border-yel bg-yelp/40" : "border-bd hover:bg-s1"
                   }`}
                 >
-                  <div className="text-sm font-serif text-char">Basic notes</div>
+                  <div className="text-sm font-serif text-char">
+                    {t("wizard.details.mode.basic.title")}
+                  </div>
                   <div className="text-2xs text-t2 mt-0.5">
-                    Plain markdown jotter. No paths, no graph.
+                    {t("wizard.details.mode.basic.body")}
                   </div>
                 </button>
               </div>
@@ -404,12 +460,12 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
             {mode === "mapped" && origin.kind === "empty" && (
               <div>
                 <label className="text-2xs uppercase tracking-wider text-t3 font-mono">
-                  Starting note
+                  {t("wizard.details.startingNoteLabel")}
                 </label>
                 <input
                   value={startingTitle}
                   onChange={(e) => setStartingTitle(e.target.value)}
-                  placeholder="The first note everything else will branch from"
+                  placeholder={t("wizard.details.startingNotePlaceholder")}
                   className="mt-1 w-full px-3 py-2 bg-s1 border border-bd rounded text-sm font-serif text-char outline-none focus:border-yel"
                 />
               </div>
@@ -417,13 +473,36 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
 
             {origin.kind === "import" && (
               <div className="text-2xs text-t2 bg-yelp/30 border border-yel/30 rounded px-3 py-2">
-                Importing from{" "}
-                <span className="font-serif italic text-char">
-                  {IMPORT_SOURCES.find((s) => s.id === origin.source)!.label}
-                </span>
-                :{" "}
-                <span className="font-mono break-all">{origin.vaultPath}</span>.
-                A single checkpoint will record the import so you can roll back if it doesn't look right.
+                {/* Banner copy embeds the brand-name source and the
+                    monospaced vault path — both styled inline. We split
+                    on `{source}` / `{path}` markers and re-style each
+                    fragment. */}
+                {splitWithMarkers(t("wizard.details.importBanner"), [
+                  "{source}",
+                  "{path}",
+                ]).map((part, i) => {
+                  if (part === "{source}") {
+                    return (
+                      <span
+                        key={i}
+                        className="font-serif italic text-char"
+                      >
+                        {
+                          IMPORT_SOURCES.find((s) => s.id === origin.source)!
+                            .label
+                        }
+                      </span>
+                    );
+                  }
+                  if (part === "{path}") {
+                    return (
+                      <span key={i} className="font-mono break-all">
+                        {origin.vaultPath}
+                      </span>
+                    );
+                  }
+                  return <span key={i}>{part}</span>;
+                })}
               </div>
             )}
 
@@ -438,7 +517,7 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
                 disabled={busy}
                 className="text-xs text-t3 hover:text-char"
               >
-                ← Back
+                {t("wizard.button.back")}
               </button>
               <div className="flex gap-2">
                 <button
@@ -446,14 +525,16 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
                   disabled={busy}
                   className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char disabled:opacity-50"
                 >
-                  Cancel
+                  {t("wizard.button.cancel")}
                 </button>
                 <button
                   onClick={create}
                   disabled={busy}
                   className="text-xs px-3 py-1.5 rounded bg-yel text-on-yel hover:bg-yel2 disabled:opacity-50"
                 >
-                  {busy ? "Creating…" : "Create workspace"}
+                  {busy
+                    ? t("wizard.button.creating")
+                    : t("wizard.button.create")}
                 </button>
               </div>
             </div>
@@ -462,4 +543,25 @@ export default function NewWorkspaceWizard({ open, onClose, onReady }: Props) {
       </div>
     </div>
   );
+}
+
+/** Split a template string on a list of literal markers, preserving
+ *  the markers themselves in the output so callers can render each
+ *  piece (text vs marker) however they like. Mirrors the helper in
+ *  `Onboarding.tsx` — kept local to avoid a cross-component import
+ *  for one small utility. */
+function splitWithMarkers(s: string, markers: string[]): string[] {
+  let parts: string[] = [s];
+  for (const m of markers) {
+    const next: string[] = [];
+    for (const p of parts) {
+      const segs = p.split(m);
+      for (let i = 0; i < segs.length; i++) {
+        if (i > 0) next.push(m);
+        next.push(segs[i]);
+      }
+    }
+    parts = next;
+  }
+  return parts.filter((p) => p !== "");
 }

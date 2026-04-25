@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { Graph } from "../lib/types";
+import EmptyState from "./EmptyState";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -100,9 +102,13 @@ function buildTagModel(graph: Graph | null): {
 }
 
 export default function TagGraph({ open, onClose, graph, onPickTag }: Props) {
+  const t = useT();
   const svgRef = useRef<SVGSVGElement>(null);
   const recenterRef = useRef<(() => void) | null>(null);
   const [hovered, setHovered] = useState<TagNode | null>(null);
+  // Theme tick — bumped when the theme class flips so the SVG repaints
+  // with current CSS-variable colors instead of the stale snapshot.
+  const [themeTick, setThemeTick] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -112,6 +118,23 @@ export default function TagGraph({ open, onClose, graph, onPickTag }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.attributeName === "class" || m.attributeName === "data-theme") {
+          setThemeTick((t) => t + 1);
+          return;
+        }
+      }
+    });
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-theme"],
+    });
+    return () => obs.disconnect();
+  }, [open]);
 
   const { nodes, links } = useMemo(() => buildTagModel(graph), [graph]);
 
@@ -256,7 +279,7 @@ export default function TagGraph({ open, onClose, graph, onPickTag }: Props) {
     return () => {
       sim.stop();
     };
-  }, [open, nodes, links, onPickTag]);
+  }, [open, nodes, links, onPickTag, themeTick]);
 
   if (!open) return null;
 
@@ -265,7 +288,7 @@ export default function TagGraph({ open, onClose, graph, onPickTag }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+      className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center p-6"
       onClick={onClose}
     >
       <div
@@ -274,11 +297,20 @@ export default function TagGraph({ open, onClose, graph, onPickTag }: Props) {
       >
         <div className="flex items-baseline justify-between px-6 pt-5 pb-3 border-b border-bd">
           <div>
-            <h2 className="font-serif text-2xl text-char">Tag graph</h2>
+            <h2 className="font-serif text-2xl text-char">{t("sidebar.tagGraph.title")}</h2>
             <p className="font-serif italic text-xs text-t3 mt-0.5">
               {totalTags > 0
-                ? `${totalTags} tag${totalTags === 1 ? "" : "s"} · ${totalLinks} co-occurrence${totalLinks === 1 ? "" : "s"} — click a tag to filter the note list`
-                : "no tags yet"}
+                ? t(
+                    totalTags === 1 && totalLinks === 1
+                      ? "sidebar.tagGraph.metaOne"
+                      : totalTags === 1
+                        ? "sidebar.tagGraph.metaTagsOne"
+                        : totalLinks === 1
+                          ? "sidebar.tagGraph.metaLinksOne"
+                          : "sidebar.tagGraph.metaMany",
+                    { tags: String(totalTags), links: String(totalLinks) },
+                  )
+                : t("sidebar.tagGraph.empty")}
             </p>
           </div>
           <div className="flex items-center gap-1 text-xs">
@@ -286,7 +318,7 @@ export default function TagGraph({ open, onClose, graph, onPickTag }: Props) {
               onClick={() => recenterRef.current?.()}
               className="px-2.5 py-1 rounded-md text-t2 hover:bg-s2 hover:text-char transition"
             >
-              Recenter
+              {t("sidebar.tagGraph.recenter")}
             </button>
           </div>
         </div>
@@ -294,19 +326,11 @@ export default function TagGraph({ open, onClose, graph, onPickTag }: Props) {
         <div className="flex-1 relative">
           {totalTags === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center max-w-[320px] px-6">
-                <div className="mx-auto mb-3 w-10 h-10 rounded-full border border-dashed border-bd2 flex items-center justify-center text-t3">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M20 12l-8 8L4 12l8-8z" />
-                  </svg>
-                </div>
-                <div className="text-sm text-t2 leading-relaxed">
-                  Tag a few notes to see how ideas cluster.
-                </div>
-                <div className="text-2xs text-t3 mt-1 leading-relaxed">
-                  Use the chip row under a note's title — tags that show up on the same notes will draw themselves together here.
-                </div>
-              </div>
+              <EmptyState
+                kind="tags"
+                hint={t("sidebar.tagGraph.emptyHint")}
+                size="roomy"
+              />
             </div>
           ) : (
             <>
@@ -315,7 +339,12 @@ export default function TagGraph({ open, onClose, graph, onPickTag }: Props) {
                 <div className="absolute top-3 left-3 bg-char text-bg text-2xs px-2.5 py-1.5 rounded-md shadow-lg pointer-events-none">
                   <div className="font-serif italic text-sm">#{hovered.tag}</div>
                   <div className="font-mono text-[10px] opacity-80">
-                    on {hovered.count} {hovered.count === 1 ? "note" : "notes"}
+                    {t(
+                      hovered.count === 1
+                        ? "sidebar.tagGraph.hoverNotesOne"
+                        : "sidebar.tagGraph.hoverNotesMany",
+                      { count: String(hovered.count) },
+                    )}
                   </div>
                 </div>
               )}
@@ -325,13 +354,13 @@ export default function TagGraph({ open, onClose, graph, onPickTag }: Props) {
 
         <div className="px-6 py-3 border-t border-bd flex items-center justify-between">
           <span className="font-serif italic text-2xs text-t3">
-            Drag a tag to reposition · scroll to zoom · Esc to close
+            {t("sidebar.tagGraph.footerHint")}
           </span>
           <button
             onClick={onClose}
             className="px-3 py-1.5 text-xs rounded-md text-t2 hover:bg-s2 hover:text-char transition"
           >
-            Close
+            {t("sidebar.tagGraph.close")}
           </button>
         </div>
       </div>

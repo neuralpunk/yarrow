@@ -5,7 +5,18 @@ const EVT = "yarrow:showRawMarkdown-changed";
 
 // ───────────────── editor font family ─────────────────
 
-export type EditorFontId = "newsreader" | "source-serif" | "lora" | "inter" | "plex-sans";
+// 2.1 revised: the editor defaults to Newsreader — a screen-first
+// editorial serif that stays legible at 17px on webkit2gtk, where
+// Fraunces's high-contrast display cut was rendering as spidery and
+// unreadable. Fraunces survives as an opt-in choice for users who
+// want its display personality; the default is quiet and workable.
+export type EditorFontId =
+  | "newsreader"
+  | "source-serif"
+  | "lora"
+  | "fraunces"
+  | "inter-tight"
+  | "georgia";
 
 export interface EditorFontChoice {
   id: EditorFontId;
@@ -23,18 +34,20 @@ export const EDITOR_FONTS: EditorFontChoice[] = [
     id: "newsreader",
     label: "Newsreader",
     kind: "serif",
-    // `opsz` axis is on — browsers fetch the large-optical-size master at
-    // editor body sizes, keeping the open letterforms Newsreader is known
-    // for instead of the squatter small-text cut.
+    // Default. Production Type's screen-first editorial face. Variable
+    // opsz 6..72 — we pin to 14 for body size in index.css. Warmer and
+    // more robust than Fraunces at 17px; stays crisp on Linux/webkit2gtk.
     stack: "'Newsreader', ui-serif, Georgia, serif",
-    lineHeight: 1.68,
+    lineHeight: 1.66,
     sample: "Generous reading rhythm — the default.",
   },
   {
     id: "source-serif",
     label: "Source Serif 4",
     kind: "serif",
-    stack: "'Source Serif 4', ui-serif, Georgia, serif",
+    // Adobe's editorial workhorse. Variable opsz 8..60. Slightly more
+    // contemporary than Newsreader, beautiful italics.
+    stack: "'Source Serif 4', 'Newsreader', ui-serif, Georgia, serif",
     lineHeight: 1.65,
     sample: "A thinking tool for long-form prose.",
   },
@@ -42,25 +55,40 @@ export const EDITOR_FONTS: EditorFontChoice[] = [
     id: "lora",
     label: "Lora",
     kind: "serif",
-    stack: "'Lora', ui-serif, Georgia, serif",
+    // Warm, book-like, very popular for reading-focused interfaces.
+    // No opsz axis, just weight. Renders well at any size.
+    stack: "'Lora', 'Newsreader', ui-serif, Georgia, serif",
     lineHeight: 1.7,
     sample: "Warm contemporary book face with hand-drawn italics.",
   },
   {
-    id: "inter",
-    label: "Inter",
+    id: "fraunces",
+    label: "Fraunces",
+    kind: "serif",
+    // High-personality display serif. Beautiful at large sizes; body
+    // use is opt-in because its display cut reads as spidery on some
+    // screens. The editor's opsz pin keeps it from the worst behaviour.
+    stack: "'Fraunces', ui-serif, Georgia, serif",
+    lineHeight: 1.66,
+    sample: "Characterful — same family as the wordmark.",
+  },
+  {
+    id: "inter-tight",
+    label: "Inter Tight",
     kind: "sans",
-    stack: "Inter, ui-sans-serif, system-ui, sans-serif",
+    // For users who prefer sans prose. Chrome already ships this.
+    stack: "'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif",
     lineHeight: 1.6,
     sample: "Neutral, legible, no distractions.",
   },
   {
-    id: "plex-sans",
-    label: "IBM Plex Sans",
-    kind: "sans",
-    stack: "'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif",
-    lineHeight: 1.6,
-    sample: "Grotesque with just enough personality.",
+    id: "georgia",
+    label: "Georgia",
+    kind: "serif",
+    // Offline fallback. Works with no network; honest on every display.
+    stack: "Georgia, ui-serif, 'Newsreader', serif",
+    lineHeight: 1.62,
+    sample: "A classic — available everywhere, no download.",
   },
 ];
 

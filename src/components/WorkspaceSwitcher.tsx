@@ -4,6 +4,7 @@ import { api } from "../lib/tauri";
 import type { RecentWorkspace } from "../lib/types";
 import { PlusIcon, XIcon } from "../lib/icons";
 import { workspaceAccent } from "../lib/workspaceAccent";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -28,6 +29,7 @@ export default function WorkspaceSwitcher({
   const [err, setErr] = useState<string | null>(null);
   const [cursor, setCursor] = useState(0);
   const popRef = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!open) return;
@@ -105,7 +107,7 @@ export default function WorkspaceSwitcher({
   const handleBrowseOpen = async () => {
     setErr(null);
     try {
-      const selected = await openDialog({ directory: true, multiple: false, title: "Open a Yarrow workspace" });
+      const selected = await openDialog({ directory: true, multiple: false, title: t("modals.workspaceSwitcher.openTitle") });
       if (!selected || Array.isArray(selected)) return;
       if (selected === currentPath) {
         onClose();
@@ -125,7 +127,7 @@ export default function WorkspaceSwitcher({
   const handleCreateNew = async () => {
     setErr(null);
     try {
-      const selected = await openDialog({ directory: true, multiple: false, title: "Pick a folder for the new workspace" });
+      const selected = await openDialog({ directory: true, multiple: false, title: t("modals.workspaceSwitcher.pickFolderTitle") });
       if (!selected || Array.isArray(selected)) return;
       setBusy(true);
       await api.initWorkspace(selected);
@@ -151,7 +153,7 @@ export default function WorkspaceSwitcher({
       ref={popRef}
       className="absolute left-3 right-3 top-[calc(100%+6px)] z-40 bg-bg border border-bd2 rounded-lg shadow-xl overflow-hidden animate-slideUp"
       role="dialog"
-      aria-label="Workspace switcher"
+      aria-label={t("modals.workspaceSwitcher.dialogLabel")}
     >
       {/* The sidebar chip directly above this popover already shows the
           active workspace — repeating it here invited mis-clicks (the row
@@ -162,7 +164,7 @@ export default function WorkspaceSwitcher({
       {selectable.length > 0 && (
         <div className="py-1 max-h-[240px] overflow-y-auto">
           <div className="px-3 pt-1.5 pb-1 text-2xs uppercase tracking-wider text-t3 font-semibold">
-            Jump to
+            {t("modals.workspaceSwitcher.jumpTo")}
           </div>
           <ul>
             {selectable.map((r, i) => {
@@ -190,8 +192,8 @@ export default function WorkspaceSwitcher({
                     <button
                       onClick={(e) => handleForget(e, r.path)}
                       className="opacity-0 group-hover:opacity-100 text-t3 hover:text-danger transition shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-s3"
-                      title="Remove from recents"
-                      aria-label="Remove from recents"
+                      title={t("modals.workspaceSwitcher.removeFromRecents")}
+                      aria-label={t("modals.workspaceSwitcher.removeFromRecents")}
                     >
                       <XIcon size={11} />
                     </button>
@@ -205,7 +207,7 @@ export default function WorkspaceSwitcher({
 
       {selectable.length === 0 && (
         <div className="px-3 py-4 text-xs text-t3 italic text-center">
-          No other workspaces yet.
+          {t("modals.workspaceSwitcher.empty")}
         </div>
       )}
 
@@ -220,8 +222,8 @@ export default function WorkspaceSwitcher({
             <PlusIcon size={12} strokeWidth={2.2} />
           </span>
           <div className="flex-1 min-w-0">
-            <div className="leading-tight">New workspace</div>
-            <div className="text-2xs text-t3 leading-tight">pick an empty folder</div>
+            <div className="leading-tight">{t("modals.workspaceSwitcher.newWorkspace")}</div>
+            <div className="text-2xs text-t3 leading-tight">{t("modals.workspaceSwitcher.newWorkspaceSub")}</div>
           </div>
         </button>
         <button
@@ -233,8 +235,8 @@ export default function WorkspaceSwitcher({
             <FolderIcon />
           </span>
           <div className="flex-1 min-w-0">
-            <div className="leading-tight">Open another folder…</div>
-            <div className="text-2xs text-t3 leading-tight">locate a workspace that isn't listed</div>
+            <div className="leading-tight">{t("modals.workspaceSwitcher.openAnother")}</div>
+            <div className="text-2xs text-t3 leading-tight">{t("modals.workspaceSwitcher.openAnotherSub")}</div>
           </div>
         </button>
       </div>

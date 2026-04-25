@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Modal from "./Modal";
 import { api } from "../lib/tauri";
+import { useT, type StringKey } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -13,15 +14,15 @@ interface Props {
  *  already know about. Kept in this file for quick edits — no external
  *  source of truth to drift from. */
 const TYPES = [
-  { key: "note",     label: "Note",     desc: "General observation or reminder" },
-  { key: "info",     label: "Info",     desc: "Context the reader should know" },
-  { key: "tip",      label: "Tip",      desc: "A helpful nudge or shortcut" },
-  { key: "question", label: "Question", desc: "Something you're still figuring out" },
-  { key: "decision", label: "Decision", desc: "A choice you're committing to" },
-  { key: "warning",  label: "Warning",  desc: "A soft caution worth flagging" },
-  { key: "danger",   label: "Danger",   desc: "A hard stop — read before acting" },
-  { key: "quote",    label: "Quote",    desc: "Something worth quoting verbatim" },
-] as const;
+  { key: "note",     labelKey: "modals.callout.typeNote",     descKey: "modals.callout.typeNoteDesc" },
+  { key: "info",     labelKey: "modals.callout.typeInfo",     descKey: "modals.callout.typeInfoDesc" },
+  { key: "tip",      labelKey: "modals.callout.typeTip",      descKey: "modals.callout.typeTipDesc" },
+  { key: "question", labelKey: "modals.callout.typeQuestion", descKey: "modals.callout.typeQuestionDesc" },
+  { key: "decision", labelKey: "modals.callout.typeDecision", descKey: "modals.callout.typeDecisionDesc" },
+  { key: "warning",  labelKey: "modals.callout.typeWarning",  descKey: "modals.callout.typeWarningDesc" },
+  { key: "danger",   labelKey: "modals.callout.typeDanger",   descKey: "modals.callout.typeDangerDesc" },
+  { key: "quote",    labelKey: "modals.callout.typeQuote",    descKey: "modals.callout.typeQuoteDesc" },
+] as const satisfies ReadonlyArray<{ key: string; labelKey: StringKey; descKey: StringKey }>;
 
 type CalloutKey = typeof TYPES[number]["key"];
 
@@ -31,6 +32,7 @@ export default function CalloutInsertModal({ open, onClose, onInsert }: Props) {
   const [body, setBody] = useState<string>("");
   const [previewHtml, setPreviewHtml] = useState<string>("");
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!open) return;
@@ -57,10 +59,10 @@ export default function CalloutInsertModal({ open, onClose, onInsert }: Props) {
     const h = window.setTimeout(() => {
       api.renderMarkdownHtml(markdown)
         .then(setPreviewHtml)
-        .catch(() => setPreviewHtml("<p style='color:var(--danger)'>preview failed</p>"));
+        .catch(() => setPreviewHtml(`<p style='color:var(--danger)'>${t("modals.callout.previewFailed")}</p>`));
     }, 160);
     return () => window.clearTimeout(h);
-  }, [markdown, open]);
+  }, [markdown, open, t]);
 
   const commit = () => {
     onInsert(markdown);
@@ -77,25 +79,25 @@ export default function CalloutInsertModal({ open, onClose, onInsert }: Props) {
   return (
     <Modal open={open} onClose={onClose} width="w-[780px]">
       <div className="flex items-baseline justify-between mb-4">
-        <h2 className="font-serif text-xl text-char">Insert callout</h2>
+        <h2 className="font-serif text-xl text-char">{t("modals.callout.title")}</h2>
         <span className="font-serif italic text-2xs text-t3">
-          ⌘↵ to insert · esc to cancel
+          {t("modals.callout.shortcutHint")}
         </span>
       </div>
 
       <div onKeyDown={onAnyKeyDown}>
         {/* type picker */}
         <div className="mb-4">
-          <div className="font-serif italic text-2xs text-t3 mb-2">Type</div>
+          <div className="font-serif italic text-2xs text-t3 mb-2">{t("modals.callout.typeLabel")}</div>
           <div className="grid grid-cols-4 gap-2">
-            {TYPES.map((t) => {
-              const active = t.key === type;
+            {TYPES.map((ty) => {
+              const active = ty.key === type;
               return (
                 <button
-                  key={t.key}
+                  key={ty.key}
                   type="button"
-                  onClick={() => { setType(t.key); bodyRef.current?.focus(); }}
-                  title={t.desc}
+                  onClick={() => { setType(ty.key); bodyRef.current?.focus(); }}
+                  title={t(ty.descKey)}
                   className={`px-3 py-2 rounded-md border text-left transition flex items-center gap-2 ${
                     active
                       ? "bg-yelp border-yel text-char"
@@ -104,12 +106,12 @@ export default function CalloutInsertModal({ open, onClose, onInsert }: Props) {
                 >
                   <span
                     className="yarrow-callout-icon-chip"
-                    data-kind={t.key}
+                    data-kind={ty.key}
                     aria-hidden="true"
                   />
                   <span className="flex-1 min-w-0">
-                    <span className="font-serif italic text-sm block">{t.label}</span>
-                    <span className="font-mono text-2xs text-t3 block truncate">{t.key}</span>
+                    <span className="font-serif italic text-sm block">{t(ty.labelKey)}</span>
+                    <span className="font-mono text-2xs text-t3 block truncate">{ty.key}</span>
                   </span>
                 </button>
               );
@@ -120,7 +122,7 @@ export default function CalloutInsertModal({ open, onClose, onInsert }: Props) {
         {/* title + body inputs */}
         <div className="mb-4 space-y-3">
           <div>
-            <label className="font-serif italic text-2xs text-t3 block mb-1">Title (optional)</label>
+            <label className="font-serif italic text-2xs text-t3 block mb-1">{t("modals.callout.titleField")}</label>
             <input
               id="yarrow-callout-title-input"
               value={title}
@@ -130,12 +132,12 @@ export default function CalloutInsertModal({ open, onClose, onInsert }: Props) {
             />
           </div>
           <div>
-            <label className="font-serif italic text-2xs text-t3 block mb-1">Body</label>
+            <label className="font-serif italic text-2xs text-t3 block mb-1">{t("modals.callout.bodyField")}</label>
             <textarea
               ref={bodyRef}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="What do you want to say? Markdown is fine — **bold**, [[wikilinks]], and lists all work."
+              placeholder={t("modals.callout.bodyPlaceholder")}
               rows={4}
               className="w-full px-3 py-2 bg-s1 border border-bd rounded text-char text-sm placeholder:text-t3 focus:outline-none focus:border-yel resize-y"
             />
@@ -144,11 +146,11 @@ export default function CalloutInsertModal({ open, onClose, onInsert }: Props) {
 
         {/* live preview */}
         <div className="mb-4">
-          <div className="font-serif italic text-2xs text-t3 mb-2">Preview</div>
+          <div className="font-serif italic text-2xs text-t3 mb-2">{t("modals.callout.previewLabel")}</div>
           <div className="bg-bg border border-bd rounded-md p-4 max-h-[220px] overflow-y-auto">
             <div
               className="yarrow-reading"
-              dangerouslySetInnerHTML={{ __html: previewHtml || fallbackPreview() }}
+              dangerouslySetInnerHTML={{ __html: previewHtml || `<p style="color: var(--t3); font-style: italic;">${t("modals.callout.startTyping")}</p>` }}
             />
           </div>
         </div>
@@ -156,7 +158,7 @@ export default function CalloutInsertModal({ open, onClose, onInsert }: Props) {
         {/* raw markdown peek */}
         <details className="mb-4">
           <summary className="font-serif italic text-2xs text-t3 cursor-pointer hover:text-t2 select-none">
-            Show raw markdown
+            {t("modals.callout.showRaw")}
           </summary>
           <pre className="mt-2 font-mono text-[11px] text-t2 bg-s1 border border-bd rounded-md p-3 overflow-x-auto whitespace-pre">
             {markdown.trim()}
@@ -168,13 +170,13 @@ export default function CalloutInsertModal({ open, onClose, onInsert }: Props) {
             onClick={onClose}
             className="px-3 py-1.5 text-xs text-t2 hover:text-char transition"
           >
-            Cancel
+            {t("modals.callout.cancel")}
           </button>
           <button
             onClick={commit}
             className="px-3 py-1.5 text-xs rounded-md bg-char text-bg hover:bg-yeld transition"
           >
-            Insert
+            {t("modals.callout.insert")}
           </button>
         </div>
       </div>
@@ -201,6 +203,3 @@ function defaultTitleFor(type: CalloutKey): string {
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
-function fallbackPreview(): string {
-  return '<p style="color: var(--t3); font-style: italic;">Start typing to see the preview.</p>';
-}

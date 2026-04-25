@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   currentPath: string;
@@ -13,18 +14,25 @@ interface Props {
 export default function PathsEmptyState({ currentPath, onCreate }: Props) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const t = useT();
 
   useEffect(() => {
-    const t = window.setTimeout(() => inputRef.current?.focus(), 120);
-    return () => window.clearTimeout(t);
+    const tid = window.setTimeout(() => inputRef.current?.focus(), 120);
+    return () => window.clearTimeout(tid);
   }, []);
 
   const submit = () => {
-    const t = value.trim();
-    if (!t) return;
-    onCreate(t);
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onCreate(trimmed);
     setValue("");
   };
+
+  // Render the {name} placeholder as a styled span without forcing
+  // translators to ship raw HTML — split the localized template on the
+  // literal marker and stitch the path-name span back in between.
+  const safeTemplate = t("paths.empty.safe");
+  const [safeBefore, safeAfter] = safeTemplate.split("{name}");
 
   return (
     <div className="h-full w-full overflow-y-auto flex items-center justify-center p-10">
@@ -54,7 +62,7 @@ export default function PathsEmptyState({ currentPath, onCreate }: Props) {
             className="mono"
             style={{ fontSize: 9, fill: "var(--t3)", letterSpacing: "0.2em" }}
           >
-            STARTED
+            {t("paths.empty.started")}
           </text>
           <text
             x="380"
@@ -73,17 +81,15 @@ export default function PathsEmptyState({ currentPath, onCreate }: Props) {
             className="mono"
             style={{ fontSize: 9, fill: "var(--t3)", letterSpacing: "0.2em" }}
           >
-            TODAY
+            {t("paths.empty.today")}
           </text>
         </svg>
 
         <div className="font-serif text-[30px] text-char leading-tight mb-2">
-          Your map is a single road right now.
+          {t("paths.empty.heading")}
         </div>
         <p className="text-sm text-t2 leading-relaxed mb-6">
-          A path is a parallel version of your thinking — what you'd write
-          <em> if </em>something were different. What's the first one you want
-          to try on?
+          {t("paths.empty.body")}
         </p>
 
         <textarea
@@ -97,15 +103,15 @@ export default function PathsEmptyState({ currentPath, onCreate }: Props) {
             }
           }}
           rows={2}
-          placeholder="If the Seattle job comes through…"
+          placeholder={t("paths.condition.placeholder")}
           className="w-full px-4 py-3 bg-bg-soft border border-bd rounded-md text-char text-base font-serif italic placeholder:not-italic placeholder:text-t3/70 resize-none text-center"
         />
         <div className="mt-2 flex flex-wrap gap-1.5 justify-center">
           {[
-            "If it rains on the day",
-            "If the project is denied",
-            "If I quit to write",
-            "If we stay put",
+            t("paths.empty.preset1"),
+            t("paths.empty.preset2"),
+            t("paths.empty.preset3"),
+            t("paths.empty.preset4"),
           ].map((s) => (
             <button
               key={s}
@@ -126,12 +132,13 @@ export default function PathsEmptyState({ currentPath, onCreate }: Props) {
             disabled={!value.trim()}
             className="btn-yel px-4 py-2 text-sm rounded-md disabled:opacity-40"
           >
-            Start this path
+            {t("paths.empty.start")}
           </button>
         </div>
         <div className="mt-3 text-2xs text-t3">
-          The version you have now stays safely on{" "}
-          <span className="text-t2">{currentPath}</span>.
+          {safeBefore}
+          <span className="text-t2">{currentPath}</span>
+          {safeAfter ?? ""}
         </div>
       </div>
     </div>

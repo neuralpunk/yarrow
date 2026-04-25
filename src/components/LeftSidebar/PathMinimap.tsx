@@ -2,6 +2,8 @@ import { memo, useMemo } from "react";
 import type { PathCollection, PathCollectionsView } from "../../lib/types";
 import { HelpIcon, NewDirectionIcon } from "../../lib/icons";
 import { buildPathColorMap, colorForPath } from "../../lib/pathAwareness";
+import { useT } from "../../lib/i18n";
+import { SK } from "../../lib/platform";
 
 interface Props {
   view: PathCollectionsView | null;
@@ -15,6 +17,7 @@ interface Props {
  * Clicking the canvas opens the full view; the minimap is just orientation.
  */
 function PathMinimapInner({ view, onOpen, onNewPath }: Props) {
+  const t = useT();
   const { flat, maxDepth, rootName } = useMemo(() => {
     if (!view) return { flat: [] as any[], maxDepth: 0, rootName: "main" };
     const rootName = view.root;
@@ -82,11 +85,11 @@ function PathMinimapInner({ view, onOpen, onNewPath }: Props) {
     <div className="mt-5 pt-5 pb-2 border-t border-bd/20">
       <div className="flex items-center justify-between px-4 mb-2">
         <div className="text-2xs uppercase tracking-wider text-t3 font-semibold">
-          Your Paths
+          {t("sidebar.paths.title")}
         </div>
         <span
           className="y-tip text-t3 inline-flex"
-          data-tip="Click the graph to open the full view."
+          data-tip={t("sidebar.paths.helpTip")}
           data-tip-align="right"
         >
           <HelpIcon />
@@ -96,7 +99,7 @@ function PathMinimapInner({ view, onOpen, onNewPath }: Props) {
       <button
         onClick={onOpen}
         className="mx-3 w-[calc(100%-1.5rem)] block rounded-md border border-bd/70 bg-bg-soft/50 hover:bg-s2/70 transition p-1.5 overflow-x-auto"
-        title="Open the full paths graph"
+        title={t("sidebar.paths.openTooltip")}
       >
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
           {flat.map((n: any) => {
@@ -127,7 +130,13 @@ function PathMinimapInner({ view, onOpen, onNewPath }: Props) {
                 <title>
                   {n.c.name}
                   {n.c.condition ? ` — "${n.c.condition}"` : ""}
-                  {` · ${n.c.members.length} note${n.c.members.length === 1 ? "" : "s"}`}
+                  {" · "}
+                  {t(
+                    n.c.members.length === 1
+                      ? "sidebar.paths.nodeMembersOne"
+                      : "sidebar.paths.nodeMembersMany",
+                    { count: String(n.c.members.length) },
+                  )}
                 </title>
                 <circle
                   cx={x}
@@ -151,11 +160,11 @@ function PathMinimapInner({ view, onOpen, onNewPath }: Props) {
           onClick={onOpen}
           className="flex-1 text-2xs text-t3 hover:text-char italic text-left px-2 py-1 rounded hover:bg-s2 transition"
         >
-          see all paths →
+          {t("sidebar.paths.seeAll")}
         </button>
         <button
           onClick={onNewPath}
-          title="Start a new path (⌘⇧B)"
+          title={t("sidebar.paths.newTooltip", { shortcut: SK.newDirection })}
           className="text-t2 hover:text-char w-6 h-6 flex items-center justify-center rounded hover:bg-s2 transition"
         >
           <NewDirectionIcon />

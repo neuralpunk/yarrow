@@ -1,6 +1,7 @@
 import { memo } from "react";
 import type { OpenQuestion } from "../../lib/forkDetection";
 import { HelpIcon } from "../../lib/icons";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   questions: OpenQuestion[];
@@ -8,16 +9,17 @@ interface Props {
 }
 
 function OpenQuestionsInner({ questions, onJump }: Props) {
+  const t = useT();
   if (questions.length === 0) return null;
   return (
     <div className="border-t border-bd px-3 py-3">
       <div className="flex items-center justify-between mb-2">
         <div className="text-2xs uppercase tracking-wider text-t3 font-semibold">
-          Open questions
+          {t("sidebar.questions.title")}
         </div>
         <span
           className="y-tip text-t3 inline-flex"
-          data-tip="Lines that start with ?? in your note"
+          data-tip={t("sidebar.questions.helpTip")}
           data-tip-align="right"
         >
           <HelpIcon />

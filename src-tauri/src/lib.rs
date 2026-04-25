@@ -1,11 +1,14 @@
 pub mod app_config;
 pub mod attachments;
+pub mod bibtex_import;
 pub mod commands;
 pub mod crypto;
+pub mod server_crypto;
 pub mod error;
 pub mod export;
 pub mod find_replace;
 pub mod foreign_import;
+pub mod fuzzy;
 pub mod git;
 pub mod graph;
 pub mod notes;
@@ -16,9 +19,12 @@ pub mod path_meta;
 pub mod sample_vault;
 pub mod search;
 pub mod search_index;
+pub mod secrets;
+pub mod server;
 pub mod templates;
 pub mod trash;
 pub mod workspace;
+pub mod ws_client;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -35,6 +41,10 @@ pub fn run() {
             commands::cmd_close_workspace,
             commands::cmd_read_config,
             commands::cmd_set_remote,
+            commands::cmd_server_connect_password,
+            commands::cmd_server_connect_token,
+            commands::cmd_server_test_connection,
+            commands::cmd_server_disconnect,
             commands::cmd_list_notes,
             commands::cmd_attach_bytes,
             commands::cmd_attach_from_path,
@@ -57,7 +67,9 @@ pub fn run() {
             commands::cmd_create_note,
             commands::cmd_rename_note,
             commands::cmd_set_pinned,
+            commands::cmd_set_note_folder,
             commands::cmd_set_tags,
+            commands::cmd_suggest_tags,
             commands::cmd_set_annotations,
             commands::cmd_pin_checkpoint,
             commands::cmd_list_pinned_checkpoints,
@@ -97,11 +109,16 @@ pub fn run() {
             commands::cmd_restore_note,
             commands::cmd_paragraph_provenance,
             commands::cmd_sync,
+            commands::cmd_discard_unsynced_changes,
+            commands::cmd_force_align_with_server,
+            commands::cmd_list_large_blobs,
+            commands::cmd_reclaim_space,
             commands::cmd_read_scratchpad,
             commands::cmd_save_scratchpad,
             commands::cmd_append_scratchpad,
             commands::cmd_promote_scratchpad,
             commands::cmd_search,
+            commands::cmd_fuzzy_rank,
             commands::cmd_clear_search_index,
             commands::cmd_rebuild_search_index,
             commands::cmd_clear_all_cache,
@@ -154,6 +171,7 @@ pub fn run() {
             commands::cmd_import_bear_vault,
             commands::cmd_import_logseq_vault,
             commands::cmd_import_notion_vault,
+            commands::cmd_import_bibtex,
             commands::cmd_default_workspaces_root,
             commands::cmd_create_workspace_dir,
             commands::cmd_count_wikilink_references,

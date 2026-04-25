@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { HistoryEntry, Keepsake } from "../../lib/types";
 import { friendlyDate, relativeTime } from "../../lib/format";
+import { useT, type StringKey } from "../../lib/i18n";
 
 interface Props {
   history: HistoryEntry[];
@@ -23,8 +24,15 @@ interface Props {
  * Groups checkpoints into human-friendly buckets so the list reads like a
  * journal ("today", "yesterday", "earlier this week") instead of a wall of
  * timestamps.
+ *
+ * Returns either a translation-key/value pair (for the bounded bins) or a
+ * pre-formatted month/year label (for the long-tail bucket). Renderers
+ * resolve a key through `t()`; the `value` is the literal label when no
+ * key is appropriate.
  */
-function bucketOf(unixSeconds: number): string {
+type Bucket = { key: StringKey; value?: undefined } | { key: null; value: string };
+
+function bucketOf(unixSeconds: number): Bucket {
   const now = Date.now() / 1000;
   const diff = now - unixSeconds;
   const d = new Date(unixSeconds * 1000);
@@ -33,11 +41,15 @@ function bucketOf(unixSeconds: number): string {
     d.toDateString() === today.toDateString();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (sameDay) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  if (diff < 86400 * 7) return "Earlier this week";
-  if (diff < 86400 * 30) return "This month";
-  return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  if (sameDay) return { key: "editor.history.bucket.today" };
+  if (d.toDateString() === yesterday.toDateString())
+    return { key: "editor.history.bucket.yesterday" };
+  if (diff < 86400 * 7) return { key: "editor.history.bucket.earlierThisWeek" };
+  if (diff < 86400 * 30) return { key: "editor.history.bucket.thisMonth" };
+  return {
+    key: null,
+    value: d.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+  };
 }
 
 export default function HistorySlider({
@@ -52,6 +64,7 @@ export default function HistorySlider({
   onUnpin,
   onClose,
 }: Props) {
+  const t = useT();
   const [idx, setIdx] = useState<number>(history.length > 0 ? 0 : -1);
   const [confirming, setConfirming] = useState(false);
   const [showDiffOnly, setShowDiffOnly] = useState(false);
@@ -149,14 +162,24 @@ export default function HistorySlider({
     return out;
   }, [previewBody, currentBody]);
 
-  // Buckets for the left timeline column.
+  // Buckets for the left timeline column. We collect both the bucket
+  // (for live translation) and a stable groupKey (for grouping +
+  // React's `key` prop). The groupKey is just the i18n key when the
+  // bucket is bounded, or the literal locale-formatted month label
+  // for the long-tail bucket.
   const bucketed = useMemo(() => {
-    const groups: Array<{ label: string; entries: Array<{ e: HistoryEntry; i: number }> }> = [];
-    let current: typeof groups[number] | null = null;
+    type Group = {
+      groupKey: string;
+      bucket: Bucket;
+      entries: Array<{ e: HistoryEntry; i: number }>;
+    };
+    const groups: Group[] = [];
+    let current: Group | null = null;
     history.forEach((e, i) => {
-      const label = bucketOf(e.timestamp);
-      if (!current || current.label !== label) {
-        current = { label, entries: [] };
+      const bucket = bucketOf(e.timestamp);
+      const groupKey = bucket.key ?? bucket.value ?? "";
+      if (!current || current.groupKey !== groupKey) {
+        current = { groupKey, bucket, entries: [] };
         groups.push(current);
       }
       current.entries.push({ e, i });
@@ -166,7 +189,7 @@ export default function HistorySlider({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-char/30 backdrop-blur-[3px] animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-char/30 animate-fadeIn"
       onMouseDown={onClose}
     >
       <div
@@ -178,7 +201,9 @@ export default function HistorySlider({
           <div className="min-w-0">
             <div className="font-serif text-lg text-char truncate">{noteTitle}</div>
             <div className="text-2xs text-t3">
-              {history.length} checkpoint{history.length === 1 ? "" : "s"} on this path · ↑/↓ to scrub · esc to close
+              {history.length === 1
+                ? t("editor.history.checkpointsOne", { count: String(history.length) })
+                : t("editor.history.checkpointsOther", { count: String(history.length) })}
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -189,12 +214,12 @@ export default function HistorySlider({
                 onChange={(e) => setShowDiffOnly(e.target.checked)}
                 className="accent-yel"
               />
-              show differences only
+              {t("editor.history.showDiffOnly")}
             </label>
             <button
               onClick={onClose}
               className="w-7 h-7 flex items-center justify-center rounded hover:bg-s2 text-t2 hover:text-char"
-              aria-label="Close"
+              aria-label={t("editor.history.close")}
             >
               ×
             </button>
@@ -205,9 +230,9 @@ export default function HistorySlider({
           {/* Timeline list */}
           <aside className="w-[260px] shrink-0 border-r border-bd bg-s1/40 overflow-y-auto">
             {bucketed.map((group) => (
-              <div key={group.label} className="py-2">
+              <div key={group.groupKey} className="py-2">
                 <div className="px-4 py-1 text-2xs uppercase tracking-wider text-t3 font-semibold">
-                  {group.label}
+                  {group.bucket.key ? t(group.bucket.key) : group.bucket.value}
                 </div>
                 <ul>
                   {group.entries.map(({ e, i }) => {
@@ -231,19 +256,19 @@ export default function HistorySlider({
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               <span className="font-medium">
-                                {i === 0 ? "Now" : relativeTime(e.timestamp)}
+                                {i === 0 ? t("editor.history.now") : relativeTime(e.timestamp)}
                               </span>
                               {i === 0 && (
                                 <span className="text-2xs px-1 py-px bg-yelp text-yeld rounded">
-                                  latest
+                                  {t("editor.history.latest")}
                                 </span>
                               )}
                               {keepsakeByOid.has(e.oid) && (
                                 <span
                                   className="yarrow-keepsake-pin"
-                                  title={`pinned: ${keepsakeByOid.get(e.oid)?.label ?? ""}`}
+                                  title={t("editor.history.pinnedAs", { label: keepsakeByOid.get(e.oid)?.label ?? "" })}
                                 >
-                                  kept
+                                  {t("editor.history.kept")}
                                 </span>
                               )}
                             </div>
@@ -276,7 +301,7 @@ export default function HistorySlider({
               {selected ? (
                 <>
                   <span className="text-2xs uppercase tracking-wider text-t3 font-semibold">
-                    Previewing
+                    {t("editor.history.previewing")}
                   </span>
                   <span className="text-xs text-char">
                     {friendlyDate(selected.timestamp)}
@@ -286,23 +311,23 @@ export default function HistorySlider({
                   </span>
                   <span className="ml-auto flex items-center gap-2 text-2xs font-mono">
                     {diff.added > 0 && (
-                      <span className="text-yeld" title="Lines that exist now but didn't then">
-                        +{diff.added} since
+                      <span className="text-yeld" title={t("editor.history.addedSinceTitle")}>
+                        {t("editor.history.addedSince", { count: String(diff.added) })}
                       </span>
                     )}
                     {diff.removed > 0 && (
-                      <span className="text-danger" title="Lines that existed then but not now">
-                        −{diff.removed} gone
+                      <span className="text-danger" title={t("editor.history.removedGoneTitle")}>
+                        {t("editor.history.removedGone", { count: String(diff.removed) })}
                       </span>
                     )}
                     {diff.added === 0 && diff.removed === 0 && (
-                      <span className="text-t3">identical to now</span>
+                      <span className="text-t3">{t("editor.history.identical")}</span>
                     )}
                   </span>
                 </>
               ) : (
                 <span className="text-xs text-t3 italic">
-                  Pick a checkpoint from the timeline
+                  {t("editor.history.pickFromTimeline")}
                 </span>
               )}
             </div>
@@ -312,7 +337,7 @@ export default function HistorySlider({
                   <div className="font-sans text-sm leading-relaxed space-y-0.5">
                     {diffLines.filter((l) => l.kind !== "same").length === 0 && (
                       <div className="text-t3 italic text-sm">
-                        No differences from the current version.
+                        {t("editor.history.noDifferences")}
                       </div>
                     )}
                     {diffLines
@@ -335,7 +360,7 @@ export default function HistorySlider({
                   </div>
                 ) : (
                   <pre className="whitespace-pre-wrap font-sans text-sm text-char leading-relaxed">
-                    {previewBody || <span className="text-t3 italic">(empty)</span>}
+                    {previewBody || <span className="text-t3 italic">{t("editor.history.empty")}</span>}
                   </pre>
                 )
               ) : (
@@ -344,7 +369,7 @@ export default function HistorySlider({
             </div>
             {selected?.thinking_note && (
               <div className="px-5 py-2.5 border-t border-bd bg-yelp/40 text-xs text-yeld italic">
-                what you were thinking: “{selected.thinking_note}”
+                {t("editor.history.thinkingPrefix", { thinking: selected.thinking_note })}
               </div>
             )}
           </section>
@@ -355,9 +380,9 @@ export default function HistorySlider({
           <div className="text-2xs text-t3 font-mono">
             {selected
               ? isLatest
-                ? "This is the current version."
-                : `Going back ${relativeTime(selected.timestamp)}`
-              : "No checkpoint selected"}
+                ? t("editor.history.currentVersion")
+                : t("editor.history.goingBack", { when: relativeTime(selected.timestamp) })
+              : t("editor.history.noSelection")}
           </div>
           <div className="ml-auto flex items-center gap-2">
             {selected && onPin && onUnpin && (
@@ -367,9 +392,9 @@ export default function HistorySlider({
                   <button
                     onClick={() => onUnpin(existing.id)}
                     className="px-3 py-1.5 text-xs rounded-md text-yeld hover:bg-yelp/60"
-                    title={`Unpin "${existing.label}". The checkpoint can be pruned again after this.`}
+                    title={t("editor.history.unpinTitle", { label: existing.label })}
                   >
-                    ★ unpin
+                    {t("editor.history.unpin")}
                   </button>
                 ) : (
                   <button
@@ -379,9 +404,9 @@ export default function HistorySlider({
                       setPinPrompt({ oid: selected.oid });
                     }}
                     className="px-3 py-1.5 text-xs rounded-md text-t2 hover:text-yeld hover:bg-yelp/40"
-                    title="Pin this checkpoint — history pruning will never remove it."
+                    title={t("editor.history.pinThisTitle")}
                   >
-                    ☆ pin this
+                    {t("editor.history.pinThis")}
                   </button>
                 );
               })()
@@ -390,15 +415,15 @@ export default function HistorySlider({
               onClick={onClose}
               className="px-3 py-1.5 text-xs text-t2 hover:text-char"
             >
-              cancel
+              {t("editor.history.cancel")}
             </button>
             <button
               disabled={!selected || isLatest}
               onClick={() => setConfirming(true)}
               className="btn-yel px-4 py-1.5 text-sm rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
-              title={isLatest ? "Already the current version" : "Restore this version"}
+              title={isLatest ? t("editor.history.alreadyCurrentTitle") : t("editor.history.restoreTitle")}
             >
-              Restore this version
+              {t("editor.history.restore")}
             </button>
           </div>
         </div>
@@ -413,11 +438,10 @@ export default function HistorySlider({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="font-serif text-xl text-char mb-2">
-                Pin this checkpoint
+                {t("editor.history.pinDialog.title")}
               </div>
               <p className="text-sm text-t2 mb-3 leading-relaxed">
-                It'll survive any future pruning — <em>older-than</em>, <em>empty-content</em>,
-                anything. Give it a short name so future-you remembers why.
+                {t("editor.history.pinDialog.body")}
               </p>
               <input
                 value={pinLabel}
@@ -431,13 +455,13 @@ export default function HistorySlider({
                   if (e.key === "Escape") setPinPrompt(null);
                 }}
                 autoFocus
-                placeholder="e.g. before I cut the prologue"
+                placeholder={t("editor.history.pinDialog.labelPlaceholder")}
                 className="w-full px-3 py-2 bg-s1 border border-bd rounded text-char text-sm placeholder:text-t3 mb-3 focus:outline-none focus:border-yel"
               />
               <textarea
                 value={pinNote}
                 onChange={(e) => setPinNote(e.target.value)}
-                placeholder="Optional: what made this version worth keeping?"
+                placeholder={t("editor.history.pinDialog.notePlaceholder")}
                 rows={3}
                 className="w-full px-3 py-2 bg-s1 border border-bd rounded text-char text-xs placeholder:text-t3 mb-4 focus:outline-none focus:border-yel"
               />
@@ -446,7 +470,7 @@ export default function HistorySlider({
                   className="px-3 py-1.5 text-sm text-t2 hover:text-char"
                   onClick={() => setPinPrompt(null)}
                 >
-                  cancel
+                  {t("editor.history.cancel")}
                 </button>
                 <button
                   className="btn-yel px-4 py-1.5 text-sm rounded-md disabled:opacity-40"
@@ -456,7 +480,7 @@ export default function HistorySlider({
                     setPinPrompt(null);
                   }}
                 >
-                  pin it
+                  {t("editor.history.pinDialog.confirm")}
                 </button>
               </div>
             </div>
@@ -473,25 +497,24 @@ export default function HistorySlider({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="font-serif text-xl text-char mb-2">
-                Go back to this version?
+                {t("editor.history.confirm.title")}
               </div>
               <p className="text-sm text-t2 mb-1 leading-relaxed">
-                Your current note will be replaced with the version from{" "}
+                {t("editor.history.confirm.bodyLead")}{" "}
                 <span className="text-char font-medium">
                   {friendlyDate(selected.timestamp)}
                 </span>
                 .
               </p>
               <p className="text-xs text-t3 mb-4 leading-relaxed">
-                Nothing is lost — the current version stays in history, and you
-                can always scrub forward to it again.
+                {t("editor.history.confirm.bodyTail")}
               </p>
               <div className="flex justify-end gap-2">
                 <button
                   className="px-3 py-1.5 text-sm text-t2 hover:text-char"
                   onClick={() => setConfirming(false)}
                 >
-                  cancel
+                  {t("editor.history.cancel")}
                 </button>
                 <button
                   className="btn-yel px-4 py-1.5 text-sm rounded-md"
@@ -501,7 +524,7 @@ export default function HistorySlider({
                   }}
                   autoFocus
                 >
-                  yes, restore
+                  {t("editor.history.confirm.yesRestore")}
                 </button>
               </div>
             </div>

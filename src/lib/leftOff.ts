@@ -6,6 +6,13 @@
  * single key, so opening a different workspace doesn't clobber the other's
  * bookmark. Auto-expires after 72 h: the banner stops being a welcome-back
  * and starts being dead weight.
+ *
+ * Cursor restore (2.1): the snippet now travels with the cursor line the
+ * user was on (best-effort) so reopening the note can scroll back to that
+ * spot. The line number can drift if the body changed between sessions, so
+ * NoteEditor first searches for the snippet text and only falls back to
+ * the line number when the text can't be found — content-anchored beats
+ * coordinate-anchored when the document moves underneath us.
  */
 
 const MAX_AGE_MS = 72 * 60 * 60 * 1000;
@@ -20,6 +27,11 @@ export interface LeftOffState {
   path: string;
   /** Short excerpt around the cursor line the user paused on. */
   snippet: string;
+  /** 1-based line the cursor was on at save time. Used as a hint for
+   *  scroll restoration; only honored when the snippet text can also be
+   *  found on or near it (so reopens stay anchored to content, not to
+   *  raw line numbers that may have shifted). */
+  cursorLine?: number;
   /** Unix ms the state was last persisted. */
   at: number;
 }
@@ -44,8 +56,6 @@ export function readLeftOff(workspacePath: string): LeftOffState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as LeftOffState;
     if (!parsed || typeof parsed.slug !== "string") return null;
-    // Stale bookmarks age out silently. The user opened the workspace
-    // fresh; no need to dredge up what they were doing last week.
     if (Date.now() - (parsed.at || 0) > MAX_AGE_MS) return null;
     return parsed;
   } catch {

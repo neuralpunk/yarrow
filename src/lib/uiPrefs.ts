@@ -7,14 +7,16 @@ import { useCallback, useEffect, useState } from "react";
 
 // ──────────────────────── UI font family ────────────────────────
 
+// 2.1 revised UI font picker. Inter Tight is the default chrome
+// sans; Newsreader is offered as a serif option for users who want
+// chrome and prose to share a family. Fraunces is available for the
+// editorial-forward look. Georgia + system sans are offline fallbacks.
 export type UiFontId =
-  | "instrument-serif"
-  | "inter"
-  | "roboto-serif"
-  | "plex-serif"
+  | "inter-tight"
+  | "newsreader"
+  | "fraunces"
   | "georgia"
-  | "frank-ruhl"
-  | "merriweather";
+  | "system-sans";
 
 export interface UiFontChoice {
   id: UiFontId;
@@ -27,62 +29,50 @@ export interface UiFontChoice {
 
 export const UI_FONTS: UiFontChoice[] = [
   {
-    id: "instrument-serif",
-    label: "Instrument Serif",
-    kind: "serif",
-    // Single-weight display serif — high contrast, warm italics. Used
-    // as the default because its restrained feel lets the chrome
-    // recede and the prose lead.
-    stack: "'Instrument Serif', ui-serif, Georgia, serif",
-    sample: "Notes that branch and connect.",
-  },
-  {
-    id: "inter",
-    label: "Inter",
+    id: "inter-tight",
+    label: "Inter Tight",
     kind: "sans",
-    stack: "Inter, ui-sans-serif, system-ui, sans-serif",
+    // Default chrome face. Slightly condensed Inter — reads tighter at
+    // 11–13 px where the sidebar actually lives.
+    stack: "'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif",
     sample: "Notes that branch and connect.",
   },
   {
-    id: "roboto-serif",
-    label: "Roboto Serif",
+    id: "newsreader",
+    label: "Newsreader",
     kind: "serif",
-    stack: "'Roboto Serif', ui-serif, Georgia, serif",
+    // Chrome matches the editor body when default Newsreader is used
+    // in the editor — whole app feels like one voice.
+    stack: "'Newsreader', ui-serif, Georgia, serif",
     sample: "Notes that branch and connect.",
   },
   {
-    id: "plex-serif",
-    label: "IBM Plex Serif",
+    id: "fraunces",
+    label: "Fraunces",
     kind: "serif",
-    stack: "'IBM Plex Serif', ui-serif, Georgia, serif",
+    // The editorial option — most characterful; highest contrast.
+    stack: "'Fraunces', ui-serif, Georgia, serif",
     sample: "Notes that branch and connect.",
   },
   {
     id: "georgia",
     label: "Georgia",
     kind: "serif",
-    stack: "Georgia, ui-serif, 'Source Serif 4', serif",
+    stack: "Georgia, ui-serif, 'Newsreader', serif",
     sample: "Notes that branch and connect.",
   },
   {
-    id: "frank-ruhl",
-    label: "Frank Ruhl Libre",
-    kind: "serif",
-    stack: "'Frank Ruhl Libre', ui-serif, Georgia, serif",
-    sample: "Notes that branch and connect.",
-  },
-  {
-    id: "merriweather",
-    label: "Merriweather",
-    kind: "serif",
-    stack: "Merriweather, ui-serif, Georgia, serif",
+    id: "system-sans",
+    label: "System sans",
+    kind: "sans",
+    stack: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif",
     sample: "Notes that branch and connect.",
   },
 ];
 
 const UI_FONT_KEY = "yarrow.uiFont";
 const UI_FONT_EVT = "yarrow:uiFont-changed";
-const DEFAULT_UI_FONT: UiFontId = "merriweather";
+const DEFAULT_UI_FONT: UiFontId = "inter-tight";
 
 function readUiFont(): UiFontId {
   try {
@@ -166,8 +156,24 @@ function applyUiScaleToDOM(id: UiScaleId) {
   const scale = UI_SCALES.find((s) => s.id === id) ?? UI_SCALES[1];
   // `zoom` on body scales the whole rendered chrome at once. The editor
   // counter-zooms via CSS so its own font-size preference stays honest.
-  document.documentElement.style.setProperty("--ui-zoom", String(scale.zoom));
-  document.documentElement.style.setProperty("--ui-zoom-inv", String(1 / scale.zoom));
+  // At zoom == 1 (the default "Cozy" scale) we *unset* both vars so the
+  // body never enters the zoom code path at all — `zoom: 1` is a no-op
+  // visually but still creates a stacking context on webkit2gtk that
+  // can subtly degrade subpixel positioning of text. Removing the
+  // properties entirely keeps the default render path pristine.
+  if (scale.zoom === 1) {
+    document.documentElement.style.removeProperty("--ui-zoom");
+    document.documentElement.style.removeProperty("--ui-zoom-inv");
+    document.documentElement.removeAttribute("data-ui-zoom-active");
+  } else {
+    document.documentElement.style.setProperty("--ui-zoom", String(scale.zoom));
+    document.documentElement.style.setProperty("--ui-zoom-inv", String(1 / scale.zoom));
+    // Perf — gate the body's `zoom` rule behind this attribute. A
+    // declared `zoom: 1` on body still pushes layout through webkit's
+    // legacy zoom path; only opt in when the user has actually picked
+    // a non-default scale.
+    document.documentElement.setAttribute("data-ui-zoom-active", "true");
+  }
 }
 
 export function useUiScale(): [UiScaleChoice, (id: UiScaleId) => void] {

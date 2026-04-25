@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/tauri";
 import { todayIso } from "../../lib/format";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -26,6 +27,7 @@ function parseIso(iso: string): Date {
 }
 
 export default function JournalCalendar({ open, onClose, onPick, activeDate, anchor }: Props) {
+  const t = useT();
   const [dates, setDates] = useState<Set<string>>(new Set());
   const [cursor, setCursor] = useState<{ y: number; m: number }>(() => {
     const d = activeDate ? parseIso(activeDate) : new Date();
@@ -117,7 +119,7 @@ export default function JournalCalendar({ open, onClose, onPick, activeDate, anc
           <button
             onClick={() => shift(-1)}
             className="w-7 h-7 rounded hover:bg-s2 text-t2"
-            aria-label="Previous month"
+            aria-label={t("sidebar.calendar.prevMonth")}
           >
             ‹
           </button>
@@ -127,14 +129,22 @@ export default function JournalCalendar({ open, onClose, onPick, activeDate, anc
           <button
             onClick={() => shift(1)}
             className="w-7 h-7 rounded hover:bg-s2 text-t2"
-            aria-label="Next month"
+            aria-label={t("sidebar.calendar.nextMonth")}
           >
             ›
           </button>
         </div>
 
         <div className="grid grid-cols-7 text-center text-2xs text-t3 font-mono mb-1">
-          {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+          {[
+            t("sidebar.calendar.dayS"),
+            t("sidebar.calendar.dayM"),
+            t("sidebar.calendar.dayT"),
+            t("sidebar.calendar.dayW"),
+            t("sidebar.calendar.dayT"),
+            t("sidebar.calendar.dayF"),
+            t("sidebar.calendar.dayS"),
+          ].map((d, i) => (
             <div key={i} className="py-0.5">{d}</div>
           ))}
         </div>
@@ -174,9 +184,9 @@ export default function JournalCalendar({ open, onClose, onPick, activeDate, anc
             onClick={() => { onPick(today); onClose(); }}
             className="hover:text-char"
           >
-            Jump to today
+            {t("sidebar.calendar.jumpToday")}
           </button>
-          <span className="font-mono">{dates.size} entries</span>
+          <span className="font-mono">{t("sidebar.calendar.entries", { count: String(dates.size) })}</span>
         </div>
       </div>
     </div>

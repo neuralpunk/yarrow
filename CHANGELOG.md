@@ -6,6 +6,130 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.1.0] — 2026-04-25
+
+A warmth + workflow release. 75 bundled kits across nine categories, a research workflow with `@cite` + BibTeX import, a privacy-first clinical surface with on-device PHI scanning + air-gapped sync, optional sidebar folders, three UI languages, and a substantial pass on responsiveness, security, and data-leak hardening.
+
+### Languages
+
+- **Three UI locales: English, Latin American Spanish, Swedish.** ~1,810 keyed strings spanning every chrome surface (Onboarding, Settings, all modals, toolbar, sidebars, status bar, command palette, paths views). Notes, frontmatter, and templates are intentionally not translated — they're user content.
+- **Live language switcher** on the Onboarding screen and in Settings → Appearance. Switching repaints the whole app in lock-step (pub/sub-backed `useLanguage()`), no remount.
+- **Glossary-driven translations** so Yarrow's vocabulary (path, direction, checkpoint, bring together, scratchpad) stays consistent across surfaces. Spanish uses neutral usted-form; Swedish uses modern du-form. Brand names verbatim.
+- **Modular i18n** at `src/lib/i18n/` — adding a new locale is one import + three table spreads in `index.ts`; missing keys fall back to English.
+
+### Kits
+
+- **75 bundled kits across nine categories** (was 5 in the original 2.1 cut). Driven by `<!-- kit: <kind> -->` directive in template bodies; picker auto-styles by kind.
+  - Journal (12), Research (9), Clinical (14), Work (10), Learning (6), Writing (6), Everyday (7), Decision (6), Spiritual (3).
+- **Picker rebuilt** — auto-focused search, larger serif headers, per-kit glyph + tint, hover blurb. New right-rail Kits button so the picker doesn't require a keystroke.
+- **`default_kit_kind_for(name)` fallback** so workspaces seeded before kits group bundled templates correctly without re-seed.
+
+### New-note modal
+
+- **Three route tiles** — Blank, Kits, Your templates — replace the 19-tile grid. Custom-templates route shows only user-authored templates and only renders when at least one exists.
+- **Bounded height** (`max-h-[80vh]`, flex-column layout) — header/footer pin, tiles scroll.
+
+### Research workflow
+
+- **`@cite` autocomplete** — typing `@` opens a paper-tagged note picker, inserts `[[Title]]`. Three-layer trigger pipeline survives IME quirks. Paper-tagged notes get a +99 boost. Memoized per `notes` array reference.
+- **BibTeX import** — new `.bib` format alongside Obsidian / Bear / Logseq / Notion. Each entry becomes a paper-card note tagged `paper`. Hand-rolled parser handles brace/quoted/bare values, nested braces, directives, both `{}` and `()` delimiters. Brace-depth capped at 64 against pathological inputs.
+
+### Clinical workflow
+
+- **`Frontmatter.private` + air-gapped sync.** `private: true` (auto-set by clinical kits) registers the note's path in `.git/info/exclude` — stays out of commits and sync. File lives in normal `notes/<slug>.md`, fully editable, just invisible to git. No `git rm --cached`; toggling is reversible.
+- **PHI scanner**, lazy-loaded on private notes only. Pure-JS, no IPC. Inline highlights for SSN, DOB, phone, email, street address, MRN, context-gated full names. 250ms debounced rebuild, conservative pattern-matching.
+- **Sensitive tag color** for `clinical` / `private` / `phi` / `confidential` (rose accent, both palettes).
+- **Sidebar `⊘` glyph** for private notes alongside the encryption lock.
+- **Status bar pill** "N off-server" surfaces the air-gap when a remote is configured + private notes exist — no surprise that "sync" excludes clinical material.
+- **`scripts/make-clinical-workspace.py`** seeds a populated test workspace — paper-cards, clinical case notes (SOAP/BIRP/DAP/supervision), real ChaCha20-Poly1305 encrypted notes, sample `.bib` file.
+
+### Folders
+
+- **Optional sidebar folders** via `Frontmatter.folder: Option<String>`. Foldered notes group at the top with collapsible sections, alphabetical sort, per-workspace collapse memory. Workspaces without folders render identically to v2.0.
+- **`cmd_set_note_folder` IPC + "Move to folder…" picker.** Validates against control chars, slashes, and 64-char length. Pure metadata — file stays at `notes/<slug>.md`.
+
+### Privacy & data-leak hardening
+
+- **Welcome-back banner** never bookmarks private/encrypted/clinical notes; sweeps stale bookmarks on workspace open; render-gates against the localStorage-vs-async-list race.
+- **`NoteSummary.excerpt` redacted** for private notes (`⊘ private — open the note to read`).
+- **FTS index excludes private bodies** — title + tags only, mirroring encrypted handling.
+- **`@cite` and wikilink autocomplete** exclude private + encrypted notes; @cite also excludes `clinical`-tagged notes.
+- **Per-clone exclude over `.gitignore`** so private slug names stay out of commit history.
+
+### Editor
+
+- **Wikilink ranking** — exact > startsWith > word-boundary > slug, plus recently-opened recency boost (module-scoped LRU of 64) and `modified`-time tiebreak.
+- **Differential spell-check** — rebuilds only on `docChanged` / `viewportChanged` / cross-line `selectionSet`.
+- **IME composition guard** for table-Tab so CJK candidate selection no longer hops cells.
+- **PHI scanner skip-redundant** — only force a CodeMirror layout when the decoration set actually changed (was firing every 250ms scan).
+- **PHI line annotation linear** — single-pass `annotateLines()` instead of per-match O(n²) scan.
+- **Where-you-left-off cursor restore** — `LeftOffState.cursorLine`; resume snaps to snippet text first, line number fallback.
+
+### Type & paper
+
+- **Calm Palettes** — warm cream + editorial gold (light); cool charcoal + dusty plum (dark). Typed-connection colors via CSS vars.
+- **Type stack** → Fraunces + Inter Tight + JetBrains Mono with **Newsreader** as new body-serif default (`opsz` pinned per surface).
+- **Webfonts via `<link>`** with `preconnect` — request races with CSS parsing.
+- **Editor fade is pure opacity** — removed the 0.5px blur that webkit2gtk failed to fully recompose.
+- **Paper texture scoped** to `.yarrow-paper` writing canvas only.
+- **Radial menu** crisp on Linux — integer-pixel positioning, shadow off the SVG filter.
+- **`zoom: 1` no longer a stacking context** — `--ui-zoom` removed from `<html>` at default scale.
+
+### Sidebar & first-run warmth
+
+- **Empty states** with inline-SVG illustrations across note list, connections, trash, diff, tag graph, search, command palette.
+- **Tag Bouquet** — up to five local suggestions per note, Snowball-stemmed (`gardens` / `gardening` → `#garden`).
+- **Card Library View** — stacked-card sidebar alongside the time-bucketed list.
+- **Font Personalities** (Calm, Crisp, Writerly, Notebook) bundle UI font + editor font + scale.
+- **Paper & Warmth** — six textured canvases + −300/+300K warmth slider (filter is opt-in; default is flat).
+- **Toast tones** (info / success / soft) with kinder copy.
+- **Onboarding wordmark** — 88px Fraunces "Yarrow" beside the sprig in the gold accent.
+
+### Performance
+
+- **Body `filter` + `zoom` are now opt-in** (gated by `data-paper-warmth-active` / `data-ui-zoom-active`). On default settings the body stays a flat hardware-friendly surface — was the single largest contributor to scroll/hover sluggishness on Linux/webkit2gtk.
+- **Killed the blanket transition rule** that caught every `[class*="bg-s"]` / `[class*="bg-bg"]` element. Theme-switch crossfade now scoped to a temporary `html.theme-transitioning` window (~260ms during deliberate toggles).
+- **Containment + content-visibility** — `.yarrow-paint-island` (`contain: layout paint style`) on NoteList scroller, Settings pane, editor wrapper; `.yarrow-row-island` / `.yarrow-card-island` (`content-visibility: auto`) on long-list children; `.yarrow-gpu-scroll` (`translateZ(0)`) GPU-promotes scroll containers.
+- **NoteList row memoization** — extracted `NoteRow` as a memoized component with primitive props + ref-based stable callbacks. Per-keystroke fan-out no longer re-reconciles 100+ rows.
+- **Lazy-modal prewarming** — 26 `lazy()` modals prefetched in two idle-window tiers (`requestIdleCallback`). First-open is now a render, not a chunk fetch.
+- **`backdrop-blur-*` removed** across 24 components (modals, popovers). Solid translucent backgrounds carry the dim alone.
+- **ConnectionGraph theme-only repaint** — colors moved to `.style("fill", "var(--…)")` so theme switches no longer rebuild the D3 simulation; chord pins, drag positions, and active simulation survive a toggle.
+- **Backlink delete linear** — `delete_note` now uses `scan()` parsed frontmatter to skip notes without backlinks (was reading every note even with no relevant link).
+- **`editorFade` scoped** to `.yarrow-note-host > .cm-editor` so it can't fire on unrelated CodeMirror surfaces.
+
+### Security & hardening
+
+- **Markdown XSS tripwire** — final-pass strip on rendered HTML for `<script>` / `<iframe>` / `<object>` / `<embed>` / inline `on*=` handlers / `javascript:` URLs. Defense-in-depth on top of pulldown-cmark's `ENABLE_HTML`-off default.
+- **Frontmatter parse panic guard** — `parse_frontmatter` and `strip_frontmatter` wrapped in `catch_unwind`. Malformed YAML in a single note no longer takes the backend down.
+- **WebSocket health watchdog** — listener now tracks last-frame timestamp; 75s without traffic triggers reconnect via the existing back-off path. Prevents silent NAT drops from blocking `workspace.updated` events.
+- **TLS-skip honored on the WS path** — `insecure_skip_tls_verify` now threads through `connect_async_tls_with_config` so the dev escape hatch behaves consistently across REST and the push stream.
+- **Folder field validation** — `cmd_set_note_folder` rejects control chars, path separators, and >64 char names.
+
+### Sync
+
+- **OS-keychain-backed sync token** via `keyring` (Keychain / Credential Manager / Secret Service) with file fallback + one-shot migration; `config.toml` carries no secrets.
+- **"Last synced X ago"** label in the status pill.
+- **Sync-error categorization** — `YarrowError::AuthFailed` / `NetworkUnavailable` from `git2::Error` class/code, with message-string fallback. Toasts begin with "authentication failed:" / "network unavailable:" instead of the generic.
+- **Initial support for Yarrow Connect** — upcoming paid sync + publish service (July 2026). Yarrow itself stays free and open source.
+
+### Settings
+
+- **Settings → Workspace → Import notes…** route opens the existing import modal.
+- **Fuzzy command palette** powered by `nucleo-matcher`.
+
+### Repository hygiene
+
+- **Web client relocated** to `~/DEV/AI/yarrow-server/web/` (the proprietary, paid-service repo). The MIT desktop repo no longer carries `WebApp.tsx`, the `web-*` libraries, the PWA manifest, or the `VITE_YARROW_TARGET=web` build target. Sync client (`server.rs`, `server_crypto.rs`, `ws_client.rs`, `secrets.rs`) + transport abstraction stay — those are public clients of yarrow-server's contract.
+
+### Fixed
+
+- **External URL trapping** — capture-phase click handler routes every external `<a>` through `openUrl()`; fallback modal on plugin failure.
+- **`@cite` picker silently empty** — `from` now positioned past the `@` so the fuzzy matcher sees just the query.
+- **Sync data loss** — removed the `checkpoint()` oscillation coalescer that could rewind the branch ref. Sync reports `files_changed`, prefetch LRU invalidates, open notes reload, `NoteEditor` cancels pending saves on external body change. Web-git fallback merge preserves both sides.
+- **Welcome-back banner** visible in dark mode.
+- **Reading mode** honours editor-font preference (was hardcoded to Fraunces).
+- **New-note modal viewport overflow** as the kit roster grew.
+
 ## [2.0.0] — 2026-04-21
 
 A big release. 2.0 is about posture (how the editor sits under your

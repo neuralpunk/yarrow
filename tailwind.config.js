@@ -27,15 +27,13 @@ export default {
         link:     "var(--link)",
       },
       fontFamily: {
-        // Tailwind's `font-serif` and `font-sans` both route through the
-        // `--ui-font-family` CSS var so the Settings → Appearance picker
-        // cascades to every component (sidebar, modals, compare view,
-        // decision matrix). Unresolved vars fall through to Merriweather.
-        serif: ['var(--ui-font-family)', 'Merriweather', 'ui-serif', 'Georgia', 'serif'],
-        sans:  ['var(--ui-font-family)', 'Merriweather', 'ui-serif', 'Georgia', 'serif'],
-        // The editor body is a separate universe — CodeMirror reads
-        // `--editor-font-family` directly. Mono stays hard-wired so
-        // metadata (timestamps, slugs, keybindings) always reads as code.
+        // 2.1 revised: font-serif resolves to Newsreader (the body
+        // workhorse), font-sans to Inter Tight. The user's UI-font
+        // picker still wins via `--ui-font-family`, so Tailwind's
+        // `font-serif` class is compatible with user overrides — it
+        // just falls through to the default face when none is set.
+        serif: ['var(--ui-font-family)', 'Newsreader', 'ui-serif', 'Georgia', 'serif'],
+        sans:  ['var(--ui-font-family)', 'Inter Tight', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono:  ['"JetBrains Mono"', 'ui-monospace', 'Menlo', 'monospace'],
       },
       fontSize: {

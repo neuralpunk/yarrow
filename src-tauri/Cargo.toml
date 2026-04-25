@@ -1,6 +1,6 @@
 [package]
 name = "yarrow"
-version = "2.0.0"
+version = "2.1.0"
 description = "Yarrow — git-backed note-taking for non-linear thinking"
 authors = ["Yarrow"]
 edition = "2021"
@@ -19,7 +19,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2", "vendored-openssl", "https"] }
 gray_matter = "0.2"
 toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
@@ -37,6 +37,23 @@ zeroize = { version = "1", features = ["zeroize_derive"] }
 rand = "0.8"
 bip39 = "2"
 ureq = { version = "2", features = ["tls"] }
+# Async WebSocket client for `/ws` push notifications from yarrow-server.
+# `rustls-tls-native-roots` reuses the host trust store so self-signed
+# localhost certs work the same way they do in the existing `server.rs`
+# ureq path (via the optional insecure-skip-verify toggle).
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "__rustls-tls", "rustls-tls-native-roots"] }
+futures-util = "0.3"
+# Pulled in transitively by ureq — declared directly so we can build
+# a ClientConfig with a dev-only "skip verify" verifier for the Yarrow-
+# server connect form. Never used on the happy path. See
+# `server::build_insecure_tls_config`.
+# `default-features = false` + `ring` mirrors what ureq already asks
+# for via its `tls` feature. Without this, adding rustls as a direct
+# dep silently pulls in aws-lc-rs (and the cmake toolchain it
+# compiles), doubling clean-build times for zero benefit here.
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+rustls-pki-types = "1"
 url = "2"
 walkdir = "2"
 regex = "1"
@@ -45,6 +62,24 @@ regex = "1"
 # and FTS5 is compiled in by default since SQLite 3.9. The DB is
 # write-and-forget — notes stay the source of truth.
 rusqlite = { version = "0.31", features = ["bundled"] }
+# 2.1.0 command-palette fuzzy matching. `nucleo-matcher` is the pure-sync
+# scorer (the same engine Helix uses) — we call it per-IPC, so we do NOT
+# want the higher-level `nucleo` crate's internal threading.
+nucleo-matcher = "0.3"
+# 2.1.0 OS keychain for the sync token. Linux uses libsecret via Secret
+# Service D-Bus; macOS uses Security framework; Windows uses Credential
+# Manager. When the backend isn't available we transparently fall back
+# to the existing plaintext `.yarrow/credentials.toml` file — see
+# `secrets.rs` for the migration + fallback logic.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# 2.1.0 Tag Bouquet: Snowball stemmer (English) so suggestions
+# collapse inflections morphologically — "gardens", "gardening",
+# "gardener", "gardened" all stem to "garden" and score against an
+# existing #garden tag. Replaces the hand-rolled s-suffix strip in
+# notes::suggest_tags.
+rust-stemmers = "1"
+x25519-dalek = { version = "^2", features = ["static_secrets"] }
+hkdf = "^0.12"
 
 [profile.release]
 lto = true

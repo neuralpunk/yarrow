@@ -19,7 +19,16 @@ fn touch_index_after_write(root: &Path, note: &Note) {
         .map(|c| c.preferences.search_index_enabled)
         .unwrap_or(true);
     if !enabled { return; }
-    let body = if note.frontmatter.encrypted { String::new() } else { note.body.clone() };
+    // Redact the body for both encrypted AND private notes — the
+    // `search_index::rebuild` path already does this; the per-save
+    // `upsert` path was missing the private check, so PHI-bearing
+    // bodies were leaking into FTS even though sidebar excerpts and
+    // full-rebuild were both correctly redacted.
+    let body = if note.frontmatter.encrypted || note.frontmatter.is_private() {
+        String::new()
+    } else {
+        note.body.clone()
+    };
     search_index::upsert_note_best_effort(
         root,
         &note.slug,
@@ -94,6 +103,32 @@ pub struct Frontmatter {
     /// the note has no annotations, so existing notes stay byte-identical.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub annotations: Vec<Annotation>,
+    /// 2.1 Air-gapped notes. When `private = true` (or any tag matches
+    /// "clinical"), the note is registered in `.git/info/exclude` so it
+    /// stays out of every commit and therefore out of every sync. The
+    /// file lives in the normal `notes/` tree on disk; only git's view
+    /// of it differs.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub private: bool,
+    /// 2.1 Folders. Pure presentation metadata — the file always lives
+    /// at `notes/<slug>.md` regardless. The sidebar groups notes whose
+    /// `folder` field matches, with `None` notes falling through to the
+    /// existing time-based view. No on-disk migration; existing notes
+    /// without this field just stay un-foldered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+}
+
+impl Frontmatter {
+    /// Single source of truth for "is this a clinical / private note?"
+    /// Tags are normalized to lowercase before comparison so `Clinical`,
+    /// `CLINICAL`, and `clinical` all count.
+    pub fn is_private(&self) -> bool {
+        if self.private {
+            return true;
+        }
+        self.tags.iter().any(|t| t.eq_ignore_ascii_case("clinical"))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -108,6 +143,15 @@ pub struct NoteSummary {
     pub tags: Vec<String>,
     #[serde(default)]
     pub encrypted: bool,
+    /// Mirrors `frontmatter.is_private()` — lifted into the summary so
+    /// the sidebar can render a lock badge without rereading the body.
+    #[serde(default)]
+    pub private: bool,
+    /// Mirrors `frontmatter.folder`. Lifted into the summary so the
+    /// sidebar can group rows without rereading every body. `None` is
+    /// the un-foldered case (the default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -184,8 +228,16 @@ pub fn scan(root: &Path) -> Result<Vec<ScannedNote>> {
 pub fn summary_from(scanned: &ScannedNote) -> NoteSummary {
     let title = if scanned.fm.title.is_empty() { scanned.slug.clone() } else { scanned.fm.title.clone() };
     let modified = if scanned.fm.modified.is_empty() { scanned.fm.created.clone() } else { scanned.fm.modified.clone() };
+    // Excerpt is the visible body preview that ships through to the
+    // sidebar list, the command palette, and any tooltip surface that
+    // shows a NoteSummary. Encrypted notes have always shown a stub
+    // string; 2.1 extends the same redaction to *private* notes (the
+    // clinical-kit class) so a glance at the sidebar can't read out
+    // PHI to a passer-by, even when the note isn't sealed at rest.
     let excerpt = if scanned.fm.encrypted {
         "🔒 encrypted — unlock to preview".to_string()
+    } else if scanned.fm.is_private() {
+        "⊘ private — open the note to read".to_string()
     } else {
         excerpt_from(&scanned.body)
     };
@@ -197,6 +249,8 @@ pub fn summary_from(scanned: &ScannedNote) -> NoteSummary {
         pinned: scanned.fm.pinned,
         encrypted: scanned.fm.encrypted,
         tags: scanned.fm.tags.clone(),
+        private: scanned.fm.is_private(),
+        folder: scanned.fm.folder.clone(),
     }
 }
 
@@ -353,6 +407,8 @@ pub fn write_with_key_status(
                 salt: String::new(),
                 nonce: String::new(),
                 annotations: vec![],
+                private: false,
+                folder: None,
             })
     });
     if fm.created.is_empty() { fm.created = now.clone(); }
@@ -395,6 +451,11 @@ pub fn write_with_key_status(
 
     let serialized = serialize(&fm, &body_on_disk);
     atomic_write(&path, serialized.as_bytes())?;
+    // 2.1 Air-gapped notes: keep `.git/info/exclude` in sync with the
+    // current is_private state so a tag toggle (clinical → not, or
+    // vice-versa) is reflected in git's view of the workspace without
+    // any UI follow-up. Idempotent — safe to call on every save.
+    let _ = crate::git::ensure_private_exclude(root, slug, fm.is_private());
     let note = Note {
         slug: slug.to_string(),
         frontmatter: fm.clone(),
@@ -530,6 +591,8 @@ pub fn create(root: &Path, title: &str) -> Result<Note> {
         salt: String::new(),
         nonce: String::new(),
         annotations: vec![],
+        private: false,
+        folder: None,
     };
     write(root, &slug, "", Some(fm))
 }
@@ -625,14 +688,26 @@ pub fn delete(root: &Path, slug: &str) -> Result<()> {
     if path.exists() {
         std::fs::remove_file(path)?;
     }
-    // Remove references to this slug from all other notes.
-    for summary in list(root)? {
-        let mut note = read(root, &summary.slug)?;
-        let before = note.frontmatter.links.len();
-        note.frontmatter.links.retain(|l| l.target != slug);
-        if note.frontmatter.links.len() != before {
-            write(root, &summary.slug, &note.body, Some(note.frontmatter))?;
+    // Remove references to this slug from all other notes. The 2.0
+    // version called `list()` (full directory walk) followed by `read()`
+    // for every note (a second walk + decrypt + parse), then wrote
+    // each note unconditionally. On a 5000-note vault that was a 5000×
+    // (read + parse + write) loop even when no backlinks existed.
+    //
+    // 2.1: a single `scan()` gives us already-parsed frontmatter for
+    // every note. We check `fm.links` in-memory and only call `write()`
+    // for notes that actually have a backlink to remove. write() with
+    // an existing-encrypted note + no key still preserves the on-disk
+    // ciphertext via its locked-encryption branch, so encrypted notes
+    // with backlinks update their frontmatter correctly without us
+    // needing to decrypt.
+    for scanned in scan(root)? {
+        if !scanned.fm.links.iter().any(|l| l.target == slug) {
+            continue;
         }
+        let mut fm = scanned.fm;
+        fm.links.retain(|l| l.target != slug);
+        write(root, &scanned.slug, &scanned.body, Some(fm))?;
     }
     // Drop the row from the search cache. The per-backlink writes above
     // already refreshed their own rows via `touch_index_after_write`.
@@ -804,17 +879,33 @@ pub(crate) fn parse(raw: &str) -> (Frontmatter, String) {
 }
 
 fn parse_frontmatter(raw: &str) -> Frontmatter {
-    let matter = Matter::<YAML>::new();
-    matter
-        .parse(raw)
-        .data
-        .and_then(|d| d.deserialize::<Frontmatter>().ok())
-        .unwrap_or_default()
+    // gray_matter 0.2 / serde-yaml can panic on a few pathological
+    // shapes (e.g. duplicate keys with conflicting types in the YAML
+    // header). A bad note shouldn't take the whole backend down — the
+    // sidebar would freeze, save commands would 500, and the user would
+    // have no way to recover without hand-editing the file. Catching
+    // here returns a default Frontmatter so the note still loads with
+    // its body intact, just with empty metadata.
+    std::panic::catch_unwind(|| {
+        let matter = Matter::<YAML>::new();
+        matter
+            .parse(raw)
+            .data
+            .and_then(|d| d.deserialize::<Frontmatter>().ok())
+            .unwrap_or_default()
+    })
+    .unwrap_or_default()
 }
 
 fn strip_frontmatter(raw: &str) -> String {
-    let matter = Matter::<YAML>::new();
-    matter.parse(raw).content
+    // Same defensive wrap as `parse_frontmatter` — if the YAML header
+    // makes the parser panic, fall back to the raw input so the note's
+    // text isn't silently lost.
+    std::panic::catch_unwind(|| {
+        let matter = Matter::<YAML>::new();
+        matter.parse(raw).content
+    })
+    .unwrap_or_else(|_| raw.to_string())
 }
 
 pub(crate) fn serialize(fm: &Frontmatter, body: &str) -> String {
@@ -844,6 +935,14 @@ pub(crate) fn serialize(fm: &Frontmatter, body: &str) -> String {
     }
     if fm.pinned {
         out.push_str("pinned: true\n");
+    }
+    if fm.private {
+        out.push_str("private: true\n");
+    }
+    if let Some(ref folder) = fm.folder {
+        if !folder.is_empty() {
+            out.push_str(&format!("folder: {}\n", yaml_escape(folder)));
+        }
     }
     if fm.encrypted {
         out.push_str("encrypted: true\n");
@@ -901,6 +1000,8 @@ pub fn seed_note_markdown() -> String {
         salt: String::new(),
         nonce: String::new(),
         annotations: vec![],
+        private: false,
+        folder: None,
     };
     let body = "\
 Welcome.
@@ -987,6 +1088,8 @@ pub fn ensure_daily(root: &Path, date_iso: &str) -> Result<Note> {
         salt: String::new(),
         nonce: String::new(),
         annotations: vec![],
+        private: false,
+        folder: None,
     };
     let body = render_daily_template(root, date_iso);
     write(root, &slug, &body, Some(fm))
@@ -1217,7 +1320,9 @@ pub fn list_daily(root: &Path, limit: Option<usize>) -> Result<Vec<NoteSummary>>
         let title = if fm.title.is_empty() { daily_title(&stem) } else { fm.title.clone() };
         let modified = if fm.modified.is_empty() { stem.clone() } else { fm.modified.clone() };
         let excerpt = excerpt_from(&body);
-        out.push(NoteSummary { slug, title, modified, excerpt, pinned: false, tags: fm.tags, encrypted: fm.encrypted });
+        let private = fm.is_private();
+        let folder = fm.folder.clone();
+        out.push(NoteSummary { slug, title, modified, excerpt, pinned: false, tags: fm.tags, encrypted: fm.encrypted, private, folder });
     }
     // Sort by the date in the slug (descending) — more stable than modified,
     // which drifts if the user re-edits an older day's entry.
@@ -1251,6 +1356,210 @@ pub fn clear_scratchpad(root: &Path) -> Result<()> {
         std::fs::remove_file(path)?;
     }
     Ok(())
+}
+
+/// Tag Bouquet (2.1): compute up to `limit` tag suggestions for a note body.
+///
+/// The ranking is deliberately simple and fully local: every word in the
+/// body is normalised, stop-words and short tokens are dropped, then each
+/// surviving stem is scored by
+///   2.0 × (already-a-vault-tag?)  — re-using existing tags is preferred
+/// + 1.0 × min(occurrences, 5) / 5 — but common stems from the body float up
+/// + 0.4 × title-occurrence        — title hits get a small boost
+/// Results are capped, stripped of anything already applied to this note,
+/// and returned in score-descending order. No embeddings, no network.
+pub fn suggest_tags(
+    body: &str,
+    title: &str,
+    existing_tags: &[String],
+    vault_tags: &[String],
+    limit: usize,
+) -> Vec<String> {
+    use rust_stemmers::{Algorithm, Stemmer};
+    use std::collections::HashMap;
+
+    // 2.1: Snowball English stemmer collapses inflections morphologically.
+    // "gardens", "gardening", "gardener", "gardened" all stem to "garden",
+    // so a single body token form matches an existing `#garden` tag and
+    // we never emit near-duplicate suggestions. Replaces the hand-rolled
+    // s-suffix strip that lived here in 2.1.0's initial cut.
+    let stemmer = Stemmer::create(Algorithm::English);
+    let stem = |s: &str| -> String { stemmer.stem(s).to_string() };
+
+    // Stems of tags already on this note — we never re-suggest anything
+    // that maps to an existing tag's stem (so "work" isn't suggested
+    // when the user already has `#working`).
+    let applied_stems: std::collections::HashSet<String> =
+        existing_tags.iter().map(|s| stem(&s.to_lowercase())).collect();
+
+    // stem → canonical vault surface form. When a vault tag "wins" the
+    // suggestion, we emit its exact surface (`#garden`, not `#gardens`)
+    // so the user keeps tagging with the form they've already chosen.
+    let mut vault_surface_by_stem: HashMap<String, String> = HashMap::new();
+    for t in vault_tags {
+        let lc = t.to_lowercase();
+        let st = stem(&lc);
+        vault_surface_by_stem.entry(st).or_insert(lc);
+    }
+
+    // Short-and-common stop-words — filtered pre-stem so "the"/"their"
+    // etc. never reach the scorer. Stemming wouldn't remove them (Snowball
+    // leaves stop-words alone; that's a separate pass in Lucene). English-
+    // only for now; whatlang + per-language stop lists can slot in later.
+    static STOP: &[&str] = &[
+        "the","a","an","and","or","but","if","then","when","with","without","of",
+        "for","to","in","on","at","by","is","are","was","were","be","been","being",
+        "this","that","these","those","it","its","as","from","into","about","over",
+        "we","you","i","me","my","your","our","their","they","he","she","him","her",
+        "so","not","no","yes","do","did","does","done","have","has","had","will",
+        "would","could","should","can","may","might","must","just","very","more",
+        "most","much","some","any","all","one","two","three","out","up","down",
+        "also","than","only","even","still","too","get","got","go","going","make",
+        "made","said","say","says","thing","things","someone","something","well",
+        "like","really","back","here","there","what","which","who","whom","whose",
+        "how","why","because","while","after","before","where","now","yet",
+    ];
+    let stop_set: std::collections::HashSet<&str> = STOP.iter().copied().collect();
+
+    // Per-stem state: how many body tokens stemmed to it, which surface
+    // forms we saw (shortest wins as fallback when no vault match), and
+    // whether any surface appeared in the title (small score bump).
+    struct StemInfo {
+        count: u32,
+        shortest_surface: String,
+        in_title: bool,
+    }
+    let mut stems: HashMap<String, StemInfo> = HashMap::new();
+
+    fn tally(
+        stems: &mut HashMap<String, StemInfo>,
+        stop_set: &std::collections::HashSet<&str>,
+        stem_fn: &dyn Fn(&str) -> String,
+        tok: &str,
+        is_title: bool,
+    ) {
+        if tok.len() < 4 || tok.len() > 20 { return; }
+        if stop_set.contains(tok) { return; }
+        let st = stem_fn(tok);
+        if st.is_empty() { return; }
+        let entry = stems.entry(st).or_insert_with(|| StemInfo {
+            count: 0,
+            shortest_surface: tok.to_string(),
+            in_title: false,
+        });
+        if !is_title {
+            entry.count += 1;
+        }
+        if is_title {
+            entry.in_title = true;
+        }
+        // Prefer the shortest surface form we've seen — "garden" over
+        // "gardens" over "gardening" — unless a vault tag overrides
+        // this at emit time.
+        if tok.len() < entry.shortest_surface.len() {
+            entry.shortest_surface = tok.to_string();
+        }
+    }
+
+    // Tokeniser: walk chars, keep alphabetic runs (plus `-` and `_`),
+    // lowercase eagerly, hand each completed token to `tally`.
+    let mut walk = |text: &str, is_title: bool| {
+        let mut curr = String::with_capacity(24);
+        for ch in text.chars() {
+            if ch.is_alphabetic() || ch == '-' || ch == '_' {
+                for c in ch.to_lowercase() { curr.push(c); }
+            } else {
+                if !curr.is_empty() {
+                    tally(&mut stems, &stop_set, &stem, &curr, is_title);
+                    curr.clear();
+                }
+            }
+        }
+        if !curr.is_empty() {
+            tally(&mut stems, &stop_set, &stem, &curr, is_title);
+        }
+    };
+    walk(body, false);
+    walk(title, true);
+
+    // Score each stem: occurrence (capped at 5 hits), vault-preference
+    // bonus (×2 when the user has already tagged with this stem), plus
+    // a small title bump.
+    let mut scored: Vec<(String, String, f32)> = stems
+        .into_iter()
+        .filter(|(st, _)| !applied_stems.contains(st))
+        .map(|(st, info)| {
+            let occ = (info.count as f32).min(5.0) / 5.0;
+            let vault_bonus = if vault_surface_by_stem.contains_key(&st) { 2.0 } else { 0.0 };
+            let title_bonus = if info.in_title { 0.4 } else { 0.0 };
+            // Pick the surface form: vault's first if it wins, else the
+            // shortest we saw in the text.
+            let surface = vault_surface_by_stem
+                .get(&st)
+                .cloned()
+                .unwrap_or(info.shortest_surface);
+            (st, surface, occ + vault_bonus + title_bonus)
+        })
+        .collect();
+
+    scored.sort_by(|a, b| {
+        b.2.partial_cmp(&a.2)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.cmp(&b.1))
+    });
+
+    // Stems are unique by construction (HashMap key), so no post-filter
+    // dedup is needed. We just cap and return surface forms.
+    scored.into_iter()
+        .take(limit)
+        .map(|(_, surface, _)| surface)
+        .collect()
+}
+
+#[cfg(test)]
+mod suggest_tags_tests {
+    use super::suggest_tags;
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn plural_body_surfaces_singular_vault_tag() {
+        // User already has `#garden`. Body uses "gardens" repeatedly. We
+        // should suggest `garden` (the vault's surface form), NOT
+        // `gardens` — because the user has chosen how they want this
+        // concept tagged.
+        let body = "I tend the gardens weekly. The gardens are fine. My gardens.";
+        let out = suggest_tags(body, "on weekly care", &s(&[]), &s(&["garden"]), 5);
+        assert!(out.contains(&"garden".to_string()),
+            "expected 'garden' (vault surface) in {:?}", out);
+        assert!(!out.contains(&"gardens".to_string()),
+            "did not expect 'gardens' when vault has 'garden' in {:?}", out);
+    }
+
+    #[test]
+    fn verb_inflections_collapse_to_one_suggestion() {
+        // "writing", "writes", "wrote" should not all show up — they
+        // stem together. Only one suggestion in the output.
+        let body = "I am writing. She writes. He wrote. They are writing again.";
+        let out = suggest_tags(body, "about writing", &s(&[]), &s(&[]), 10);
+        let writing_hits: Vec<_> = out.iter()
+            .filter(|w| w.starts_with("writ"))
+            .collect();
+        assert_eq!(writing_hits.len(), 1,
+            "expected exactly one writ* suggestion, got {:?}", out);
+    }
+
+    #[test]
+    fn already_applied_tag_blocks_its_inflections() {
+        // User has `#working`. Body says "I worked on work today" —
+        // nothing in the "work" family should be suggested.
+        let body = "I worked on work today. The work was good. I am working.";
+        let out = suggest_tags(body, "", &s(&["working"]), &s(&[]), 10);
+        assert!(!out.iter().any(|w| w.starts_with("work")),
+            "expected no work* suggestions when #working already applied, got {:?}", out);
+    }
 }
 
 pub fn append_scratchpad(root: &Path, entry: &str) -> Result<()> {

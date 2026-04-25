@@ -7,6 +7,8 @@ import { YarrowMark } from "./YarrowMark";
 import { XIcon } from "../lib/icons";
 import { SK } from "../lib/platform";
 import { APP_VERSION } from "../lib/version";
+import { useLanguage, LANGUAGE_ORDER, type LanguageCode } from "../lib/language";
+import { useT } from "../lib/i18n";
 import NewWorkspaceWizard from "./NewWorkspaceWizard";
 
 interface Props {
@@ -19,6 +21,7 @@ export default function Onboarding({ onReady }: Props) {
   const [recent, setRecent] = useState<RecentWorkspace[]>([]);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [openGuideOpen, setOpenGuideOpen] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     api.listRecentWorkspaces().then(setRecent).catch(() => setRecent([]));
@@ -88,23 +91,51 @@ export default function Onboarding({ onReady }: Props) {
   // an outer scroll container and an inner `min-h-full` flex so the content
   // stays vertically centered when short and scrolls naturally when long.
   return (
-    <div className="h-full overflow-auto bg-bg">
+    // Light-mode background is pinned to #f4efe2 — the exact off-white
+    // of the welcome illustration's paper. Avoids the faint edge line
+    // where the image's cream rectangle would otherwise sit against
+    // the app's default --bg (#F6F1E6). Dark mode keeps the token
+    // so the Plum-and-Graphite palette still drives the surface.
+    <div className="h-full overflow-auto bg-bg relative">
+      {/* Floating language picker. Lives outside the centred column so
+          it sits in the corner regardless of how tall the welcome
+          content gets, and so non-English speakers see it before
+          reading any English copy. The outer container is `relative`
+          so the switcher's `absolute` placement anchors here, not on
+          the App-level wrapper that also holds the title bar. */}
+      <OnboardingLanguageSwitcher />
       <div className="min-h-full flex items-center justify-center py-10">
-      <div className="max-w-lg w-full px-8">
-        <div className="flex items-center gap-3 mb-1">
-          <YarrowMark size={38} />
-          <h1 className="font-serif text-5xl text-char leading-none">Yarrow</h1>
-          <span className="ml-auto text-2xs text-t3 font-mono self-end pb-2">v{APP_VERSION}</span>
+      <div className="max-w-xl w-full px-8">
+        {/* Hero wordmark — Fraunces large, the same display face we use for
+            note titles. Replaces the previous illustration; the user wants
+            to revisit that art separately. The mark sprig sits beside the
+            wordmark at a size that lets both read at a glance. */}
+        <div className="flex flex-col items-center mb-6 select-none">
+          <div className="flex items-baseline gap-3 text-char">
+            <YarrowMark size={44} className="self-center text-yel shrink-0" />
+            <span
+              className="font-display text-[88px] leading-none tracking-tight"
+              style={{
+                fontFamily: "'Fraunces', 'Source Serif 4', 'Newsreader', ui-serif, Georgia, serif",
+                fontVariationSettings: "'opsz' 144, 'SOFT' 50",
+                fontWeight: 380,
+              }}
+            >
+              Yarrow
+            </span>
+          </div>
+          <span className="mt-1 text-2xs text-t3 font-mono tracking-widest uppercase">
+            v{APP_VERSION}
+          </span>
         </div>
-        <p className="text-t2 text-base mb-8 leading-relaxed">
-          Notes that branch, evolve, and connect. Nothing is ever lost — every
-          direction you explore stays in an archive, not the trash.
+        <p className="text-t2 text-base mb-8 leading-relaxed text-center">
+          {t("onboarding.tagline")}
         </p>
 
         {recent.length > 0 && (
           <div className="mb-6">
             <div className="text-2xs uppercase tracking-wider text-t3 font-semibold mb-2">
-              Recent workspaces
+              {t("onboarding.recent")}
             </div>
             <ul className="space-y-1.5">
               {recent.map((r) => (
@@ -118,7 +149,7 @@ export default function Onboarding({ onReady }: Props) {
                     onClick={() => openRecent(r.path)}
                     disabled={busy}
                     className="flex-1 min-w-0 flex items-center gap-3 text-left"
-                    aria-label={`Open ${r.name}`}
+                    aria-label={t("onboarding.openLabel", { name: r.name })}
                   >
                     <YarrowMark size={22} className="shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -136,8 +167,8 @@ export default function Onboarding({ onReady }: Props) {
                   <button
                     onClick={(e) => forget(e, r.path)}
                     className="opacity-0 group-hover:opacity-100 text-t3 hover:text-danger transition shrink-0"
-                    title="Remove from recents"
-                    aria-label="Remove from recents"
+                    title={t("onboarding.removeRecent")}
+                    aria-label={t("onboarding.removeRecent")}
                   >
                     <XIcon />
                   </button>
@@ -153,9 +184,9 @@ export default function Onboarding({ onReady }: Props) {
             onClick={() => { setError(null); setWizardOpen(true); }}
             className="w-full px-5 py-3 rounded-lg bg-yel text-on-yel font-medium hover:bg-yel2 transition disabled:opacity-50 text-left group"
           >
-            <div className="text-sm font-serif">Create a new workspace</div>
+            <div className="text-sm font-serif">{t("onboarding.create")}</div>
             <div className="text-xs opacity-80 mt-0.5">
-              Start blank, or import from Obsidian, Bear, Logseq, or Notion. We'll guide you through it.
+              {t("onboarding.createSub")}
             </div>
           </button>
 
@@ -164,9 +195,9 @@ export default function Onboarding({ onReady }: Props) {
             onClick={() => { setError(null); setOpenGuideOpen(true); }}
             className="w-full px-5 py-3 rounded-lg bg-s2 text-char font-medium hover:bg-s3 transition disabled:opacity-50 text-left"
           >
-            <div className="text-sm font-serif">Open a different folder</div>
+            <div className="text-sm font-serif">{t("onboarding.openOther")}</div>
             <div className="text-xs text-t2 mt-0.5">
-              Locate a Yarrow workspace that isn't in your recents. We'll show you what to look for.
+              {t("onboarding.openOtherSub")}
             </div>
           </button>
 
@@ -176,10 +207,9 @@ export default function Onboarding({ onReady }: Props) {
               onClick={tryASample}
               className="w-full px-5 py-3 rounded-lg bg-bg border border-bd text-t2 hover:text-char hover:bg-s1 transition disabled:opacity-50 text-left"
             >
-              <div className="text-sm font-serif italic">Try a sample vault</div>
+              <div className="text-sm font-serif italic">{t("onboarding.sample")}</div>
               <div className="text-xs text-t3 mt-0.5">
-                Eight connected notes and a second path — see Yarrow populated
-                before you start writing your own.
+                {t("onboarding.sampleSub")}
               </div>
             </button>
           )}
@@ -190,24 +220,22 @@ export default function Onboarding({ onReady }: Props) {
         {recent.length === 0 && (
           <div className="mt-10 border-t border-bd pt-6 space-y-3 text-xs text-t2 leading-relaxed">
             <div>
-              <span className="text-char font-medium">Notes are just files.</span>
-              {" "}They live in your chosen folder as `.md`. You can open them in any
-              editor — Yarrow only tracks changes and connections for you.
+              <span className="text-char font-medium">{t("onboarding.notesAreFiles")}</span>
+              {" "}{t("onboarding.notesAreFilesBody")}
             </div>
             <div>
-              <span className="text-char font-medium">Every change is kept.</span>
-              {" "}Save is automatic and silent. You can scrub back through any version.
+              <span className="text-char font-medium">{t("onboarding.everyChange")}</span>
+              {" "}{t("onboarding.everyChangeBody")}
             </div>
             <div>
-              <span className="text-char font-medium">Explore in parallel.</span>
-              {" "}When you want to try a different angle, open a new direction.
-              The original stays exactly as it was.
+              <span className="text-char font-medium">{t("onboarding.exploreParallel")}</span>
+              {" "}{t("onboarding.exploreParallelBody")}
             </div>
           </div>
         )}
 
         <p className="mt-8 text-2xs text-t3 font-mono">
-          Tip: press {SK.palette} inside Yarrow to jump anywhere; {SK.quickSwitch} for a quick note switcher.
+          {t("onboarding.tip", { palette: SK.palette, quickSwitch: SK.quickSwitch })}
         </p>
       </div>
 
@@ -247,6 +275,7 @@ function OpenFolderGuide({
   onClose: () => void;
   onBrowse: () => void | Promise<void>;
 }) {
+  const t = useT();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -256,9 +285,21 @@ function OpenFolderGuide({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
   if (!open) return null;
+  // The body string has three inline placeholders we render as styled
+  // spans, so we split the translated template on its `{outer}` /
+  // `{dotyarrow}` / `{notes}` markers and stitch React nodes back in.
+  const outerWord = t("openGuide.outerWord");
+  const outerBodyParts = splitWithMarkers(t("openGuide.outerFolderBody"), [
+    "{outer}",
+    "{dotyarrow}",
+    "{notes}",
+  ]);
+  const hiddenHintParts = splitWithMarkers(t("openGuide.hiddenHint"), [
+    "{dotyarrow}",
+  ]);
   return (
     <div
-      className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-6"
+      className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center p-6"
       onClick={onClose}
     >
       <div
@@ -266,37 +307,63 @@ function OpenFolderGuide({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-5 border-b border-bd">
-          <div className="font-serif text-xl text-char">Open an existing Yarrow workspace</div>
+          <div className="font-serif text-xl text-char">{t("openGuide.title")}</div>
           <div className="text-2xs text-t3 mt-0.5 leading-relaxed">
-            A workspace is just a folder on disk — one you (or Yarrow) made before.
+            {t("openGuide.subtitle")}
           </div>
         </div>
 
         <div className="px-6 py-5 space-y-4">
           <div>
             <div className="font-serif italic text-xs text-t3 mb-2">
-              What you're looking for
+              {t("openGuide.lookingFor")}
             </div>
             <div className="bg-s1 border border-bd rounded-md px-3 py-3 font-mono text-[11px] text-t2 leading-relaxed">
               <div className="text-char">some-folder-name/</div>
-              <div className="pl-4">.yarrow/<span className="text-t3 italic"> ← Yarrow's config + index (hidden)</span></div>
-              <div className="pl-4">notes/<span className="text-t3 italic"> ← your .md notes live here</span></div>
+              <div className="pl-4">.yarrow/<span className="text-t3 italic"> ← {t("openGuide.configHint")}</span></div>
+              <div className="pl-4">notes/<span className="text-t3 italic"> ← {t("openGuide.notesHint")}</span></div>
               <div className="pl-4">.gitignore</div>
-              <div className="pl-4 text-t3 italic">(and the usual git bookkeeping)</div>
+              <div className="pl-4 text-t3 italic">{t("openGuide.gitBookkeeping")}</div>
             </div>
           </div>
 
           <div className="text-xs text-t2 leading-relaxed space-y-2">
             <div>
-              Pick the <span className="text-char font-medium">outer folder</span> — the one
-              that contains <code className="font-mono text-[11px] bg-s2 px-1 rounded">.yarrow/</code>.
-              If you drill in too far (e.g. into <code className="font-mono text-[11px] bg-s2 px-1 rounded">notes/</code>),
-              Yarrow won't recognize it and will offer to open it as a new workspace instead.
+              {outerBodyParts.map((part, i) => {
+                if (part === "{outer}") {
+                  return (
+                    <span key={i} className="text-char font-medium">
+                      {outerWord}
+                    </span>
+                  );
+                }
+                if (part === "{dotyarrow}") {
+                  return (
+                    <code key={i} className="font-mono text-[11px] bg-s2 px-1 rounded">
+                      .yarrow/
+                    </code>
+                  );
+                }
+                if (part === "{notes}") {
+                  return (
+                    <code key={i} className="font-mono text-[11px] bg-s2 px-1 rounded">
+                      notes/
+                    </code>
+                  );
+                }
+                return <span key={i}>{part}</span>;
+              })}
             </div>
             <div className="text-t3 italic">
-              Your OS might hide the <code className="font-mono text-[10px]">.yarrow</code> folder
-              (macOS &amp; Linux hide anything that starts with a dot). That's fine — you don't
-              need to see it, just pick the folder that contains it.
+              {hiddenHintParts.map((part, i) =>
+                part === "{dotyarrow}" ? (
+                  <code key={i} className="font-mono text-[10px]">
+                    .yarrow
+                  </code>
+                ) : (
+                  <span key={i}>{part}</span>
+                ),
+              )}
             </div>
           </div>
         </div>
@@ -307,18 +374,73 @@ function OpenFolderGuide({
             disabled={busy}
             className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char disabled:opacity-50"
           >
-            Cancel
+            {t("openGuide.cancel")}
           </button>
           <button
             onClick={onBrowse}
             disabled={busy}
             className="text-xs px-3 py-1.5 rounded bg-yel text-on-yel hover:bg-yel2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Browse for a folder…
+            {t("openGuide.browse")}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+/// Floating language switcher rendered in the top-right of the
+/// onboarding screen. We keep it as a small button + native select so
+/// the picker is keyboard-accessible and the OS handles long lists
+/// gracefully — this is the same primitive used in form pickers
+/// across Yarrow. It lives outside the centred column so the position
+/// is independent of the welcome content's height.
+function OnboardingLanguageSwitcher() {
+  const { lang, setLang } = useLanguage();
+  const t = useT();
+  return (
+    <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+      <label
+        htmlFor="onboarding-lang"
+        className="text-2xs uppercase tracking-wider text-t3 font-mono"
+      >
+        {t("onboarding.languagePicker")}
+      </label>
+      <select
+        id="onboarding-lang"
+        value={lang}
+        onChange={(e) => setLang(e.target.value as LanguageCode)}
+        className="text-xs bg-s1 border border-bd hover:border-bd2 rounded-md px-2 py-1 text-char focus:outline-none focus:border-yel"
+      >
+        {LANGUAGE_ORDER.map((l) => (
+          <option key={l.id} value={l.id}>
+            {l.label}
+            {l.note ? ` — ${l.note}` : ""}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/// Split a template string on a list of literal markers, preserving
+/// the markers themselves in the output so callers can render each
+/// piece (text vs marker) however they like. Used to mix `<span>` /
+/// `<code>` styling into translated body copy without forcing the
+/// translator to ship raw HTML in their string.
+function splitWithMarkers(s: string, markers: string[]): string[] {
+  let parts: string[] = [s];
+  for (const m of markers) {
+    const next: string[] = [];
+    for (const p of parts) {
+      const segs = p.split(m);
+      for (let i = 0; i < segs.length; i++) {
+        if (i > 0) next.push(m);
+        next.push(segs[i]);
+      }
+    }
+    parts = next;
+  }
+  return parts.filter((p) => p !== "");
 }
 

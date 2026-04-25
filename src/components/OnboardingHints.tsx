@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SK } from "../lib/platform";
+import { useT } from "../lib/i18n";
 
 interface Props {
   /** When a workspace is first opened we start the cycle; subsequent
@@ -15,36 +16,6 @@ interface Hint {
   body: React.ReactNode;
 }
 
-const HINTS: Hint[] = [
-  {
-    id: "palette",
-    title: "Do anything with the command palette",
-    body: (
-      <>
-        Press <kbd className="px-1.5 py-0.5 rounded bg-s2 text-2xs font-mono text-char border border-bd">{SK.palette}</kbd> to jump to a note, switch paths, create a template, print, import from Obsidian — everything's in there.
-      </>
-    ),
-  },
-  {
-    id: "paths",
-    title: "Branch any thought into a path",
-    body: (
-      <>
-        Want to try a different angle on a note? Press <kbd className="px-1.5 py-0.5 rounded bg-s2 text-2xs font-mono text-char border border-bd">{SK.newDirection}</kbd> (or click <em>Branch this</em>) to start a <em>path</em> — an "if…" version that lives alongside the original. The original never changes.
-      </>
-    ),
-  },
-  {
-    id: "decide",
-    title: "Compare paths to decide between them",
-    body: (
-      <>
-        Open <strong>Paths</strong> from the right rail. Every card shows what you'd gain or lose vs. your current path. For "must-have" thinking, open <strong>Decision matrix</strong> from the palette — star the notes you can't live without and read off the column scores.
-      </>
-    ),
-  },
-];
-
 /** Dismissible first-launch tutorial — three short cards, one at a time,
  *  advanced via a "Next tip" button. Dismissed state persists per machine
  *  so power users never see it again. */
@@ -53,14 +24,44 @@ export default function OnboardingHints({ workspacePath }: Props) {
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }
   });
+  const t = useT();
+  const HINTS: Hint[] = useMemo(() => [
+    {
+      id: "palette",
+      title: t("modals.hints.paletteTitle"),
+      body: (
+        <>
+          {t("modals.hints.paletteBodyPre")}<kbd className="px-1.5 py-0.5 rounded bg-s2 text-2xs font-mono text-char border border-bd">{SK.palette}</kbd>{t("modals.hints.paletteBodyPost")}
+        </>
+      ),
+    },
+    {
+      id: "paths",
+      title: t("modals.hints.pathsTitle"),
+      body: (
+        <>
+          {t("modals.hints.pathsBodyPre")}<kbd className="px-1.5 py-0.5 rounded bg-s2 text-2xs font-mono text-char border border-bd">{SK.newDirection}</kbd>{t("modals.hints.pathsBodyMid")}<em>{t("modals.hints.pathsBranchThis")}</em>{t("modals.hints.pathsBodyPost")}<em>{t("modals.hints.pathsBodyPath")}</em>{t("modals.hints.pathsBodyTail")}
+        </>
+      ),
+    },
+    {
+      id: "decide",
+      title: t("modals.hints.decideTitle"),
+      body: (
+        <>
+          {t("modals.hints.decideBodyPre")}<strong>{t("modals.hints.decideBodyPaths")}</strong>{t("modals.hints.decideBodyMid")}<strong>{t("modals.hints.decideBodyMatrix")}</strong>{t("modals.hints.decideBodyTail")}
+        </>
+      ),
+    },
+  ], [t]);
 
   // Don't pop the card immediately on a cold boot — give the app a moment
   // to finish its first render so the hint doesn't collide with layout.
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     if (dismissed) return;
-    const t = window.setTimeout(() => setVisible(true), 900);
-    return () => window.clearTimeout(t);
+    const tid = window.setTimeout(() => setVisible(true), 900);
+    return () => window.clearTimeout(tid);
   }, [dismissed, workspacePath]);
 
   if (dismissed || !visible) return null;
@@ -76,17 +77,17 @@ export default function OnboardingHints({ workspacePath }: Props) {
     <div
       className="fixed z-40 bottom-5 right-5 w-[340px] bg-bg border border-bd2 rounded-xl shadow-2xl animate-fadeIn"
       role="dialog"
-      aria-label="First-run tips"
+      aria-label={t("modals.hints.dialogLabel")}
     >
       <div className="px-4 pt-3 pb-2 flex items-baseline gap-2">
         <span className="text-2xs font-mono uppercase tracking-wider text-yeld">
-          Tip {idx + 1} of {HINTS.length}
+          {t("modals.hints.tipCounter", { n: String(idx + 1), total: String(HINTS.length) })}
         </span>
         <button
           onClick={dismiss}
           className="ml-auto text-t3 hover:text-char text-sm leading-none w-6 h-6 flex items-center justify-center rounded hover:bg-s2"
-          aria-label="Dismiss tips"
-          title="Don't show these again"
+          aria-label={t("modals.hints.dismissAria")}
+          title={t("modals.hints.dismissTitle")}
         >
           ×
         </button>
@@ -108,21 +109,21 @@ export default function OnboardingHints({ workspacePath }: Props) {
           onClick={dismiss}
           className="ml-auto text-xs text-t3 hover:text-char"
         >
-          Skip tips
+          {t("modals.hints.skip")}
         </button>
         {isLast ? (
           <button
             onClick={dismiss}
             className="text-xs px-3 py-1 rounded bg-yel text-on-yel hover:bg-yel2"
           >
-            Got it
+            {t("modals.hints.gotIt")}
           </button>
         ) : (
           <button
             onClick={() => setIdx(idx + 1)}
             className="text-xs px-3 py-1 rounded bg-yel text-on-yel hover:bg-yel2"
           >
-            Next tip →
+            {t("modals.hints.nextTip")}
           </button>
         )}
       </div>

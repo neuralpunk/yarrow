@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "../lib/tauri";
@@ -23,6 +23,10 @@ import {
   type ExtraKey,
 } from "../lib/extraPrefs";
 import { useUiFont, UI_FONTS, type UiFontId, useUiScale, UI_SCALES, type UiScaleId } from "../lib/uiPrefs";
+import { usePersonality, PERSONALITIES, type PersonalityId } from "../lib/personalityPrefs";
+import { usePaperTexture, PAPER_TEXTURES, type PaperTextureId, usePaperWarmth } from "../lib/paperPrefs";
+import { useLanguage, LANGUAGE_ORDER, type LanguageCode } from "../lib/language";
+import { useT } from "../lib/i18n";
 import { SunIcon, MoonIcon, AutoThemeIcon } from "../lib/icons";
 import { SK } from "../lib/platform";
 import { APP_VERSION } from "../lib/version";
@@ -34,6 +38,7 @@ type Tab =
   | "writing"
   | "guidance"
   | "sync"
+  | "storage"
   | "templates"
   | "security"
   | "workspace"
@@ -49,6 +54,11 @@ interface Props {
   onConfigChange: (cfg: WorkspaceConfig) => void;
   onSyncNow: () => void;
   onCloseWorkspace: () => void;
+  /** Open the import-from-other-app modal. Threaded through so the
+   *  Settings → Workspace pane has its own import entry point — the
+   *  command palette is fine for keyboard-first users, but new users
+   *  hunt in Settings first. */
+  onImport?: () => void;
 }
 
 export default function Settings({
@@ -60,7 +70,9 @@ export default function Settings({
   onConfigChange,
   onSyncNow,
   onCloseWorkspace,
+  onImport,
 }: Props) {
+  const t = useT();
   const [tab, setTab] = useState<Tab>(initialTab ?? "appearance");
   const [query, setQuery] = useState("");
   useEffect(() => {
@@ -80,49 +92,74 @@ export default function Settings({
 
   if (!open) return null;
 
+  const tabLabels: Record<Tab, string> = {
+    appearance: t("settings.tabs.appearance"),
+    writing: t("settings.tabs.writing"),
+    guidance: t("settings.tabs.guidance"),
+    templates: t("settings.tabs.templates"),
+    sync: t("settings.tabs.sync"),
+    storage: t("settings.tabs.storage"),
+    security: t("settings.tabs.security"),
+    workspace: t("settings.tabs.workspace"),
+    shortcuts: t("settings.tabs.shortcuts"),
+    about: t("settings.tabs.about"),
+  };
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-char/30 backdrop-blur-[3px] animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-char/30 animate-fadeIn"
       onMouseDown={onClose}
     >
       <div
-        className="w-[760px] max-w-[94vw] h-[520px] max-h-[90vh] bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden flex animate-slideUp"
+        className="w-[760px] max-w-[94vw] h-[520px] max-h-[90vh] bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden flex animate-slideUp relative"
         onMouseDown={(e) => e.stopPropagation()}
       >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t("settings.closeAria")}
+          title={t("settings.closeTitle")}
+          className="absolute top-3 right-3 z-10 w-7 h-7 rounded-md flex items-center justify-center text-t3 hover:text-char hover:bg-s2 transition"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+            <path d="M 3 3 L 11 11 M 11 3 L 3 11" />
+          </svg>
+        </button>
         <aside className="w-[180px] shrink-0 bg-s1 border-r border-bd py-3 flex flex-col">
           <div className="px-3 pb-3 border-b border-bd">
-            <div className="font-serif text-xl text-char px-1">Settings</div>
+            <div className="font-serif text-xl text-char px-1">{t("settings.title")}</div>
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
+              placeholder={t("settings.searchPlaceholder")}
               className="mt-2 w-full px-2.5 py-1.5 bg-bg border border-bd rounded-md text-char text-xs placeholder:text-t3 focus:outline-none focus:border-yel"
             />
-            <div className="text-2xs text-t3 mt-1.5 px-1">esc to close</div>
+            <div className="text-2xs text-t3 mt-1.5 px-1">{t("settings.escToClose")}</div>
           </div>
           <nav className="flex-1 pt-2">
-            {(["appearance", "writing", "guidance", "templates", "sync", "security", "workspace", "shortcuts", "about"] as Tab[]).map((t) => (
+            {(["appearance", "writing", "guidance", "templates", "sync", "storage", "security", "workspace", "shortcuts", "about"] as Tab[]).map((tabKey) => (
               <button
-                key={t}
-                onClick={() => { setTab(t); setQuery(""); }}
+                key={tabKey}
+                onClick={() => { setTab(tabKey); setQuery(""); }}
                 className={`w-full text-left px-4 py-2 text-sm transition ${
-                  !query && tab === t
+                  !query && tab === tabKey
                     ? "bg-s3 text-char border-l-2 border-yel pl-[14px]"
                     : "text-t2 hover:bg-s2 hover:text-char"
                 }`}
               >
-                {TAB_LABELS[t]}
+                {tabLabels[tabKey]}
               </button>
             ))}
           </nav>
         </aside>
 
-        <section className="flex-1 min-w-0 overflow-y-auto p-6">
+        <section className="flex-1 min-w-0 overflow-y-auto p-6 yarrow-paint-island yarrow-gpu-scroll">
           {query.trim() ? (
             <SearchResults
               query={query.trim()}
-              onPick={(t) => { setTab(t); setQuery(""); }}
+              tabLabels={tabLabels}
+              onPick={(tabKey) => { setTab(tabKey); setQuery(""); }}
             />
           ) : (
             <>
@@ -144,9 +181,11 @@ export default function Settings({
                   config={config}
                   onConfigChange={onConfigChange}
                   onCloseWorkspace={onCloseWorkspace}
+                  onImport={onImport}
                 />
               )}
               {tab === "templates" && <TemplatesPane />}
+              {tab === "storage" && <StoragePane />}
               {tab === "security" && config && (
                 <SecurityPane config={config} onConfigChange={onConfigChange} />
               )}
@@ -159,18 +198,6 @@ export default function Settings({
     </div>
   );
 }
-
-const TAB_LABELS: Record<Tab, string> = {
-  appearance: "Appearance",
-  writing: "Writing",
-  guidance: "Guidance",
-  templates: "Templates",
-  sync: "Sync",
-  security: "Security",
-  workspace: "Workspace",
-  shortcuts: "Shortcuts",
-  about: "About",
-};
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -206,79 +233,85 @@ function Row({
 
 // Static index of searchable settings rows. Keywords are intentionally
 // loose — we only need "does any one of these match a typed word" as a
-// fallback for people who don't know the exact label Yarrow uses.
+// fallback for people who don't know the exact label Yarrow uses. The
+// label and sublabel are translation keys resolved by SearchResults.
+type SettingsKey =
+  Parameters<ReturnType<typeof useT>>[0];
+
 interface SettingEntry {
   tab: Tab;
-  label: string;
-  sublabel?: string;
+  labelKey: SettingsKey;
+  sublabelKey?: SettingsKey;
   keywords?: string[];
 }
 
 const SETTINGS_INDEX: SettingEntry[] = [
-  { tab: "appearance", label: "Theme", sublabel: "light · dark · auto", keywords: ["color", "mode", "dark", "light"] },
-  { tab: "appearance", label: "Interface size", sublabel: "compact · cozy · roomy", keywords: ["scale", "zoom", "chrome"] },
-  { tab: "appearance", label: "Interface font", sublabel: "Inter · serif options", keywords: ["font", "typography", "ui", "inter", "georgia", "serif", "merriweather"] },
+  { tab: "appearance", labelKey: "settings.search.appearance.theme.label", sublabelKey: "settings.search.appearance.theme.sublabel", keywords: ["color", "mode", "dark", "light", "ashrose", "rose"] },
+  { tab: "appearance", labelKey: "settings.search.appearance.size.label", sublabelKey: "settings.search.appearance.size.sublabel", keywords: ["scale", "zoom", "chrome"] },
+  { tab: "appearance", labelKey: "settings.search.appearance.font.label", sublabelKey: "settings.search.appearance.font.sublabel", keywords: ["font", "typography", "ui", "inter", "georgia", "serif", "merriweather"] },
 
-  { tab: "writing", label: "Save every change after", sublabel: "autosave debounce", keywords: ["autosave", "save", "delay"] },
-  { tab: "writing", label: "Ask what I was thinking on close", keywords: ["thinking", "commit", "message"] },
-  { tab: "writing", label: "Fade notes unvisited for", keywords: ["decay", "stale", "dim", "unvisited"] },
-  { tab: "writing", label: "Editor font size", keywords: ["size", "font", "zoom"] },
-  { tab: "writing", label: "Open workspaces in focus mode", keywords: ["focus", "default"] },
-  { tab: "writing", label: "Show raw markdown syntax", keywords: ["markdown", "source", "raw"] },
-  { tab: "writing", label: "Editor font", keywords: ["font", "serif", "sans", "lora", "source serif"] },
+  { tab: "writing", labelKey: "settings.search.writing.autosave.label", sublabelKey: "settings.search.writing.autosave.sublabel", keywords: ["autosave", "save", "delay"] },
+  { tab: "writing", labelKey: "settings.search.writing.askThinking.label", keywords: ["thinking", "commit", "message"] },
+  { tab: "writing", labelKey: "settings.search.writing.fadeNotes.label", keywords: ["decay", "stale", "dim", "unvisited"] },
+  { tab: "writing", labelKey: "settings.search.writing.editorFontSize.label", keywords: ["size", "font", "zoom"] },
+  { tab: "writing", labelKey: "settings.search.writing.focusDefault.label", keywords: ["focus", "default"] },
+  { tab: "writing", labelKey: "settings.search.writing.rawMarkdown.label", keywords: ["markdown", "source", "raw"] },
+  { tab: "writing", labelKey: "settings.search.writing.editorFont.label", keywords: ["font", "serif", "sans", "lora", "source serif"] },
 
-  { tab: "guidance", label: "Guided mode", sublabel: "hand-holding for complex features", keywords: ["guide", "tour", "tutorial", "help", "teach", "walkthrough", "onboarding"] },
-  { tab: "guidance", label: "Reset guidance", sublabel: "see all the teaching modals again", keywords: ["reset", "forget", "tour", "show again"] },
+  { tab: "guidance", labelKey: "settings.search.guidance.guidedMode.label", sublabelKey: "settings.search.guidance.guidedMode.sublabel", keywords: ["guide", "tour", "tutorial", "help", "teach", "walkthrough", "onboarding"] },
+  { tab: "guidance", labelKey: "settings.search.guidance.reset.label", sublabelKey: "settings.search.guidance.reset.sublabel", keywords: ["reset", "forget", "tour", "show again"] },
 
-  { tab: "templates", label: "Templates", sublabel: "reusable note scaffolds", keywords: ["template", "scaffold"] },
+  { tab: "templates", labelKey: "settings.search.templates.label", sublabelKey: "settings.search.templates.sublabel", keywords: ["template", "scaffold"] },
 
-  { tab: "sync", label: "Repository URL", keywords: ["git", "remote", "github", "gitea", "backup"] },
-  { tab: "sync", label: "Access token", keywords: ["password", "pat", "github"] },
-  { tab: "sync", label: "Yarrow Sync", sublabel: "coming soon", keywords: ["cloud", "encrypted"] },
+  { tab: "sync", labelKey: "settings.search.sync.repo.label", keywords: ["git", "remote", "github", "gitea", "backup"] },
+  { tab: "sync", labelKey: "settings.search.sync.token.label", keywords: ["password", "pat", "github"] },
+  { tab: "sync", labelKey: "settings.search.sync.server.label", sublabelKey: "settings.search.sync.server.sublabel", keywords: ["yarrow", "server", "connect", "cloud", "sync", "account", "sign in", "login"] },
+  { tab: "sync", labelKey: "settings.search.sync.disconnect.label", keywords: ["revoke", "unlink", "sign out", "logout"] },
 
-  { tab: "security", label: "Local encryption", sublabel: "password + recovery phrase", keywords: ["encrypt", "password", "security", "argon"] },
-  { tab: "security", label: "Idle auto-lock", keywords: ["timeout", "lock", "idle"] },
-  { tab: "security", label: "Change password", keywords: ["password", "rewrap"] },
-  { tab: "security", label: "Recovery phrase", keywords: ["seed", "mnemonic", "backup"] },
-  { tab: "security", label: "Turn off encryption", keywords: ["disable", "plaintext"] },
+  { tab: "security", labelKey: "settings.search.security.localEnc.label", sublabelKey: "settings.search.security.localEnc.sublabel", keywords: ["encrypt", "password", "security", "argon"] },
+  { tab: "security", labelKey: "settings.search.security.idleLock.label", keywords: ["timeout", "lock", "idle"] },
+  { tab: "security", labelKey: "settings.search.security.changePw.label", keywords: ["password", "rewrap"] },
+  { tab: "security", labelKey: "settings.search.security.recovery.label", keywords: ["seed", "mnemonic", "backup"] },
+  { tab: "security", labelKey: "settings.search.security.turnOff.label", keywords: ["disable", "plaintext"] },
 
-  { tab: "workspace", label: "Name", sublabel: "shown in the sidebar", keywords: ["rename", "title"] },
-  { tab: "workspace", label: "Folder", sublabel: "where your notes live", keywords: ["path", "location", "directory"] },
-  { tab: "workspace", label: "Export as a static site", keywords: ["html", "publish", "share"] },
-  { tab: "workspace", label: "Trim checkpoint history", sublabel: "forget old snapshots", keywords: ["prune", "delete", "history", "old"] },
-  { tab: "workspace", label: "Close this workspace", keywords: ["exit", "switch"] },
+  { tab: "workspace", labelKey: "settings.search.workspace.name.label", sublabelKey: "settings.search.workspace.name.sublabel", keywords: ["rename", "title"] },
+  { tab: "workspace", labelKey: "settings.search.workspace.folder.label", sublabelKey: "settings.search.workspace.folder.sublabel", keywords: ["path", "location", "directory"] },
+  { tab: "workspace", labelKey: "settings.search.workspace.export.label", keywords: ["html", "publish", "share"] },
+  { tab: "workspace", labelKey: "settings.search.workspace.trim.label", sublabelKey: "settings.search.workspace.trim.sublabel", keywords: ["prune", "delete", "history", "old"] },
+  { tab: "workspace", labelKey: "settings.search.workspace.close.label", keywords: ["exit", "switch"] },
 
-  { tab: "shortcuts", label: "Keyboard shortcuts", keywords: ["hotkey", "keybinding", "shortcut"] },
+  { tab: "shortcuts", labelKey: "settings.search.shortcuts.label", keywords: ["hotkey", "keybinding", "shortcut"] },
 
-  { tab: "about", label: "About Yarrow", sublabel: "version, links", keywords: ["version", "build"] },
+  { tab: "about", labelKey: "settings.search.about.label", sublabelKey: "settings.search.about.sublabel", keywords: ["version", "build"] },
 ];
-
-function searchSettings(q: string): SettingEntry[] {
-  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-  if (terms.length === 0) return [];
-  return SETTINGS_INDEX.filter((entry) => {
-    const haystack = [
-      entry.label,
-      entry.sublabel ?? "",
-      TAB_LABELS[entry.tab],
-      ...(entry.keywords ?? []),
-    ].join(" ").toLowerCase();
-    return terms.every((t) => haystack.includes(t));
-  });
-}
 
 function SearchResults({
   query,
+  tabLabels,
   onPick,
 }: {
   query: string;
+  tabLabels: Record<Tab, string>;
   onPick: (t: Tab) => void;
 }) {
-  const results = searchSettings(query);
+  const t = useT();
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const results = SETTINGS_INDEX.filter((entry) => {
+    const label = t(entry.labelKey);
+    const sublabel = entry.sublabelKey ? t(entry.sublabelKey) : "";
+    const haystack = [
+      label,
+      sublabel,
+      tabLabels[entry.tab],
+      ...(entry.keywords ?? []),
+    ].join(" ").toLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  });
+
   if (results.length === 0) {
     return (
       <div className="text-sm text-t3 italic">
-        Nothing matches "{query}". Try a word like <span className="text-char">"font"</span>, <span className="text-char">"sync"</span>, or <span className="text-char">"password"</span>.
+        {t("settings.search.empty", { query })}
       </div>
     );
   }
@@ -291,24 +324,29 @@ function SearchResults({
   return (
     <div>
       <div className="text-2xs uppercase tracking-wider text-t3 font-semibold mb-3">
-        {results.length} result{results.length === 1 ? "" : "s"} for "{query}"
+        {t(
+          results.length === 1
+            ? "settings.search.resultsCount"
+            : "settings.search.resultsCountPlural",
+          { count: String(results.length), query },
+        )}
       </div>
       <div className="space-y-5">
-        {Array.from(byTab.entries()).map(([t, rows]) => (
-          <div key={t}>
+        {Array.from(byTab.entries()).map(([tabKey, rows]) => (
+          <div key={tabKey}>
             <div className="text-xs text-t3 font-mono uppercase tracking-wider mb-1.5">
-              {TAB_LABELS[t]}
+              {tabLabels[tabKey]}
             </div>
             <ul className="border border-bd rounded-md overflow-hidden divide-y divide-bd/60">
               {rows.map((r) => (
-                <li key={`${r.tab}/${r.label}`}>
+                <li key={`${r.tab}/${r.labelKey}`}>
                   <button
                     onClick={() => onPick(r.tab)}
                     className="w-full text-left px-3 py-2.5 hover:bg-s2 transition flex items-baseline gap-3"
                   >
-                    <span className="text-sm text-char flex-1">{r.label}</span>
-                    {r.sublabel && (
-                      <span className="text-2xs text-t3 truncate max-w-[200px]">{r.sublabel}</span>
+                    <span className="text-sm text-char flex-1">{t(r.labelKey)}</span>
+                    {r.sublabelKey && (
+                      <span className="text-2xs text-t3 truncate max-w-[200px]">{t(r.sublabelKey)}</span>
                     )}
                   </button>
                 </li>
@@ -328,16 +366,21 @@ function themeIcon(m: ThemeMode) {
     case "light":     return <SunIcon size={13} />;
     case "dark":      return <MoonIcon size={13} />;
     case "auto":      return <AutoThemeIcon size={13} />;
+    case "ashrose":   return <AshroseIcon size={13} />;
   }
 }
 
-// Tiny preview swatch for each palette — samples the editorial tokens.
+// Tiny preview swatch for each palette. 2.1 revised:
+//   Light   — Linen & Gold     (F6F1E6 · EAE2CE · B38230)
+//   Dark    — Cool Charcoal    (161819 · 1D1F20 · C08BA8)
+//   Ashrose — Dusty rose paper (F1DDE2 · C6ABAF · 5C2E38)
 function ThemePreview({ mode }: { mode: ThemeMode }) {
   const swatches = (() => {
     switch (mode) {
-      case "light":     return ["#F7F5F0", "#E8E4DA", "#7A4E6E"];
-      case "dark":      return ["#1B1D1C", "#262A28", "#B07FA0"];
-      case "auto":      return ["#F7F5F0", "#1B1D1C", "#7A4E6E"];
+      case "light":     return ["#F6F1E6", "#EAE2CE", "#B38230"];
+      case "dark":      return ["#161819", "#1D1F20", "#C08BA8"];
+      case "auto":      return ["#F6F1E6", "#161819", "#B38230"];
+      case "ashrose":   return ["#F1DDE2", "#C6ABAF", "#5C2E38"];
     }
   })();
   return (
@@ -353,17 +396,44 @@ function ThemePreview({ mode }: { mode: ThemeMode }) {
   );
 }
 
+// Ashrose icon — a small rose silhouette, drawn with the same stroke
+// language as the Sun / Moon / Auto icons. Hand-rolled rather than
+// pulled from `lib/icons` to keep the icon library uncluttered.
+function AshroseIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M8 4.2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2z" />
+      <path d="M8 8.2c-1 .8-2 .8-2.5 0" />
+      <path d="M8 8.2c1 .8 2 .8 2.5 0" />
+      <path d="M8 4.2c-.6-.7-.6-1.7 0-2.4" />
+      <path d="M8 4.2c.6-.7.6-1.7 0-2.4" />
+      <path d="M8 13.5c-3-1.4-5-4-5-7" />
+    </svg>
+  );
+}
+
 function AppearancePane() {
   const { mode, setMode } = useTheme();
+  const t = useT();
   return (
     <Section
-      title="Appearance"
-      hint="How Yarrow looks on your screen. Your choice is saved on this machine."
+      title={t("settings.appearance.title")}
+      hint={t("settings.appearance.hint")}
     >
       <div>
-        <div className="text-sm text-char mb-1">Theme</div>
+        <div className="text-sm text-char mb-1">{t("settings.appearance.theme")}</div>
         <div className="text-2xs text-t2 mb-3">
-          Auto follows your system light/dark preference.
+          {t("settings.appearance.themeHint")}
         </div>
         <div className="grid grid-cols-2 gap-2">
           {THEME_ORDER.map((m) => (
@@ -386,9 +456,170 @@ function AppearancePane() {
         </div>
       </div>
 
+      <LanguageRow />
+      <PersonalityRow />
+      <PaperAndWarmthRow />
       <UiScaleRow />
       <UiFontPicker />
     </Section>
+  );
+}
+
+/// 2.1 i18n. Reads the global UI-language preference and offers each
+/// shipped locale as a tile. Endonyms display so a speaker can find
+/// their language without first reading English; the optional `note`
+/// disambiguates regional variants (e.g. "Latinoamericano" for the
+/// Spanish bundle).
+function LanguageRow() {
+  const { lang, setLang } = useLanguage();
+  const t = useT();
+  return (
+    <div className="pt-4 mt-2 border-t border-bd">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-sm text-char">{t("settings.appearance.language")}</div>
+        <div className="text-2xs text-t3 font-mono">ui · interface</div>
+      </div>
+      <div className="text-2xs text-t3 mb-3 leading-relaxed">
+        {t("settings.appearance.languageHint")}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {LANGUAGE_ORDER.map((l) => {
+          const active = l.id === lang;
+          return (
+            <button
+              key={l.id}
+              type="button"
+              onClick={() => setLang(l.id as LanguageCode)}
+              className={`tile-press w-full text-left rounded-lg border p-2.5 transition ${
+                active
+                  ? "border-yel bg-yelp"
+                  : "border-bd bg-bg hover:bg-s2/60 hover:border-bd2"
+              }`}
+              aria-pressed={active}
+            >
+              <div className="text-[15px] text-char leading-tight">{l.label}</div>
+              {l.note && (
+                <div className="text-xs text-t2 mt-1 leading-snug">{l.note}</div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PersonalityRow() {
+  const [current, setPersonality] = usePersonality();
+  // Show `custom` only when active — it's not something to aspire to.
+  const tiles = PERSONALITIES.filter((p) => p.id !== "custom" || current.id === "custom");
+  return (
+    <div className="pt-4 mt-2 border-t border-bd">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-sm text-char">Font personality</div>
+        <div className="text-2xs text-t3 font-mono">a voice for the whole workspace</div>
+      </div>
+      <div className="text-2xs text-t3 mb-3 leading-relaxed">
+        Each personality picks an interface font, an editor font, and a density
+        that read well together. Hand-tuning any of them drops you into Custom.
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {tiles.map((p) => {
+          const active = p.id === current.id;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPersonality(p.id as PersonalityId)}
+              className={`tile-press w-full text-left rounded-lg border p-2.5 transition ${
+                active
+                  ? "border-yel bg-yelp"
+                  : "border-bd bg-bg hover:bg-s2/60 hover:border-bd2"
+              }`}
+            >
+              <div className="text-[15px] text-char leading-tight">{p.label}</div>
+              <div className="text-xs text-t2 mt-1 leading-snug">{p.description}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PaperAndWarmthRow() {
+  const [texture, setTexture] = usePaperTexture();
+  const [warmth, setWarmth] = usePaperWarmth();
+  return (
+    <div className="pt-4 mt-2 border-t border-bd">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-sm text-char">Paper &amp; warmth</div>
+        <div className="text-2xs text-t3 font-mono">surface texture · hue</div>
+      </div>
+      <div className="text-2xs text-t3 mb-3 leading-relaxed">
+        Six subtle paper textures, and a slider that gently warms or cools the
+        page. The editor's prose contrast is unaffected — only the surrounding
+        paper shifts.
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {PAPER_TEXTURES.map((t) => {
+          const active = t.id === texture.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTexture(t.id as PaperTextureId)}
+              className={`tile-press relative rounded-md border px-3 py-3 text-left transition overflow-hidden ${
+                active ? "border-yel" : "border-bd hover:border-bd2"
+              }`}
+              style={{
+                // Preview the texture on the tile itself so the visual
+                // pattern is the label. Cream renders flat paper only.
+                backgroundColor: t.id === "dusk" ? "#2A2520" : "var(--bg)",
+                backgroundImage: t.css === "none" ? "none" : t.css,
+                backgroundSize: t.id === "ledger" ? "100% 11px" : "8px 8px",
+                color: t.id === "dusk" ? "#F0E6CF" : undefined,
+              }}
+            >
+              <div className={`text-xs leading-tight ${active ? "text-char" : "text-char"}`}
+                   style={t.id === "dusk" ? { color: "#F0E6CF" } : undefined}>
+                {t.label}
+              </div>
+              <div className={`text-2xs mt-1 leading-tight ${t.id === "dusk" ? "" : "text-t3"}`}
+                   style={t.id === "dusk" ? { color: "#c7bd9f" } : undefined}>
+                {t.description}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-xs text-char">Warmth</div>
+        <div className="text-2xs text-t3 font-mono">
+          {warmth === 0 ? "neutral" : (warmth > 0 ? `+${warmth} K` : `${warmth} K`)}
+        </div>
+      </div>
+      <input
+        type="range"
+        min={-300}
+        max={300}
+        step={20}
+        value={warmth}
+        onChange={(e) => setWarmth(parseInt(e.target.value, 10))}
+        className="w-full accent-yel"
+      />
+      <div className="flex items-center justify-between text-2xs text-t3 mt-1">
+        <span>cool (6500 K)</span>
+        <button
+          type="button"
+          onClick={() => setWarmth(0)}
+          className="text-t3 hover:text-char underline-offset-2 hover:underline"
+        >
+          reset
+        </button>
+        <span>warm (3200 K)</span>
+      </div>
+    </div>
   );
 }
 
@@ -495,6 +726,7 @@ function WritingPane({
   config: WorkspaceConfig;
   onConfigChange: (cfg: WorkspaceConfig) => void;
 }) {
+  const t = useT();
   const [local, setLocal] = useState(config.preferences);
   const [saving, setSaving] = useState(false);
   useEffect(() => setLocal(config.preferences), [config]);
@@ -513,12 +745,12 @@ function WritingPane({
   return (
     <>
     <Section
-      title="Writing"
-      hint="How Yarrow behaves while you're writing notes."
+      title={t("settings.writing.title")}
+      hint={t("settings.writing.hint")}
     >
       <Row
-        label="Save every change after"
-        hint="How long Yarrow waits after you stop typing before saving silently."
+        label={t("settings.writing.autosave.label")}
+        hint={t("settings.writing.autosave.hint")}
       >
         <div className="flex items-center gap-2">
           <input
@@ -533,14 +765,16 @@ function WritingPane({
             className="w-40 accent-yel"
           />
           <span className="w-16 text-right text-xs font-mono text-t2">
-            {(local.autocheckpoint_debounce_ms / 1000).toFixed(1)}s
+            {t("settings.writing.autosave.seconds", {
+              value: (local.autocheckpoint_debounce_ms / 1000).toFixed(1),
+            })}
           </span>
         </div>
       </Row>
 
       <Row
-        label="Ask what I was thinking on close"
-        hint="A non-modal prompt when you close a note — optional."
+        label={t("settings.writing.askThinking.label")}
+        hint={t("settings.writing.askThinking.hint")}
       >
         <Toggle
           value={local.ask_thinking_on_close}
@@ -549,8 +783,8 @@ function WritingPane({
       </Row>
 
       <Row
-        label="Fade notes unvisited for"
-        hint="Notes untouched longer than this appear dimmed — a gentle nudge, not deletion."
+        label={t("settings.writing.fade.label")}
+        hint={t("settings.writing.fade.hint")}
       >
         <div className="flex items-center gap-2">
           <input
@@ -564,14 +798,14 @@ function WritingPane({
             className="w-40 accent-yel"
           />
           <span className="w-16 text-right text-xs font-mono text-t2">
-            {local.decay_days}d
+            {t("settings.writing.fade.days", { value: String(local.decay_days) })}
           </span>
         </div>
       </Row>
 
       <Row
-        label="Editor font size"
-        hint="Applies to the note body you type in. Takes effect immediately."
+        label={t("settings.writing.editorSize.label")}
+        hint={t("settings.writing.editorSize.hint")}
       >
         <select
           value={local.editor_font_size}
@@ -580,18 +814,18 @@ function WritingPane({
           }
           className="px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-xs"
         >
-          <option value={13}>Small (13)</option>
-          <option value={14}>Snug (14)</option>
-          <option value={15}>Comfortable (15)</option>
-          <option value={16}>Standard (16)</option>
-          <option value={17}>Roomy (17)</option>
-          <option value={19}>Large (19)</option>
-          <option value={22}>Extra large (22)</option>
-          <option value={26}>Huge (26)</option>
+          <option value={13}>{t("settings.writing.editorSize.small")}</option>
+          <option value={14}>{t("settings.writing.editorSize.snug")}</option>
+          <option value={15}>{t("settings.writing.editorSize.comfortable")}</option>
+          <option value={16}>{t("settings.writing.editorSize.standard")}</option>
+          <option value={17}>{t("settings.writing.editorSize.roomy")}</option>
+          <option value={19}>{t("settings.writing.editorSize.large")}</option>
+          <option value={22}>{t("settings.writing.editorSize.xl")}</option>
+          <option value={26}>{t("settings.writing.editorSize.huge")}</option>
         </select>
       </Row>
 
-      <Row label="Open workspaces in focus mode">
+      <Row label={t("settings.writing.focusDefault.label")}>
         <Toggle
           value={local.focus_mode_default}
           onChange={(v) => save({ ...local, focus_mode_default: v })}
@@ -599,8 +833,8 @@ function WritingPane({
       </Row>
 
       <Row
-        label="Fast search indexing"
-        hint="Keeps a local SQLite/FTS5 cache for instant search. Your notes stay canonical — the cache is rederivable and safe to delete."
+        label={t("settings.writing.fastSearch.label")}
+        hint={t("settings.writing.fastSearch.hint")}
       >
         <Toggle
           value={local.search_index_enabled}
@@ -621,7 +855,7 @@ function WritingPane({
 
 
       <div className="text-2xs text-t3 mt-2">
-        {saving ? "saving…" : "changes save automatically"}
+        {saving ? t("settings.writing.savingNow") : t("settings.writing.autosaveNote")}
       </div>
     </Section>
     <ExtrasSection />
@@ -630,11 +864,12 @@ function WritingPane({
 }
 
 function TypewriterModeRow() {
+  const t = useT();
   const [on, setOn] = useTypewriterMode();
   return (
     <Row
-      label="Typewriter mode"
-      hint="The active line stays at the vertical middle of the editor — the page scrolls underneath. Reduces neck strain on long sessions."
+      label={t("settings.writing.typewriter.label")}
+      hint={t("settings.writing.typewriter.hint")}
     >
       <Toggle value={on} onChange={setOn} />
     </Row>
@@ -642,11 +877,12 @@ function TypewriterModeRow() {
 }
 
 function EditorialReadingRow() {
+  const t = useT();
   const [on, setOn] = useEditorialReading();
   return (
     <Row
-      label="Editorial reading"
-      hint="Reading mode uses drop caps, pull quotes, and generous leading — so finished notes read like a magazine spread. Use > pull: to mark a pull-quote."
+      label={t("settings.writing.editorial.label")}
+      hint={t("settings.writing.editorial.hint")}
     >
       <Toggle value={on} onChange={setOn} />
     </Row>
@@ -654,11 +890,12 @@ function EditorialReadingRow() {
 }
 
 function PathTintedCaretRow() {
+  const t = useT();
   const [on, setOn] = usePathTintedCaret();
   return (
     <Row
-      label="Path-tinted caret"
-      hint="The caret takes the colour of the path you're writing on, so you always know which draft you're editing. Turn off for high-contrast defaults."
+      label={t("settings.writing.pathCaret.label")}
+      hint={t("settings.writing.pathCaret.hint")}
     >
       <Toggle value={on} onChange={setOn} />
     </Row>
@@ -666,10 +903,11 @@ function PathTintedCaretRow() {
 }
 
 function ExtrasSection() {
+  const t = useT();
   return (
     <Section
-      title="Writing extras"
-      hint="Opt-in features that lazy-load their code only when enabled — the editor stays lean by default and picks these up the moment you flip them on."
+      title={t("settings.extras.title")}
+      hint={t("settings.extras.hint")}
     >
       {EXTRAS.map((x) => (
         <ExtraRow key={x.key} extraKey={x.key} label={x.label} blurb={x.blurb} detail={x.detail} />
@@ -720,11 +958,12 @@ function ExtraRow({
 }
 
 function ShowRawMarkdownRow() {
+  const t = useT();
   const [raw, setRaw] = useShowRawMarkdown();
   return (
     <Row
-      label="Show raw markdown syntax"
-      hint="Show ## headings, **bold**, and [[ ]] around links while you write. When off, tokens collapse on lines you're not editing."
+      label={t("settings.writing.rawMarkdown.label")}
+      hint={t("settings.writing.rawMarkdown.hint")}
     >
       <Toggle value={raw} onChange={setRaw} />
     </Row>
@@ -736,6 +975,7 @@ function ShowRawMarkdownRow() {
  *  successful clear so the user knows the click registered — the UI is
  *  otherwise silent because the cache is invisible by design. */
 function ClearSearchIndexRow() {
+  const t = useT();
   const [state, setState] = useState<"idle" | "working" | "done" | "error">("idle");
   const [msg, setMsg] = useState<string>("");
   const onClear = async () => {
@@ -744,7 +984,7 @@ function ClearSearchIndexRow() {
     try {
       await api.clearSearchIndex();
       setState("done");
-      setMsg("Cache cleared — next search will rebuild it.");
+      setMsg(t("settings.writing.clearSearch.done"));
       window.setTimeout(() => { setState("idle"); setMsg(""); }, 3000);
     } catch (e) {
       setState("error");
@@ -753,8 +993,8 @@ function ClearSearchIndexRow() {
   };
   return (
     <Row
-      label="Clear search cache"
-      hint="Removes .yarrow/index.db. Your notes aren't touched — the cache rebuilds on the next search if indexing is still on."
+      label={t("settings.writing.clearSearch.label")}
+      hint={t("settings.writing.clearSearch.hint")}
     >
       <div className="flex items-center gap-2">
         {msg && (
@@ -765,7 +1005,7 @@ function ClearSearchIndexRow() {
           disabled={state === "working"}
           className="px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-xs hover:bg-s2 disabled:opacity-50"
         >
-          {state === "working" ? "Clearing…" : "Clear"}
+          {state === "working" ? t("settings.writing.clearSearch.working") : t("settings.writing.clearSearch.button")}
         </button>
       </div>
     </Row>
@@ -773,21 +1013,22 @@ function ClearSearchIndexRow() {
 }
 
 function EditorFontRow() {
+  const t = useT();
   const [current, setFont] = useEditorFont();
   const serifs = EDITOR_FONTS.filter((f) => f.kind === "serif");
   const sanses = EDITOR_FONTS.filter((f) => f.kind === "sans");
   return (
     <div className="py-3 border-b border-bd">
       <div className="flex items-baseline justify-between mb-1">
-        <div className="text-sm text-char">Editor font</div>
-        <div className="text-2xs text-t3 font-mono">Applies to the note body only</div>
+        <div className="text-sm text-char">{t("settings.writing.editorFont.title")}</div>
+        <div className="text-2xs text-t3 font-mono">{t("settings.writing.editorFont.tag")}</div>
       </div>
       <div className="text-2xs text-t3 mb-3 leading-relaxed">
-        Pick a typeface for long-form writing. Chrome, tags, and metadata keep their own faces.
+        {t("settings.writing.editorFont.hint")}
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <FontGroup title="Serif" active={current.id} onPick={setFont} options={serifs} />
-        <FontGroup title="Sans-serif" active={current.id} onPick={setFont} options={sanses} />
+        <FontGroup title={t("settings.writing.editorFont.serif")} active={current.id} onPick={setFont} options={serifs} />
+        <FontGroup title={t("settings.writing.editorFont.sans")} active={current.id} onPick={setFont} options={sanses} />
       </div>
     </div>
   );
@@ -846,19 +1087,20 @@ function FontGroup({
 // ─────────────── guidance ───────────────
 
 function GuidancePane() {
+  const t = useT();
   const { enabled, setEnabled, reset } = useGuidance();
   return (
     <>
       <Section
-        title="Guided mode"
-        hint="Yarrow has a handful of concepts that aren't obvious from looking at them — paths, checkpoints, wikilinks, comparison, syncs. Guided mode walks you through each one every time you use it, and keeps a quiet reminder visible when you're on a try path."
+        title={t("settings.guidance.title")}
+        hint={t("settings.guidance.hint")}
       >
         <Row
-          label={enabled ? "Guided mode is on" : "Guided mode is off"}
+          label={enabled ? t("settings.guidance.on") : t("settings.guidance.off")}
           hint={
             enabled
-              ? "Teaching modals fire every time you do a non-obvious thing — creating a path, inserting a wikilink, returning to main, and so on. The ribbon above the editor is always visible when you're on a non-main path. If one specific modal starts to annoy you, each one has its own 'Stop showing this one' opt-out."
-              : "You're on your own. No teaching modals, no ribbons. Tooltips still appear on hover, and destructive actions still ask to confirm."
+              ? t("settings.guidance.onHint")
+              : t("settings.guidance.offHint")
           }
         >
           <Toggle value={enabled} onChange={setEnabled} />
@@ -866,15 +1108,15 @@ function GuidancePane() {
       </Section>
 
       <Section
-        title="Per-modal opt-outs"
-        hint="If you've silenced an individual modal via its 'Stop showing this one' button, this resets those choices. Guided mode itself stays on."
+        title={t("settings.guidance.optouts.title")}
+        hint={t("settings.guidance.optouts.hint")}
       >
-        <Row label="Show every modal again" hint="clears all per-key opt-outs; every teaching moment fires again">
+        <Row label={t("settings.guidance.optouts.label")} hint={t("settings.guidance.optouts.subhint")}>
           <button
             onClick={() => reset()}
             className="px-3 py-1.5 text-sm rounded-md border border-bd hover:bg-s2 text-ch2 transition"
           >
-            Reset opt-outs
+            {t("settings.guidance.optouts.button")}
           </button>
         </Row>
       </Section>
@@ -893,6 +1135,7 @@ function SyncPane({
   onConfigChange: (cfg: WorkspaceConfig) => void;
   onSyncNow: () => void;
 }) {
+  const t = useT();
   const [url, setUrl] = useState(config.sync.remote_url ?? "");
   const [remoteType, setRemoteType] = useState(config.sync.remote_type ?? "custom");
   const [token, setToken] = useState(config.sync.token ?? "");
@@ -911,7 +1154,7 @@ function SyncPane({
     try {
       const cfg = await api.setRemote(url.trim(), remoteType, token.trim() || undefined);
       onConfigChange(cfg);
-      setMsg("saved — try syncing from the toolbar");
+      setMsg(t("settings.sync.saved"));
     } catch (e) {
       setMsg(String(e));
     } finally {
@@ -921,51 +1164,51 @@ function SyncPane({
 
   return (
     <Section
-      title="Sync"
-      hint="Back up your workspace to a git remote you own. Your notes stay on your machine — this just keeps a copy in sync."
+      title={t("settings.sync.title")}
+      hint={t("settings.sync.hint")}
     >
       <div>
-        <label className="text-xs text-t2 block mb-1">Kind</label>
+        <label className="text-xs text-t2 block mb-1">{t("settings.sync.kind")}</label>
         <div className="flex gap-2">
-          {["github", "gitea", "custom"].map((t) => (
+          {["github", "gitea", "custom"].map((kind) => (
             <button
-              key={t}
-              onClick={() => setRemoteType(t)}
+              key={kind}
+              onClick={() => setRemoteType(kind)}
               className={`px-3 py-1.5 text-xs rounded border transition ${
-                remoteType === t
+                remoteType === kind
                   ? "border-yel bg-yelp text-yeld"
                   : "border-bd text-t2 hover:bg-s2 hover:text-char"
               }`}
             >
-              {t}
+              {kind}
             </button>
           ))}
         </div>
       </div>
 
       <div>
-        <label className="text-xs text-t2 block mb-1">Repository URL</label>
+        <label className="text-xs text-t2 block mb-1">{t("settings.sync.repoUrl")}</label>
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://github.com/you/your-notes.git"
+          placeholder={t("settings.sync.repoUrlPlaceholder")}
           className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-xs"
         />
       </div>
 
       <div>
         <label className="text-xs text-t2 block mb-1">
-          Access token <span className="text-t3">(optional — HTTPS private repos)</span>
+          {t("settings.sync.token.label")} <span className="text-t3">{t("settings.sync.token.optional")}</span>
         </label>
         <input
           type="password"
           value={token}
           onChange={(e) => setToken(e.target.value)}
-          placeholder="ghp_… / gitea token"
+          placeholder={t("settings.sync.token.placeholder")}
           className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-xs"
         />
         <p className="text-2xs text-t3 mt-1">
-          Stored on this machine only — never pushed to the remote.
+          {t("settings.sync.token.note")}
         </p>
       </div>
 
@@ -975,43 +1218,568 @@ function SyncPane({
           disabled={!url.trim() || saving}
           className="btn-yel px-3 py-1.5 text-sm rounded-md"
         >
-          {saving ? "saving…" : "Save"}
+          {saving ? t("settings.sync.saving") : t("settings.sync.save")}
         </button>
         {config.sync.remote_url && (
           <button
             onClick={onSyncNow}
             className="px-3 py-1.5 text-sm bg-s2 text-ch2 rounded-md hover:bg-s3"
           >
-            Sync now
+            {t("settings.sync.syncNow")}
           </button>
         )}
         {msg && <span className="ml-auto text-2xs text-t2">{msg}</span>}
       </div>
 
+      <AutoSyncControl config={config} onConfigChange={onConfigChange} />
+
       <div className="mt-8 pt-5 border-t border-bd">
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="font-serif text-base text-char">Yarrow Sync</span>
-          <span className="text-2xs px-1.5 py-px bg-s3 text-t2 rounded-full">coming soon</span>
-        </div>
-        <p className="text-xs text-t2 leading-relaxed mb-2">
-          A zero-setup option for when you just want your notes on another
-          device. End-to-end encrypted; we never see your workspace. No billing
-          or account yet — we'll surface a signup here when it's ready.
-        </p>
-        <button
-          disabled
-          className="px-3 py-1.5 text-sm bg-s2 text-t3 rounded-md cursor-not-allowed"
-        >
-          Join the waitlist (soon)
-        </button>
+        <YarrowServerConnect
+          config={config}
+          onConfigChange={onConfigChange}
+          onSyncNow={onSyncNow}
+        />
       </div>
     </Section>
+  );
+}
+
+function AutoSyncControl({
+  config,
+  onConfigChange,
+}: {
+  config: WorkspaceConfig;
+  onConfigChange: (cfg: WorkspaceConfig) => void;
+}) {
+  const t = useT();
+  const current = config.preferences?.autosync_minutes ?? 0;
+  const [value, setValue] = useState(current);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => setValue(current), [current]);
+
+  const save = async (next: number) => {
+    setSaving(true);
+    try {
+      const cfg = await api.updatePreferences({ ...config.preferences, autosync_minutes: next });
+      onConfigChange(cfg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const options = [
+    { label: t("settings.sync.autoSync.off"), value: 0 },
+    { label: "1m", value: 1 },
+    { label: "5m", value: 5 },
+    { label: "15m", value: 15 },
+    { label: "30m", value: 30 },
+    { label: "60m", value: 60 },
+  ];
+
+  return (
+    <div className="mt-4">
+      <label className="text-xs text-t2 block mb-1.5">{t("settings.sync.autoSync.label")}</label>
+      <div className="flex gap-2 flex-wrap">
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => { setValue(opt.value); void save(opt.value); }}
+            disabled={saving}
+            className={`px-3 py-1 text-xs rounded border transition ${
+              value === opt.value
+                ? "border-yel bg-yelp text-yeld"
+                : "border-bd text-t2 hover:bg-s2 hover:text-char"
+            } disabled:opacity-50`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-2xs text-t3 mt-1.5 leading-relaxed">
+        {t("settings.sync.autoSync.note")}
+      </p>
+    </div>
+  );
+}
+
+// ─────────────── yarrow-server connect ───────────────
+
+/** Settings → Sync → Yarrow server section. Wraps the three states:
+ *  not connected, filling out the connect form, and connected.
+ *
+ *  This is the same integration whether the user is pointing at a
+ *  self-hosted yarrow-server or the hosted Yarrow Connect tier — the
+ *  desktop can't tell the two apart and shouldn't try to. All the
+ *  copy below uses plain "Yarrow server". */
+function YarrowServerConnect({
+  config,
+  onConfigChange,
+  onSyncNow,
+}: {
+  config: WorkspaceConfig;
+  onConfigChange: (cfg: WorkspaceConfig) => void;
+  onSyncNow: () => void;
+}) {
+  const t = useT();
+  const server = config.sync.server ?? null;
+  const [editing, setEditing] = useState(false);
+
+  if (!server) {
+    return (
+      <>
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="font-serif text-base text-char">{t("settings.server.title")}</span>
+          <span className="text-2xs px-1.5 py-px bg-s3 text-t2 rounded-full">
+            {t("settings.server.tagSelfOrConnect")}
+          </span>
+        </div>
+        <p className="text-xs text-t2 leading-relaxed mb-3">
+          {t("settings.server.intro")}
+        </p>
+        {editing ? (
+          <YarrowServerConnectForm
+            onCancel={() => setEditing(false)}
+            onConnected={(cfg) => { onConfigChange(cfg); setEditing(false); }}
+            initialWorkspaceName={config.workspace.name}
+          />
+        ) : (
+          <button
+            onClick={() => setEditing(true)}
+            className="btn-yel px-3 py-1.5 text-sm rounded-md"
+          >
+            {t("settings.server.connect")}
+          </button>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <YarrowServerConnected
+      config={config}
+      server={server}
+      onConfigChange={onConfigChange}
+      onSyncNow={onSyncNow}
+    />
+  );
+}
+
+function YarrowServerConnectForm({
+  onCancel,
+  onConnected,
+  initialWorkspaceName,
+}: {
+  onCancel: () => void;
+  onConnected: (cfg: WorkspaceConfig) => void;
+  initialWorkspaceName: string;
+}) {
+  const t = useT();
+  const [method, setMethod] = useState<"password" | "token">("password");
+  const [url, setUrl] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [token, setToken] = useState("");
+  const [workspaceName, setWorkspaceName] = useState(initialWorkspaceName);
+  const [skipTls, setSkipTls] = useState(false);
+  const [busy, setBusy] = useState<null | "test" | "connect">(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [testOk, setTestOk] = useState(false);
+
+  const urlLooksValid = /^https?:\/\//i.test(url.trim());
+  const canConnect =
+    urlLooksValid &&
+    email.trim().length > 0 &&
+    (method === "password" ? password.length > 0 : token.trim().length > 0) &&
+    busy === null;
+
+  const connect = async () => {
+    setBusy("connect");
+    setErr(null);
+    try {
+      const trimmedUrl = url.trim();
+      const trimmedEmail = email.trim();
+      const trimmedWorkspace = workspaceName.trim() || undefined;
+      const cfg =
+        method === "password"
+          ? await api.serverConnectPassword(trimmedUrl, trimmedEmail, password, trimmedWorkspace, skipTls)
+          : await api.serverConnectToken(
+              trimmedUrl,
+              trimmedEmail,
+              token.trim(),
+              // Token path optionally carries the password so the
+              // backend can derive the E2E privkey locally. Matches
+              // what the password path does; without it, sync's
+              // /unlock step fails on an E2E server.
+              password.length > 0 ? password : undefined,
+              trimmedWorkspace,
+              skipTls,
+            );
+      // Clear the password from component state immediately; Rust side
+      // has already discarded its copy.
+      setPassword("");
+      setToken("");
+      onConnected(cfg);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const test = async () => {
+    if (method !== "token") return;
+    setBusy("test");
+    setErr(null);
+    setTestOk(false);
+    try {
+      await api.serverTestConnection(url.trim(), email.trim(), token.trim(), skipTls);
+      setTestOk(true);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3 p-3 bg-s1 border border-bd rounded-md">
+      <div>
+        <label className="text-xs text-t2 block mb-1">{t("settings.server.url.label")}</label>
+        <input
+          value={url}
+          onChange={(e) => { setUrl(e.target.value); setTestOk(false); }}
+          placeholder={t("settings.server.url.placeholder")}
+          className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-xs"
+          autoFocus
+        />
+      </div>
+      <div>
+        <label className="text-xs text-t2 block mb-1">{t("settings.server.method.label")}</label>
+        <div className="flex gap-2">
+          {([
+            ["password", t("settings.server.method.password")],
+            ["token", t("settings.server.method.token")],
+          ] as const).map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => { setMethod(m); setErr(null); setTestOk(false); }}
+              className={`px-3 py-1.5 text-xs rounded border transition ${
+                method === m
+                  ? "border-yel bg-yelp text-yeld"
+                  : "border-bd text-t2 hover:bg-s2 hover:text-char"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs text-t2 block mb-1">{t("settings.server.email.label")}</label>
+        <input
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); setTestOk(false); }}
+          placeholder={t("settings.server.email.placeholder")}
+          autoComplete="email"
+          className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char text-xs"
+        />
+      </div>
+      {method === "password" ? (
+        <div>
+          <label className="text-xs text-t2 block mb-1">{t("settings.server.password.label")}</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char text-xs"
+          />
+          <p className="text-2xs text-t3 mt-1">
+            {t("settings.server.password.note")}
+          </p>
+        </div>
+      ) : (
+        <>
+          <div>
+            <label className="text-xs text-t2 block mb-1">{t("settings.server.token.label")}</label>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => { setToken(e.target.value); setTestOk(false); }}
+              placeholder={t("settings.server.token.placeholder")}
+              className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-xs"
+            />
+            <p className="text-2xs text-t3 mt-1">
+              {t("settings.server.token.note")}
+            </p>
+          </div>
+          <div>
+            <label className="text-xs text-t2 block mb-1">
+              {t("settings.server.passwordForEnc.label")} <span className="text-t3">{t("settings.server.passwordForEnc.optional")}</span>
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char text-xs"
+            />
+            <p className="text-2xs text-t3 mt-1">
+              {t("settings.server.passwordForEnc.note")}
+            </p>
+          </div>
+        </>
+      )}
+      <div>
+        <label className="text-xs text-t2 block mb-1">
+          {t("settings.server.workspaceName.label")} <span className="text-t3">{t("settings.server.workspaceName.optional")}</span>
+        </label>
+        <input
+          value={workspaceName}
+          onChange={(e) => setWorkspaceName(e.target.value)}
+          placeholder={initialWorkspaceName || t("settings.server.workspaceName.placeholder")}
+          className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char text-xs"
+        />
+        <p className="text-2xs text-t3 mt-1">
+          {t("settings.server.workspaceName.note")}
+        </p>
+      </div>
+      <label className="flex items-start gap-2 pt-1 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={skipTls}
+          onChange={(e) => { setSkipTls(e.target.checked); setTestOk(false); }}
+          className="mt-0.5 accent-yel"
+        />
+        <span className="text-xs text-t2 leading-relaxed">
+          <span className="text-char">{t("settings.server.skipTls.label")}</span>
+          <span className="block text-2xs text-t3 mt-0.5">
+            {t("settings.server.skipTls.note.before")}<span className="font-mono">{t("settings.server.skipTls.note.localhost")}</span>{t("settings.server.skipTls.note.middle")}<span className="text-red-500">{t("settings.server.skipTls.note.warn")}</span>{t("settings.server.skipTls.note.after")}
+          </span>
+        </span>
+      </label>
+      <div className="flex items-center gap-2 pt-1">
+        {method === "token" && (
+          <button
+            onClick={test}
+            disabled={!urlLooksValid || !email.trim() || !token.trim() || busy !== null}
+            className="px-3 py-1.5 text-xs bg-s2 text-ch2 rounded-md hover:bg-s3 disabled:opacity-50"
+          >
+            {busy === "test" ? t("settings.server.testing") : testOk ? t("settings.server.testOk") : t("settings.server.test")}
+          </button>
+        )}
+        <button
+          onClick={connect}
+          disabled={!canConnect}
+          className="btn-yel px-3 py-1.5 text-sm rounded-md"
+        >
+          {busy === "connect" ? t("settings.server.connecting") : t("settings.server.connectButton")}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-3 py-1.5 text-xs text-t2 hover:text-char"
+        >
+          {t("settings.server.cancel")}
+        </button>
+      </div>
+      {err && (
+        <div className="text-2xs text-red-500 leading-relaxed">{err}</div>
+      )}
+    </div>
+  );
+}
+
+function YarrowServerConnected({
+  config,
+  server,
+  onConfigChange,
+  onSyncNow,
+}: {
+  config: WorkspaceConfig;
+  server: NonNullable<WorkspaceConfig["sync"]["server"]>;
+  onConfigChange: (cfg: WorkspaceConfig) => void;
+  onSyncNow: () => void;
+}) {
+  const t = useT();
+  const [busy, setBusy] = useState<null | "disconnect" | "revoke" | "sync">(null);
+  const [err, setErr] = useState<string | null>(null);
+  // syncOk tracks success vs failure separately from the message, so the
+  // localized prefix doesn't have to be parsed back to colour the string.
+  const [syncOk, setSyncOk] = useState<boolean | null>(null);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncConflicts, setSyncConflicts] = useState<WorkspaceConfig extends unknown ? Array<{ path: string; action: string; copy_path?: string }> : never>(
+    [] as Array<{ path: string; action: string; copy_path?: string }>,
+  );
+
+  const disconnect = async (revoke: boolean) => {
+    setBusy(revoke ? "revoke" : "disconnect");
+    setErr(null);
+    try {
+      const cfg = await api.serverDisconnect(revoke);
+      onConfigChange(cfg);
+    } catch (e) {
+      setErr(String(e));
+      // Even on revoke errors the backend has already cleared local
+      // state — re-pull the config so the UI reflects reality.
+      try { onConfigChange(await api.readConfig()); } catch { /* ignore */ }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runSync = async () => {
+    setBusy("sync");
+    setErr(null);
+    setSyncMsg(null);
+    setSyncOk(null);
+    setSyncConflicts([]);
+    try {
+      const r = await api.sync();
+      setSyncOk(r.ok);
+      setSyncMsg(
+        r.ok
+          ? t("settings.server.connected.syncedFmt", { message: r.message })
+          : t("settings.server.connected.syncFailedFmt", { message: r.message }),
+      );
+      if (r.conflicts && r.conflicts.length > 0) {
+        setSyncConflicts(r.conflicts);
+      }
+      // refresh config so any newly-persisted workspace_id is visible
+      try { onConfigChange(await api.readConfig()); } catch { /* ignore */ }
+      // still invoke the shared handler so the app-wide status pill updates
+      onSyncNow();
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const connectedLabel = server.pat_label ?? t("settings.server.connected.tokenDefault");
+  const workspaceOnServerLabel = server.workspace_id
+    ? t("settings.server.connected.workspaceFmt", { id: server.workspace_id.slice(0, 8) })
+    : t("settings.server.connected.workspaceNone");
+
+  return (
+    <>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="font-serif text-base text-char">{t("settings.server.title")}</span>
+        <span className="text-2xs px-1.5 py-px bg-yelp text-yeld rounded-full">
+          {t("settings.server.connected")}
+        </span>
+        {server.insecure_skip_tls_verify && (
+          <span
+            className="text-2xs px-1.5 py-px bg-red-500/10 text-red-500 rounded-full"
+            title={t("settings.server.tlsInsecureTitle")}
+          >
+            {t("settings.server.tlsInsecure")}
+          </span>
+        )}
+      </div>
+      <div className="text-xs text-t2 leading-relaxed mb-3 space-y-0.5">
+        <div>
+          <span className="text-t3">{t("settings.server.connected.serverLabel")}</span>{" "}
+          <span className="text-char font-mono">{server.server_url}</span>
+        </div>
+        <div>
+          <span className="text-t3">{t("settings.server.connected.signedInAs")}</span>{" "}
+          <span className="text-char">{server.email}</span>
+        </div>
+        <div>
+          <span className="text-t3">{t("settings.server.connected.tokenLabel")}</span>{" "}
+          <span className="text-char">{connectedLabel}</span>
+          {server.pat_id ? (
+            <span className="text-t3">{t("settings.server.connected.tokenIdSuffix", { id: server.pat_id.slice(0, 8) })}</span>
+          ) : (
+            <span className="text-t3">{t("settings.server.connected.tokenPasted")}</span>
+          )}
+        </div>
+        <div>
+          <span className="text-t3">{t("settings.server.connected.workspaceLabel")}</span>{" "}
+          <span className="text-char">{workspaceOnServerLabel}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={runSync}
+          disabled={busy !== null}
+          className="btn-yel px-3 py-1.5 text-sm rounded-md disabled:opacity-50"
+        >
+          {busy === "sync" ? t("settings.server.connected.syncing") : t("settings.server.connected.syncNow")}
+        </button>
+        <button
+          onClick={() => disconnect(false)}
+          disabled={busy !== null}
+          className="px-3 py-1.5 text-xs bg-s2 text-ch2 rounded-md hover:bg-s3 disabled:opacity-50"
+        >
+          {busy === "disconnect" ? t("settings.server.connected.disconnecting") : t("settings.server.connected.disconnect")}
+        </button>
+        {server.pat_id && (
+          <button
+            onClick={() => disconnect(true)}
+            disabled={busy !== null}
+            className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-500/10 rounded-md disabled:opacity-50"
+          >
+            {busy === "revoke" ? t("settings.server.connected.revoking") : t("settings.server.connected.revoke")}
+          </button>
+        )}
+      </div>
+      {err && (
+        <div className="text-2xs text-red-500 mt-2 leading-relaxed">{err}</div>
+      )}
+      {!config.sync.server?.workspace_id && (
+        <p className="text-2xs text-t3 mt-2 leading-relaxed">
+          {t("settings.server.connected.firstSyncNote.before")}
+          <span className="text-char">"{server.workspace_name ?? config.workspace.name}"</span>
+          {t("settings.server.connected.firstSyncNote.after")}
+        </p>
+      )}
+      {syncMsg && (
+        <div
+          className={`text-2xs mt-2 leading-relaxed ${
+            syncOk ? "text-char" : "text-red-500"
+          }`}
+        >
+          {syncMsg}
+        </div>
+      )}
+      {syncConflicts.length > 0 && (
+        <div className="mt-2 p-2.5 rounded bg-gold/10 border border-gold/30 text-2xs leading-relaxed">
+          <div className="text-char font-medium mb-1">
+            {t(
+              syncConflicts.length === 1
+                ? "settings.server.connected.conflict.title"
+                : "settings.server.connected.conflict.titlePlural",
+              { count: String(syncConflicts.length) },
+            )}
+          </div>
+          <div className="text-t2 mb-2">
+            {t("settings.server.connected.conflict.body")}
+          </div>
+          <ul className="space-y-0.5 text-t2 font-mono">
+            {syncConflicts.map((c) => (
+              <li key={c.path}>
+                <span className="text-char">{c.path}</span>
+                {c.copy_path && (
+                  <>
+                    {" "}
+                    {t("settings.server.connected.conflict.savedAs")} <span className="text-yel">{c.copy_path}</span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
   );
 }
 
 // ─────────────── templates ───────────────
 
 function TemplatesPane() {
+  const t = useT();
   const [items, setItems] = useState<TemplateInfo[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [body, setBody] = useState<string>("");
@@ -1048,7 +1816,7 @@ function TemplatesPane() {
     try {
       await api.writeTemplate(selected, body);
       setDirty(false);
-      setMsg("saved");
+      setMsg(t("settings.templates.saved"));
       setTimeout(() => setMsg(null), 1500);
     } catch (e) {
       setMsg(String(e));
@@ -1075,35 +1843,35 @@ function TemplatesPane() {
     await refresh();
   };
 
-  const selectedLabel = items?.find((t) => t.name === selected)?.label ?? selected;
+  const selectedLabel = items?.find((tpl) => tpl.name === selected)?.label ?? selected;
 
   return (
     <Section
-      title="Templates"
-      hint="Reusable scaffolds for recurring note shapes. Files live in .yarrow/templates/ as plain .md — edit them here or in any external editor."
+      title={t("settings.templates.title")}
+      hint={t("settings.templates.hint")}
     >
       <div className="flex gap-4 h-[360px]">
         <aside className="w-[200px] shrink-0 border border-bd rounded-md overflow-hidden flex flex-col">
           <ul className="flex-1 overflow-y-auto">
-            {items?.map((t) => (
-              <li key={t.name}>
+            {items?.map((tpl) => (
+              <li key={tpl.name}>
                 <button
-                  onClick={() => setSelected(t.name)}
+                  onClick={() => setSelected(tpl.name)}
                   className={`w-full text-left px-3 py-2 text-sm transition ${
-                    selected === t.name
+                    selected === tpl.name
                       ? "bg-yelp text-char border-l-2 border-yel pl-[10px]"
                       : "text-t2 hover:bg-s2 hover:text-char"
                   }`}
                 >
-                  <div className="truncate">{t.label}</div>
+                  <div className="truncate">{tpl.label}</div>
                   <div className="text-2xs text-t3 font-mono truncate">
-                    {t.name}{t.is_daily ? " · daily" : ""}
+                    {tpl.name}{tpl.is_daily ? ` · ${t("settings.templates.daily")}` : ""}
                   </div>
                 </button>
               </li>
             ))}
             {items && items.length === 0 && (
-              <li className="px-3 py-3 text-xs text-t3 italic">No templates yet.</li>
+              <li className="px-3 py-3 text-xs text-t3 italic">{t("settings.templates.empty")}</li>
             )}
           </ul>
           <div className="border-t border-bd px-2 py-2 flex gap-1">
@@ -1111,14 +1879,14 @@ function TemplatesPane() {
               onClick={() => { setNewLabel(""); setNewOpen(true); }}
               className="flex-1 px-2 py-1 text-xs bg-s2 text-ch2 rounded hover:bg-s3"
             >
-              + new
+              {t("settings.templates.new")}
             </button>
             <button
               onClick={() => setDeleteOpen(true)}
               disabled={!selected}
               className="px-2 py-1 text-xs text-danger hover:bg-s2 rounded disabled:opacity-40"
             >
-              delete
+              {t("settings.templates.delete")}
             </button>
           </div>
         </aside>
@@ -1133,21 +1901,21 @@ function TemplatesPane() {
               />
               <div className="mt-2 flex items-center gap-2">
                 <div className="text-2xs text-t3">
-                  Placeholders: <code>{"{{date}}"}</code> · <code>{"{{date_human}}"}</code> · <code>{"{{weekday}}"}</code> · <code>{"{{time}}"}</code> · <code>{"{{title}}"}</code> · <code>{"{{cursor}}"}</code>
+                  {t("settings.templates.placeholders")} <code>{"{{date}}"}</code> · <code>{"{{date_human}}"}</code> · <code>{"{{weekday}}"}</code> · <code>{"{{time}}"}</code> · <code>{"{{title}}"}</code> · <code>{"{{cursor}}"}</code>
                 </div>
                 <button
                   onClick={save}
                   disabled={!dirty}
                   className="ml-auto btn-yel px-3 py-1.5 text-xs rounded-md disabled:opacity-40"
                 >
-                  Save
+                  {t("settings.templates.save")}
                 </button>
                 {msg && <span className="text-2xs text-t2">{msg}</span>}
               </div>
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-t3 text-sm italic">
-              Pick a template to edit, or create a new one.
+              {t("settings.templates.empty.editor")}
             </div>
           )}
         </div>
@@ -1156,18 +1924,17 @@ function TemplatesPane() {
       <Modal
         open={newOpen}
         onClose={() => { setNewOpen(false); setNewLabel(""); }}
-        title="New template"
+        title={t("settings.templates.newModal.title")}
       >
         <p className="text-xs text-t2 mb-3 leading-relaxed">
-          A short name is enough — the scaffold is editable right after. The
-          filename is derived from what you type.
+          {t("settings.templates.newModal.body")}
         </p>
         <input
           autoFocus
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") confirmNew(); }}
-          placeholder="e.g. 1:1 notes"
+          placeholder={t("settings.templates.newModal.placeholder")}
           className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char"
         />
         <div className="mt-4 flex justify-end gap-2">
@@ -1175,14 +1942,14 @@ function TemplatesPane() {
             className="px-3 py-1.5 text-sm text-t2 hover:text-char"
             onClick={() => { setNewOpen(false); setNewLabel(""); }}
           >
-            cancel
+            {t("settings.templates.newModal.cancel")}
           </button>
           <button
             className="btn-yel px-3 py-1.5 text-sm rounded-md"
             onClick={confirmNew}
             disabled={!newLabel.trim()}
           >
-            create template
+            {t("settings.templates.newModal.create")}
           </button>
         </div>
       </Modal>
@@ -1190,24 +1957,25 @@ function TemplatesPane() {
       <Modal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        title={`Delete template "${selectedLabel}"?`}
+        title={t("settings.templates.deleteModal.title", { label: selectedLabel ?? "" })}
       >
         <p className="text-sm text-t2 mb-4 leading-relaxed">
-          The file is removed from <span className="font-mono text-char">.yarrow/templates/</span>.
-          Notes already created from it aren't affected.
+          {t("settings.templates.deleteModal.body.before")}
+          <span className="font-mono text-char">.yarrow/templates/</span>
+          {t("settings.templates.deleteModal.body.after")}
         </p>
         <div className="flex justify-end gap-2">
           <button
             className="px-3 py-1.5 text-sm text-t2 hover:text-char"
             onClick={() => setDeleteOpen(false)}
           >
-            keep it
+            {t("settings.templates.deleteModal.keep")}
           </button>
           <button
             className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90"
             onClick={confirmRemove}
           >
-            yes, delete
+            {t("settings.templates.deleteModal.confirm")}
           </button>
         </div>
       </Modal>
@@ -1224,6 +1992,7 @@ function SecurityPane({
   config: WorkspaceConfig;
   onConfigChange: (cfg: WorkspaceConfig) => void;
 }) {
+  const t = useT();
   const [status, setStatus] = useState<{ enabled: boolean; unlocked: boolean; idle_timeout_secs: number } | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [enableOpen, setEnableOpen] = useState(false);
@@ -1263,27 +2032,24 @@ function SecurityPane({
 
   return (
     <Section
-      title="Security"
-      hint="Optional protections for notes you'd rather not leave in plain text. Off by default."
+      title={t("settings.security.title")}
+      hint={t("settings.security.hint")}
     >
       <div className="p-4 bg-s1 border border-bd rounded-md">
         <div className="flex items-center gap-2 mb-1.5">
-          <span className="font-serif text-base text-char">Local encryption</span>
+          <span className="font-serif text-base text-char">{t("settings.security.localEnc.title")}</span>
           {status?.enabled ? (
             status?.unlocked ? (
-              <span className="text-2xs px-1.5 py-px bg-yelp text-yeld rounded-full">unlocked</span>
+              <span className="text-2xs px-1.5 py-px bg-yelp text-yeld rounded-full">{t("settings.security.tag.unlocked")}</span>
             ) : (
-              <span className="text-2xs px-1.5 py-px bg-s3 text-t2 rounded-full">enabled · locked</span>
+              <span className="text-2xs px-1.5 py-px bg-s3 text-t2 rounded-full">{t("settings.security.tag.lockedEnabled")}</span>
             )
           ) : (
-            <span className="text-2xs px-1.5 py-px bg-s3 text-t2 rounded-full">off</span>
+            <span className="text-2xs px-1.5 py-px bg-s3 text-t2 rounded-full">{t("settings.security.tag.off")}</span>
           )}
         </div>
         <p className="text-xs text-t2 leading-relaxed">
-          Per-note, opt-in encryption with ChaCha20-Poly1305 and an Argon2id
-          password. Frontmatter (title, tags, links) stays plaintext so the
-          graph and tag filter keep working; only the body is sealed. A 12-word
-          recovery phrase gets you back in if you forget the password.
+          {t("settings.security.localEnc.body")}
         </p>
         {!status?.enabled && (
           <div className="mt-4 flex items-center gap-2">
@@ -1291,7 +2057,7 @@ function SecurityPane({
               onClick={() => setEnableOpen(true)}
               className="btn-yel px-3 py-1.5 text-sm rounded-md"
             >
-              Enable encryption…
+              {t("settings.security.enable")}
             </button>
           </div>
         )}
@@ -1299,8 +2065,8 @@ function SecurityPane({
           <>
             <div className="mt-4 grid grid-cols-1 gap-2">
               <Row
-                label="Idle auto-lock"
-                hint="Session locks if you're idle this long. 0 = never."
+                label={t("settings.security.idle.label")}
+                hint={t("settings.security.idle.hint")}
               >
                 <div className="flex items-center gap-2">
                   <input
@@ -1314,8 +2080,8 @@ function SecurityPane({
                   />
                   <span className="w-16 text-right text-xs font-mono text-t2">
                     {config.preferences.encryption_idle_timeout_secs === 0
-                      ? "never"
-                      : `${Math.round(config.preferences.encryption_idle_timeout_secs / 60)}m`}
+                      ? t("settings.security.idle.never")
+                      : t("settings.security.idle.minutes", { value: String(Math.round(config.preferences.encryption_idle_timeout_secs / 60)) })}
                   </span>
                 </div>
               </Row>
@@ -1332,7 +2098,7 @@ function SecurityPane({
                   }}
                   className="btn-yel px-3 py-1.5 text-sm rounded-md"
                 >
-                  Unlock…
+                  {t("settings.security.unlock")}
                 </button>
               )}
               {status.unlocked && (
@@ -1340,26 +2106,26 @@ function SecurityPane({
                   onClick={async () => { await api.lockEncryption(); bump(); }}
                   className="px-3 py-1.5 text-sm bg-s2 text-ch2 rounded-md hover:bg-s3"
                 >
-                  Lock now
+                  {t("settings.security.lockNow")}
                 </button>
               )}
               <button
                 onClick={() => setChangePwOpen(true)}
                 className="px-3 py-1.5 text-sm bg-s2 text-ch2 rounded-md hover:bg-s3"
               >
-                Change password…
+                {t("settings.security.changePw")}
               </button>
               <button
                 onClick={() => setRegenOpen(true)}
                 className="px-3 py-1.5 text-sm bg-s2 text-ch2 rounded-md hover:bg-s3"
               >
-                New recovery phrase…
+                {t("settings.security.newRecovery")}
               </button>
               <button
                 onClick={() => setDisableOpen(true)}
                 className="ml-auto px-3 py-1.5 text-sm text-danger hover:bg-s2 rounded-md"
               >
-                Turn off encryption…
+                {t("settings.security.turnOff")}
               </button>
             </div>
           </>
@@ -1394,7 +2160,7 @@ function SecurityPane({
           // encryption and then forget the per-note step — the toast nudges
           // them toward the next action.
           window.dispatchEvent(new CustomEvent<string>("yarrow:toast", {
-            detail: "Encryption is on. Notes are still readable — open a note and pick the 🔒 toolbar menu → Encrypt this note.",
+            detail: t("settings.security.toast.afterPhrase"),
           }));
         }}
       />
@@ -1405,6 +2171,7 @@ function SecurityPane({
 function EnableEncryptionModal({
   open, onClose, onEnabled,
 }: { open: boolean; onClose: () => void; onEnabled: (phrase: string) => void; }) {
+  const t = useT();
   const [step, setStep] = useState<"confirm" | "password">("confirm");
   const [pw1, setPw1] = useState("");
   const [pw2, setPw2] = useState("");
@@ -1417,8 +2184,8 @@ function EnableEncryptionModal({
   }, [open]);
 
   const submit = async () => {
-    if (pw1 !== pw2) { setErr("passwords don't match"); return; }
-    if (pw1.length < 8) { setErr("password must be at least 8 characters"); return; }
+    if (pw1 !== pw2) { setErr(t("settings.security.error.mismatch")); return; }
+    if (pw1.length < 8) { setErr(t("settings.security.error.tooShort")); return; }
     setBusy(true); setErr(null);
     try {
       const r = await api.enableEncryption(pw1);
@@ -1431,49 +2198,46 @@ function EnableEncryptionModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Enable encryption" width="w-[480px]">
+    <Modal open={open} onClose={onClose} title={t("settings.security.enableModal.title")} width="w-[480px]">
       {step === "confirm" ? (
         <>
           <p className="text-sm text-t2 leading-relaxed mb-3">
-            Turning this on lets you encrypt individual notes. Frontmatter
-            (title, tags, links) stays plaintext so the graph, tag filter and
-            backlinks keep working for encrypted notes.
+            {t("settings.security.enableModal.intro")}
           </p>
           <div className="p-3 bg-danger/10 border border-danger/30 rounded-md text-xs text-char leading-relaxed mb-4">
-            <div className="font-medium mb-1">While a note is encrypted:</div>
+            <div className="font-medium mb-1">{t("settings.security.enableModal.warn.title")}</div>
             <ul className="list-disc pl-5 space-y-0.5 text-t2">
-              <li>Body diffs in history slider are ciphertext noise.</li>
-              <li>Full-text search matches titles and tags only.</li>
-              <li>Opening the .md in another editor shows ciphertext.</li>
-              <li>Static-site export skips the note entirely.</li>
-              <li>Lose both the password and the recovery phrase and the note is gone.</li>
+              <li>{t("settings.security.enableModal.warn.diffs")}</li>
+              <li>{t("settings.security.enableModal.warn.search")}</li>
+              <li>{t("settings.security.enableModal.warn.external")}</li>
+              <li>{t("settings.security.enableModal.warn.export")}</li>
+              <li>{t("settings.security.enableModal.warn.lost")}</li>
             </ul>
           </div>
           <div className="flex justify-end gap-2">
             <button className="px-3 py-1.5 text-sm text-t2 hover:text-char" onClick={onClose}>
-              not now
+              {t("settings.security.enableModal.notNow")}
             </button>
             <button
               className="btn-yel px-3 py-1.5 text-sm rounded-md"
               onClick={() => setStep("password")}
             >
-              I understand, continue
+              {t("settings.security.enableModal.continue")}
             </button>
           </div>
         </>
       ) : (
         <>
           <p className="text-xs text-t2 mb-3 leading-relaxed">
-            Pick a workspace password. You'll type it whenever your session
-            locks (or, optionally, never if you turn idle-lock off).
+            {t("settings.security.enableModal.passwordIntro")}
           </p>
-          <label className="text-xs text-t2 block mb-1">Password</label>
+          <label className="text-xs text-t2 block mb-1">{t("settings.security.enableModal.password")}</label>
           <input
             type="password" autoFocus
             value={pw1} onChange={(e) => setPw1(e.target.value)}
             className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-3"
           />
-          <label className="text-xs text-t2 block mb-1">Confirm password</label>
+          <label className="text-xs text-t2 block mb-1">{t("settings.security.enableModal.confirmPassword")}</label>
           <input
             type="password"
             value={pw2} onChange={(e) => setPw2(e.target.value)}
@@ -1487,14 +2251,14 @@ function EnableEncryptionModal({
           )}
           <div className="flex justify-end gap-2">
             <button className="px-3 py-1.5 text-sm text-t2 hover:text-char" onClick={onClose}>
-              cancel
+              {t("settings.security.enableModal.cancel")}
             </button>
             <button
               className="btn-yel px-3 py-1.5 text-sm rounded-md"
               onClick={submit}
               disabled={busy || !pw1 || !pw2}
             >
-              {busy ? "setting up…" : "enable encryption"}
+              {busy ? t("settings.security.enableModal.settingUp") : t("settings.security.enableModal.enableButton")}
             </button>
           </div>
         </>
@@ -1504,17 +2268,17 @@ function EnableEncryptionModal({
 }
 
 function RecoveryPhraseModal({ phrase, onClose }: { phrase: string | null; onClose: () => void }) {
+  const t = useT();
   const [confirmed, setConfirmed] = useState(false);
   useEffect(() => { setConfirmed(false); }, [phrase]);
   if (!phrase) return null;
   const words = phrase.split(/\s+/).filter(Boolean);
   return (
-    <Modal open={true} onClose={() => { if (confirmed) onClose(); }} title="Your recovery phrase" width="w-[520px]">
+    <Modal open={true} onClose={() => { if (confirmed) onClose(); }} title={t("settings.security.recoveryModal.title")} width="w-[520px]">
       <p className="text-xs text-t2 mb-3 leading-relaxed">
-        Write these 12 words down somewhere safe — <span className="text-char font-medium">
-          this is the only time you'll see them.
-        </span> They reset your password if you forget it, and they let anyone
-        else decrypt your notes, so keep them offline.
+        {t("settings.security.recoveryModal.body.before")}<span className="text-char font-medium">
+          {t("settings.security.recoveryModal.body.bold")}
+        </span>{t("settings.security.recoveryModal.body.after")}
       </p>
       <div className="grid grid-cols-3 gap-2 p-3 bg-s1 border border-bd rounded-md mb-3">
         {words.map((w, i) => (
@@ -1531,9 +2295,9 @@ function RecoveryPhraseModal({ phrase, onClose }: { phrase: string | null; onClo
           }}
           className="px-3 py-1.5 text-xs bg-s2 text-ch2 rounded hover:bg-s3"
         >
-          Copy to clipboard
+          {t("settings.security.recoveryModal.copy")}
         </button>
-        <span className="text-2xs text-t3">clear it before storing anywhere online</span>
+        <span className="text-2xs text-t3">{t("settings.security.recoveryModal.copyHint")}</span>
       </div>
       <label className="flex items-center gap-2 text-xs text-t2 cursor-pointer select-none mb-4">
         <input
@@ -1542,7 +2306,7 @@ function RecoveryPhraseModal({ phrase, onClose }: { phrase: string | null; onClo
           onChange={(e) => setConfirmed(e.target.checked)}
           className="accent-yel"
         />
-        I've written this down somewhere safe
+        {t("settings.security.recoveryModal.confirm")}
       </label>
       <div className="flex justify-end">
         <button
@@ -1550,7 +2314,7 @@ function RecoveryPhraseModal({ phrase, onClose }: { phrase: string | null; onClo
           disabled={!confirmed}
           className="btn-yel px-3 py-1.5 text-sm rounded-md disabled:opacity-40"
         >
-          done
+          {t("settings.security.recoveryModal.done")}
         </button>
       </div>
     </Modal>
@@ -1560,6 +2324,7 @@ function RecoveryPhraseModal({ phrase, onClose }: { phrase: string | null; onClo
 function DisableEncryptionModal({
   open, onClose, onDone,
 }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const t = useT();
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1578,12 +2343,11 @@ function DisableEncryptionModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Turn off encryption" width="w-[440px]">
+    <Modal open={open} onClose={onClose} title={t("settings.security.disableModal.title")} width="w-[440px]">
       <p className="text-sm text-t2 mb-3 leading-relaxed">
-        Every encrypted note in this workspace will be rewritten as plaintext
-        and checkpointed. The security settings file is removed.
+        {t("settings.security.disableModal.body")}
       </p>
-      <label className="text-xs text-t2 block mb-1">Password (to confirm)</label>
+      <label className="text-xs text-t2 block mb-1">{t("settings.security.disableModal.password.label")}</label>
       <input
         type="password" autoFocus
         value={pw} onChange={(e) => setPw(e.target.value)}
@@ -1597,14 +2361,14 @@ function DisableEncryptionModal({
       )}
       <div className="flex justify-end gap-2">
         <button className="px-3 py-1.5 text-sm text-t2 hover:text-char" onClick={onClose}>
-          keep it on
+          {t("settings.security.disableModal.keep")}
         </button>
         <button
           className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90"
           onClick={submit}
           disabled={busy || !pw}
         >
-          {busy ? "decrypting all…" : "turn it off"}
+          {busy ? t("settings.security.disableModal.decrypting") : t("settings.security.disableModal.confirm")}
         </button>
       </div>
     </Modal>
@@ -1614,6 +2378,7 @@ function DisableEncryptionModal({
 function ChangePasswordModal({
   open, onClose, onDone,
 }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const t = useT();
   const [oldPw, setOldPw] = useState("");
   const [pw1, setPw1] = useState("");
   const [pw2, setPw2] = useState("");
@@ -1622,8 +2387,8 @@ function ChangePasswordModal({
   useEffect(() => { if (open) { setOldPw(""); setPw1(""); setPw2(""); setBusy(false); setErr(null); } }, [open]);
 
   const submit = async () => {
-    if (pw1 !== pw2) { setErr("new passwords don't match"); return; }
-    if (pw1.length < 8) { setErr("password must be at least 8 characters"); return; }
+    if (pw1 !== pw2) { setErr(t("settings.security.changePwModal.error.mismatch")); return; }
+    if (pw1.length < 8) { setErr(t("settings.security.error.tooShort")); return; }
     setBusy(true); setErr(null);
     try {
       await api.changeEncryptionPassword(oldPw, pw1);
@@ -1636,19 +2401,19 @@ function ChangePasswordModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Change encryption password">
+    <Modal open={open} onClose={onClose} title={t("settings.security.changePwModal.title")}>
       <input
-        type="password" autoFocus placeholder="current password"
+        type="password" autoFocus placeholder={t("settings.security.changePwModal.current")}
         value={oldPw} onChange={(e) => setOldPw(e.target.value)}
         className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-2"
       />
       <input
-        type="password" placeholder="new password"
+        type="password" placeholder={t("settings.security.changePwModal.new")}
         value={pw1} onChange={(e) => setPw1(e.target.value)}
         className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-2"
       />
       <input
-        type="password" placeholder="confirm new password"
+        type="password" placeholder={t("settings.security.changePwModal.confirm")}
         value={pw2} onChange={(e) => setPw2(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
         className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-3"
@@ -1660,14 +2425,14 @@ function ChangePasswordModal({
       )}
       <div className="flex justify-end gap-2">
         <button className="px-3 py-1.5 text-sm text-t2 hover:text-char" onClick={onClose}>
-          cancel
+          {t("settings.security.changePwModal.cancel")}
         </button>
         <button
           className="btn-yel px-3 py-1.5 text-sm rounded-md"
           onClick={submit}
           disabled={busy || !oldPw || !pw1 || !pw2}
         >
-          {busy ? "saving…" : "change password"}
+          {busy ? t("settings.security.changePwModal.saving") : t("settings.security.changePwModal.submit")}
         </button>
       </div>
     </Modal>
@@ -1677,6 +2442,7 @@ function ChangePasswordModal({
 function RegenerateRecoveryModal({
   open, onClose, onPhrase,
 }: { open: boolean; onClose: () => void; onPhrase: (phrase: string) => void }) {
+  const t = useT();
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1695,13 +2461,12 @@ function RegenerateRecoveryModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="New recovery phrase">
+    <Modal open={open} onClose={onClose} title={t("settings.security.regenModal.title")}>
       <p className="text-xs text-t2 leading-relaxed mb-3">
-        Generates a fresh 12-word phrase and invalidates the old one. Your
-        password stays the same.
+        {t("settings.security.regenModal.body")}
       </p>
       <input
-        type="password" autoFocus placeholder="current password"
+        type="password" autoFocus placeholder={t("settings.security.regenModal.current")}
         value={pw} onChange={(e) => setPw(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
         className="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-3"
@@ -1713,14 +2478,14 @@ function RegenerateRecoveryModal({
       )}
       <div className="flex justify-end gap-2">
         <button className="px-3 py-1.5 text-sm text-t2 hover:text-char" onClick={onClose}>
-          cancel
+          {t("settings.security.regenModal.cancel")}
         </button>
         <button
           className="btn-yel px-3 py-1.5 text-sm rounded-md"
           onClick={submit}
           disabled={busy || !pw}
         >
-          {busy ? "working…" : "generate new phrase"}
+          {busy ? t("settings.security.regenModal.working") : t("settings.security.regenModal.submit")}
         </button>
       </div>
     </Modal>
@@ -1734,12 +2499,15 @@ function WorkspacePane({
   config,
   onConfigChange,
   onCloseWorkspace,
+  onImport,
 }: {
   workspacePath: string;
   config: WorkspaceConfig;
   onConfigChange: (cfg: WorkspaceConfig) => void;
   onCloseWorkspace: () => void;
+  onImport?: () => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(config.workspace.name);
   const [mainNotes, setMainNotes] = useState<NoteSummary[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -1772,10 +2540,10 @@ function WorkspacePane({
 
   return (
     <Section
-      title="Workspace"
-      hint="The folder your notes live in."
+      title={t("settings.workspace.title")}
+      hint={t("settings.workspace.hint")}
     >
-      <Row label="Name" hint="Shown in the top-left of the sidebar.">
+      <Row label={t("settings.workspace.name.label")} hint={t("settings.workspace.name.hint")}>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -1788,39 +2556,39 @@ function WorkspacePane({
       </Row>
 
       <Row
-        label="Mode"
-        hint="Branch path mapping turns this workspace into a connected map. Basic notes is just plain note-taking."
+        label={t("settings.workspace.mode.label")}
+        hint={t("settings.workspace.mode.hint")}
       >
         <div className="inline-flex rounded-md border border-bd overflow-hidden text-xs">
           <button
             onClick={() => setMode("mapped")}
             className={`px-3 py-1.5 ${mode === "mapped" ? "bg-yel text-on-yel font-medium" : "bg-bg text-t2 hover:bg-s2"}`}
           >
-            Branch path mapping
+            {t("settings.workspace.mode.mapped")}
           </button>
           <button
             onClick={() => setMode("basic")}
             className={`px-3 py-1.5 border-l border-bd ${mode === "basic" ? "bg-yel text-on-yel font-medium" : "bg-bg text-t2 hover:bg-s2"}`}
           >
-            Basic notes
+            {t("settings.workspace.mode.basic")}
           </button>
         </div>
       </Row>
 
       {mode === "mapped" && (
         <Row
-          label="Starting note"
-          hint="The anchor for decisions going forward — where your map begins."
+          label={t("settings.workspace.startingNote.label")}
+          hint={t("settings.workspace.startingNote.hint")}
         >
           <div className="flex items-center gap-2">
             <span className="text-xs text-t2 max-w-[220px] truncate">
-              {mainNoteTitle ?? <span className="text-danger">Not set</span>}
+              {mainNoteTitle ?? <span className="text-danger">{t("settings.workspace.startingNote.notSet")}</span>}
             </span>
             <button
               onClick={() => setPickerOpen(true)}
               className="px-2.5 py-1 text-xs bg-s2 text-char rounded-md hover:bg-s3"
             >
-              Change…
+              {t("settings.workspace.startingNote.change")}
             </button>
           </div>
         </Row>
@@ -1832,13 +2600,13 @@ function WorkspacePane({
         onConfigChange={onConfigChange}
       />
 
-      <Row label="Folder" hint="Where your notes are saved as .md files.">
+      <Row label={t("settings.workspace.folder.label")} hint={t("settings.workspace.folder.hint")}>
         <span className="text-xs font-mono text-t2 break-all max-w-[340px] text-right">
           {workspacePath}
         </span>
       </Row>
 
-      <Row label="Created">
+      <Row label={t("settings.workspace.created.label")}>
         <span className="text-xs text-t2">
           {new Date(config.workspace.created).toLocaleDateString(undefined, {
             year: "numeric",
@@ -1848,31 +2616,42 @@ function WorkspacePane({
         </span>
       </Row>
 
+      {onImport && (
+        <div className="pt-5 border-t border-bd mt-4">
+          <div className="text-sm text-char mb-1">{t("settings.workspace.import.title")}</div>
+          <p className="text-2xs text-t2 mb-3 leading-relaxed">
+            {t("settings.workspace.import.body.before")}<span className="font-mono">{t("settings.workspace.import.body.bib")}</span>{t("settings.workspace.import.body.middle")}<span className="font-mono">{t("settings.workspace.import.body.bib")}</span>{t("settings.workspace.import.body.middle2")}<span className="font-mono">{t("settings.workspace.import.body.tag")}</span>{t("settings.workspace.import.body.after")}
+          </p>
+          <button
+            onClick={onImport}
+            className="px-3 py-1.5 text-sm bg-s2 text-char rounded-md hover:bg-s3"
+          >
+            {t("settings.workspace.import.button")}
+          </button>
+        </div>
+      )}
+
       <div className="pt-5 border-t border-bd mt-4">
-        <div className="text-sm text-char mb-1">Export as a static site</div>
+        <div className="text-sm text-char mb-1">{t("settings.workspace.export.title")}</div>
         <p className="text-2xs text-t2 mb-2 leading-relaxed">
-          Save your workspace as a self-contained HTML folder you can share
-          or host anywhere. Attachments and the connection graph come along.
+          {t("settings.workspace.export.body")}
         </p>
         <ExportButton />
       </div>
 
       <div className="pt-5 border-t border-bd mt-4">
-        <div className="text-sm text-char mb-1">Trim checkpoint history</div>
+        <div className="text-sm text-char mb-1">{t("settings.workspace.trim.title")}</div>
         <p className="text-2xs text-t2 mb-3 leading-relaxed">
-          Your current notes are never touched. These forget older snapshots
-          so the history slider stops crowding up. Each is a one-way rewrite —
-          if you sync to a remote, you'll need to force-push after.
+          {t("settings.workspace.trim.body")}
         </p>
         <TrimHistoryButtons />
       </div>
 
       <div className="pt-5 border-t border-bd mt-4">
-        <div className="text-sm text-char mb-1">Clear all derived caches</div>
+        <div className="text-sm text-char mb-1">{t("settings.workspace.clearCache.title")}</div>
         <p className="text-2xs text-t2 mb-3 leading-relaxed">
-          Wipes <span className="font-mono">.yarrow/index.json</span> (graph) and
-          <span className="font-mono"> .yarrow/index.db</span> (search). Your notes
-          stay exactly as they are — both caches rebuild on demand.
+          {t("settings.workspace.clearCache.body.before")}<span className="font-mono">{t("settings.workspace.clearCache.body.indexJson")}</span>{t("settings.workspace.clearCache.body.middle")}
+          <span className="font-mono"> {t("settings.workspace.clearCache.body.indexDb")}</span>{t("settings.workspace.clearCache.body.after")}
         </p>
         <ClearAllCacheButton />
       </div>
@@ -1882,10 +2661,10 @@ function WorkspacePane({
           onClick={onCloseWorkspace}
           className="px-3 py-1.5 text-sm bg-s2 text-ch2 rounded-md hover:bg-s3"
         >
-          Close this workspace
+          {t("settings.workspace.close.button")}
         </button>
         <p className="text-2xs text-t3 mt-2">
-          Nothing is deleted — you can reopen this folder any time.
+          {t("settings.workspace.close.note")}
         </p>
       </div>
     </Section>
@@ -1896,6 +2675,7 @@ const AGE_OPTIONS = [30, 60, 90, 180] as const;
 type AgeDays = typeof AGE_OPTIONS[number];
 
 function TrimHistoryButtons() {
+  const t = useT();
   // Two-phase flow for age-based trimming: a picker modal where the user
   // chooses the cutoff, then an age-specific confirm modal so they can
   // still bail out after they see the warning. `empty` keeps its own
@@ -1919,16 +2699,23 @@ function TrimHistoryButtons() {
           ? await api.pruneHistoryOlderThan(target.days)
           : await api.pruneEmptyCheckpoints();
       const label =
-        target.kind === "age" ? `older than ${target.days} days` : "with no content";
+        target.kind === "age"
+          ? t("settings.trim.label.older", { days: String(target.days) })
+          : t("settings.trim.label.empty");
       if (report.removed === 0) {
-        setMsg(`Nothing to trim — no checkpoints ${label}.`);
+        setMsg(t("settings.trim.nothing", { label }));
       } else {
         setMsg(
-          `Forgot ${report.removed} checkpoint${report.removed === 1 ? "" : "s"} ${label}. ${report.kept} kept.`,
+          t(
+            report.removed === 1
+              ? "settings.trim.removed.singular"
+              : "settings.trim.removed.plural",
+            { count: String(report.removed), label, kept: String(report.kept) },
+          ),
         );
       }
     } catch (e) {
-      setMsg(`Couldn't trim: ${String(e)}`);
+      setMsg(t("settings.trim.failed", { error: String(e) }));
     } finally {
       setBusy(false);
       setConfirm(null);
@@ -1936,6 +2723,15 @@ function TrimHistoryButtons() {
   };
 
   const confirmDays = confirm?.kind === "age" ? confirm.days : 180;
+
+  const keepLabelFor = (d: AgeDays) =>
+    d >= 180
+      ? t("settings.trim.picker.keep180")
+      : d >= 90
+        ? t("settings.trim.picker.keep90")
+        : d >= 60
+          ? t("settings.trim.picker.keep60")
+          : t("settings.trim.picker.keep30");
 
   return (
     <>
@@ -1945,14 +2741,14 @@ function TrimHistoryButtons() {
           disabled={busy}
           className="px-3 py-1.5 text-sm text-danger border border-danger/40 bg-danger/5 rounded-md hover:bg-danger/10 disabled:opacity-50"
         >
-          Forget old checkpoints…
+          {t("settings.trim.olderBtn")}
         </button>
         <button
           onClick={() => setConfirm({ kind: "empty" })}
           disabled={busy}
           className="px-3 py-1.5 text-sm text-danger border border-danger/40 bg-danger/5 rounded-md hover:bg-danger/10 disabled:opacity-50"
         >
-          Forget empty checkpoints
+          {t("settings.trim.emptyBtn")}
         </button>
       </div>
       {msg && (
@@ -1962,11 +2758,10 @@ function TrimHistoryButtons() {
       <Modal
         open={picker}
         onClose={() => setPicker(false)}
-        title="Forget checkpoints older than…"
+        title={t("settings.trim.picker.title")}
       >
         <p className="text-sm text-t2 mb-3 leading-relaxed">
-          Pick how far back to keep your history. Anything older will be dropped
-          on every path — current notes stay exactly as they are.
+          {t("settings.trim.picker.body")}
         </p>
         <div className="grid grid-cols-2 gap-2 mb-4">
           {AGE_OPTIONS.map((d) => (
@@ -1979,9 +2774,9 @@ function TrimHistoryButtons() {
                   : "bg-bg text-ch2 border-bd hover:bg-s2 hover:border-bd2"
               }`}
             >
-              <div className="font-medium">{d} days</div>
+              <div className="font-medium">{t("settings.trim.picker.daysFmt", { days: String(d) })}</div>
               <div className="text-2xs text-t3 mt-0.5">
-                keep ~{d >= 180 ? "half a year" : d >= 90 ? "a quarter" : d >= 60 ? "two months" : "a month"}
+                {keepLabelFor(d)}
               </div>
             </button>
           ))}
@@ -1991,13 +2786,13 @@ function TrimHistoryButtons() {
             className="px-3 py-1.5 text-sm text-t2 hover:text-char"
             onClick={() => setPicker(false)}
           >
-            cancel
+            {t("settings.trim.picker.cancel")}
           </button>
           <button
             className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90"
             onClick={() => { setPicker(false); setConfirm({ kind: "age", days: pickerDays }); }}
           >
-            continue
+            {t("settings.trim.picker.continue")}
           </button>
         </div>
       </Modal>
@@ -2005,19 +2800,17 @@ function TrimHistoryButtons() {
       <Modal
         open={confirm?.kind === "age"}
         onClose={() => !busy && setConfirm(null)}
-        title={`Forget checkpoints older than ${confirmDays} days?`}
+        title={t("settings.trim.confirmAge.title", { days: String(confirmDays) })}
       >
         <p className="text-sm text-t2 mb-3 leading-relaxed">
-          Every saved snapshot older than {confirmDays} days will be dropped on every
-          path. Your current notes stay exactly as they are — only the old
-          history slider entries disappear.
+          {t("settings.trim.confirmAge.body", { days: String(confirmDays) })}
         </p>
         <div className="p-3 bg-danger/10 border border-danger/30 rounded-md text-xs text-char leading-relaxed mb-4">
-          <div className="font-medium mb-1">This can't be undone:</div>
+          <div className="font-medium mb-1">{t("settings.trim.confirm.warnTitle")}</div>
           <ul className="list-disc pl-5 space-y-0.5 text-t2">
-            <li>Old "what were you thinking?" notes are erased.</li>
-            <li>Blame-hover provenance before the cutoff is lost.</li>
-            <li>If you sync to a remote, your next sync needs a force-push.</li>
+            <li>{t("settings.trim.confirmAge.warn.thinking")}</li>
+            <li>{t("settings.trim.confirmAge.warn.blame")}</li>
+            <li>{t("settings.trim.confirm.warn.forcePush")}</li>
           </ul>
         </div>
         <div className="flex justify-end gap-2">
@@ -2026,14 +2819,14 @@ function TrimHistoryButtons() {
             onClick={() => setConfirm(null)}
             disabled={busy}
           >
-            keep everything
+            {t("settings.trim.keep")}
           </button>
           <button
             className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
             onClick={() => confirm?.kind === "age" && run(confirm)}
             disabled={busy}
           >
-            {busy ? "trimming…" : "yes, forget them"}
+            {busy ? t("settings.trim.trimming") : t("settings.trim.confirmDoit")}
           </button>
         </div>
       </Modal>
@@ -2041,18 +2834,16 @@ function TrimHistoryButtons() {
       <Modal
         open={confirm?.kind === "empty"}
         onClose={() => !busy && setConfirm(null)}
-        title="Forget empty checkpoints?"
+        title={t("settings.trim.confirmEmpty.title")}
       >
         <p className="text-sm text-t2 mb-3 leading-relaxed">
-          Drops every saved snapshot where all your notes were still empty —
-          mostly "new note" moments before you started writing. Snapshots with
-          any real content are kept.
+          {t("settings.trim.confirmEmpty.body")}
         </p>
         <div className="p-3 bg-danger/10 border border-danger/30 rounded-md text-xs text-char leading-relaxed mb-4">
-          <div className="font-medium mb-1">This can't be undone:</div>
+          <div className="font-medium mb-1">{t("settings.trim.confirm.warnTitle")}</div>
           <ul className="list-disc pl-5 space-y-0.5 text-t2">
-            <li>You can no longer scrub back to a note's blank-scaffold moment.</li>
-            <li>If you sync to a remote, your next sync needs a force-push.</li>
+            <li>{t("settings.trim.confirmEmpty.warn.scrub")}</li>
+            <li>{t("settings.trim.confirm.warn.forcePush")}</li>
           </ul>
         </div>
         <div className="flex justify-end gap-2">
@@ -2061,14 +2852,14 @@ function TrimHistoryButtons() {
             onClick={() => setConfirm(null)}
             disabled={busy}
           >
-            keep everything
+            {t("settings.trim.keep")}
           </button>
           <button
             className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
             onClick={() => run({ kind: "empty" })}
             disabled={busy}
           >
-            {busy ? "trimming…" : "yes, forget them"}
+            {busy ? t("settings.trim.trimming") : t("settings.trim.confirmDoit")}
           </button>
         </div>
       </Modal>
@@ -2081,6 +2872,7 @@ function TrimHistoryButtons() {
  *  search after a clear pays a rebuild cost that can surprise the user
  *  on a 1000-note vault. */
 function ClearAllCacheButton() {
+  const t = useT();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -2090,11 +2882,11 @@ function ClearAllCacheButton() {
     setMsg(null);
     try {
       await api.clearAllCache();
-      setMsg("All derived caches cleared. Both will rebuild on demand.");
+      setMsg(t("settings.clearCache.done"));
       setConfirm(false);
       window.setTimeout(() => setMsg(null), 4000);
     } catch (e) {
-      setMsg(`Couldn't clear caches: ${String(e)}`);
+      setMsg(t("settings.clearCache.failed", { error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -2107,32 +2899,29 @@ function ClearAllCacheButton() {
         disabled={busy}
         className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
       >
-        Clear all cache
+        {t("settings.clearCache.button")}
       </button>
       {msg && <p className="text-2xs text-t2 mt-2 leading-snug">{msg}</p>}
 
       <Modal
         open={confirm}
         onClose={() => !busy && setConfirm(false)}
-        title="Clear all derived caches?"
+        title={t("settings.clearCache.modal.title")}
       >
         <p className="text-sm text-t2 mb-3 leading-relaxed">
-          Deletes the graph index and the search database. Your notes and git
-          history are untouched. Both caches are rebuilt automatically — but
-          the next search on a large vault may pause briefly while FTS5
-          re-indexes every note.
+          {t("settings.clearCache.modal.body")}
         </p>
         <div className="p-3 bg-danger/10 border border-danger/30 rounded-md text-xs text-char leading-relaxed mb-4">
-          <div className="font-medium mb-1">Does clear:</div>
+          <div className="font-medium mb-1">{t("settings.clearCache.modal.does")}</div>
           <ul className="list-disc pl-5 space-y-0.5 text-t2">
-            <li><span className="font-mono">.yarrow/index.json</span> — link graph</li>
-            <li><span className="font-mono">.yarrow/index.db</span> + WAL — search cache</li>
+            <li><span className="font-mono">.yarrow/index.json</span> {t("settings.clearCache.modal.does.json")}</li>
+            <li><span className="font-mono">.yarrow/index.db</span> {t("settings.clearCache.modal.does.db")}</li>
           </ul>
-          <div className="font-medium mb-1 mt-2">Doesn't touch:</div>
+          <div className="font-medium mb-1 mt-2">{t("settings.clearCache.modal.doesnt")}</div>
           <ul className="list-disc pl-5 space-y-0.5 text-t2">
-            <li>Your <span className="font-mono">.md</span> note files.</li>
-            <li>Git checkpoint history.</li>
-            <li>Workspace settings, templates, or attachments.</li>
+            <li>{t("settings.clearCache.modal.doesnt.md.before")}<span className="font-mono">.md</span>{t("settings.clearCache.modal.doesnt.md.after")}</li>
+            <li>{t("settings.clearCache.modal.doesnt.git")}</li>
+            <li>{t("settings.clearCache.modal.doesnt.workspace")}</li>
           </ul>
         </div>
         <div className="flex justify-end gap-2">
@@ -2141,14 +2930,14 @@ function ClearAllCacheButton() {
             onClick={() => setConfirm(false)}
             disabled={busy}
           >
-            cancel
+            {t("settings.clearCache.modal.cancel")}
           </button>
           <button
             className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
             onClick={run}
             disabled={busy}
           >
-            {busy ? "clearing…" : "yes, clear everything"}
+            {busy ? t("settings.clearCache.modal.clearing") : t("settings.clearCache.modal.confirm")}
           </button>
         </div>
       </Modal>
@@ -2157,25 +2946,40 @@ function ClearAllCacheButton() {
 }
 
 function ExportButton() {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const runExport = async () => {
     setMsg(null);
-    const dest = await openDialog({ directory: true, multiple: false, title: "Choose a folder for the export" });
+    const dest = await openDialog({ directory: true, multiple: false, title: t("settings.export.dialogTitle") });
     if (!dest || Array.isArray(dest)) return;
     setBusy(true);
     try {
       const report = await api.exportStatic(dest);
       const attachBit = report.attachments_exported > 0
-        ? ` + ${report.attachments_exported} attachment${report.attachments_exported === 1 ? "" : "s"}`
+        ? t("settings.export.attachBit", {
+            count: String(report.attachments_exported),
+            word: report.attachments_exported === 1
+              ? t("settings.export.report.attachment")
+              : t("settings.export.report.attachments"),
+          })
         : "";
       const skipBit = (report.encrypted_skipped ?? 0) > 0
-        ? ` · skipped ${report.encrypted_skipped} encrypted`
+        ? ` · ${t("settings.export.report.skipped", { count: String(report.encrypted_skipped) })}`
         : "";
-      setMsg(`Exported ${report.notes_exported} note${report.notes_exported === 1 ? "" : "s"}${attachBit}${skipBit} → ${report.dest}`);
+      const noteWord = report.notes_exported === 1
+        ? t("settings.export.report.note")
+        : t("settings.export.report.notes");
+      setMsg(t("settings.export.report.summary", {
+        notes: String(report.notes_exported),
+        noteWord,
+        attachBit,
+        skipBit,
+        dest: report.dest,
+      }));
     } catch (e) {
-      setMsg(`Export failed: ${String(e)}`);
+      setMsg(t("settings.export.failed", { error: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -2188,7 +2992,7 @@ function ExportButton() {
         disabled={busy}
         className="btn-yel px-3 py-1.5 text-sm rounded-md disabled:opacity-60"
       >
-        {busy ? "exporting…" : "Choose folder & export"}
+        {busy ? t("settings.export.exporting") : t("settings.export.go")}
       </button>
       {msg && (
         <span className="text-2xs text-t2 flex-1 leading-snug break-all">{msg}</span>
@@ -2197,36 +3001,486 @@ function ExportButton() {
   );
 }
 
+// ─────────────── storage ───────────────
+//
+// Stage-3: "Manage Storage" / reclaim-space UI. Lists the biggest files
+// in the workspace's entire git history (including deleted-but-still-
+// stored blobs) and lets the user permanently purge selected files
+// server-side. Irreversible: the modal requires typing "delete" and
+// the operation rewrites history + forces every other device to
+// re-clone on next sync.
+
+interface BlobGroup {
+  path: string;
+  /** Display path — matches `path` unless the group is dangling (no
+   *  path), in which case we substitute a human-readable label. */
+  displayPath: string;
+  totalBytes: number;
+  versions: import("../lib/types").LargeBlobEntry[];
+  /** True for blobs with no known path (dangling objects). The
+   *  checkbox is disabled for these — filter-repo operates on paths,
+   *  and we have nothing to pass. Shown anyway so operators know the
+   *  bytes exist (a future gc sweep will collect them). */
+  dangling: boolean;
+}
+
+function StoragePane() {
+  const t = useT();
+  const [blobs, setBlobs] = useState<import("../lib/types").LargeBlobEntry[] | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<
+    import("../lib/types").ReclaimSpaceOutcome | null
+  >(null);
+  const [runErr, setRunErr] = useState<string | null>(null);
+
+  const refresh = async () => {
+    setLoadErr(null);
+    try {
+      const list = await api.listLargeBlobs();
+      setBlobs(list);
+    } catch (e) {
+      setLoadErr(String(e));
+      setBlobs([]);
+    }
+  };
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  // Collapse repeated history versions of the same path into one row
+  // with a hide-by-default expander. filter-repo works on paths, so
+  // selecting at the group level is the operation that actually
+  // matches — per-version checkboxes would imply a finer purge than
+  // the tool supports.
+  const groups: BlobGroup[] = useMemo(() => {
+    if (!blobs) return [];
+    const byKey = new Map<string, BlobGroup>();
+    for (const b of blobs) {
+      const hasPath = Boolean(b.path);
+      const key = hasPath ? b.path : `<dangling:${b.oid}>`;
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.versions.push(b);
+        existing.totalBytes += b.size;
+      } else {
+        byKey.set(key, {
+          path: b.path,
+          displayPath: hasPath ? b.path : t("settings.storage.dangling.path"),
+          totalBytes: b.size,
+          versions: [b],
+          dangling: !hasPath,
+        });
+      }
+    }
+    return Array.from(byKey.values()).sort(
+      (a, b) => b.totalBytes - a.totalBytes,
+    );
+  }, [blobs, t]);
+
+  const toggle = (path: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const toggleExpand = (key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const totalSelectedBytes = groups
+    .filter((g) => selected.has(g.path))
+    .reduce((acc, g) => acc + g.totalBytes, 0);
+
+  const openConfirm = () => {
+    if (selected.size === 0) return;
+    setConfirmText("");
+    setRunErr(null);
+    setResult(null);
+    setConfirmOpen(true);
+  };
+
+  const runReclaim = async () => {
+    if (confirmText.trim().toLowerCase() !== "delete") return;
+    setRunning(true);
+    setRunErr(null);
+    try {
+      const paths = Array.from(selected);
+      const out = await api.reclaimSpace(paths, null);
+      setResult(out);
+      setSelected(new Set());
+      await refresh();
+    } catch (e) {
+      setRunErr(String(e));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="font-serif text-2xl text-char mb-1">{t("settings.storage.title")}</div>
+      <div className="text-sm text-t1 mb-3 leading-relaxed max-w-prose">
+        <strong className="text-char">{t("settings.storage.intro.bold")}</strong>{t("settings.storage.intro.body")}
+      </div>
+      <div className="text-xs text-t2 mb-6 leading-relaxed max-w-prose">
+        {t("settings.storage.body")}
+      </div>
+
+      <AlignWithServerPanel onRefresh={refresh} />
+
+      {loadErr && (
+        <div className="text-sm text-danger bg-danger/10 border border-danger/30 rounded px-3 py-2 mb-4">
+          {t("settings.storage.loadFailed", { error: loadErr })}
+        </div>
+      )}
+
+      {blobs === null && !loadErr && (
+        <div className="text-sm text-t2 italic">{t("settings.storage.loading")}</div>
+      )}
+
+      {blobs && blobs.length === 0 && !loadErr && (
+        <div className="text-sm text-t2">
+          {t("settings.storage.empty")}
+        </div>
+      )}
+
+      {blobs && blobs.length > 0 && (
+        <>
+          <div className="border border-bd rounded-lg overflow-hidden mb-4 max-h-[360px] overflow-y-auto">
+            <div className="grid grid-cols-[28px_20px_1fr_90px] gap-2 px-3 py-2 bg-bg-soft border-b border-bd text-[11px] uppercase tracking-wide text-t3 sticky top-0">
+              <div />
+              <div />
+              <div>{t("settings.storage.col.file")}</div>
+              <div className="text-right">{t("settings.storage.col.size")}</div>
+            </div>
+            {groups.map((g) => {
+              const key = g.dangling ? `<dangling:${g.versions[0].oid}>` : g.path;
+              const checked = !g.dangling && selected.has(g.path);
+              const isExpanded = expanded.has(key);
+              const hasMultiple = g.versions.length > 1;
+              return (
+                <div key={key} className="border-b border-bd/40 last:border-b-0">
+                  <div
+                    className={`grid grid-cols-[28px_20px_1fr_90px] items-center gap-2 px-3 py-2 text-sm ${
+                      checked ? "bg-yelp/40" : "hover:bg-bg-soft"
+                    }`}
+                  >
+                    <label className="flex items-center justify-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => !g.dangling && toggle(g.path)}
+                        disabled={g.dangling}
+                        className="accent-yel"
+                      />
+                    </label>
+                    {hasMultiple ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(key)}
+                        aria-label={isExpanded ? t("settings.storage.collapseAria") : t("settings.storage.expandAria")}
+                        title={isExpanded ? t("settings.storage.collapseTitle") : t("settings.storage.expandTitle")}
+                        className="w-5 h-5 flex items-center justify-center text-t3 hover:text-char transition"
+                      >
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 10 10"
+                          fill="currentColor"
+                          className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        >
+                          <path d="M 3 1 L 7 5 L 3 9 Z" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                    <label className="truncate cursor-pointer" onClick={() => !g.dangling && toggle(g.path)}>
+                      <span className={g.dangling ? "text-t3 italic" : ""}>
+                        {g.displayPath}
+                      </span>
+                      {hasMultiple && (
+                        <span className="ml-2 text-[11px] text-t3">
+                          {t("settings.storage.versionsCount", { count: String(g.versions.length) })}
+                        </span>
+                      )}
+                    </label>
+                    <div className="text-t2 tabular-nums text-right whitespace-nowrap">
+                      {humanBytesStorage(g.totalBytes)}
+                    </div>
+                  </div>
+                  {isExpanded && hasMultiple && (
+                    <div className="bg-bg-soft/60 border-t border-bd/40">
+                      <div className="grid grid-cols-[28px_20px_1fr_90px] gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wide text-t3">
+                        <span />
+                        <span />
+                        <span>{t("settings.storage.version.col")}</span>
+                        <span className="text-right">{t("settings.storage.col.size")}</span>
+                      </div>
+                      {g.versions.map((v, idx) => (
+                        <div
+                          key={v.oid}
+                          className="grid grid-cols-[28px_20px_1fr_90px] gap-2 px-3 py-1 text-[12px] text-t2"
+                        >
+                          <span />
+                          <span className="text-t3 text-center">
+                            {idx === g.versions.length - 1 ? "└" : "├"}
+                          </span>
+                          <span className="font-mono truncate" title={v.oid}>
+                            {v.oid.slice(0, 12)}
+                          </span>
+                          <span className="tabular-nums text-right whitespace-nowrap">
+                            {humanBytesStorage(v.size)}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="px-3 pb-2 pt-0.5 text-[11px] text-t3 italic">
+                        {t("settings.storage.version.note")}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-t2">
+              {selected.size > 0 ? (
+                t(
+                  selected.size === 1
+                    ? "settings.storage.selected.singular"
+                    : "settings.storage.selected.plural",
+                  { count: String(selected.size), bytes: humanBytesStorage(totalSelectedBytes) },
+                )
+              ) : (
+                <span className="italic">{t("settings.storage.selected.empty")}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={openConfirm}
+              disabled={selected.size === 0}
+              className="px-4 py-2 rounded-md bg-danger text-bg hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium"
+            >
+              {t("settings.storage.deleteSelected")}
+            </button>
+          </div>
+        </>
+      )}
+
+      <Modal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title={t("settings.storage.confirm.title")}
+        width="w-[520px]"
+      >
+        <div className="space-y-3 text-sm text-t1 leading-relaxed">
+          <p>
+            {t("settings.storage.confirm.body.before")}<strong className="text-char">{selected.size}</strong>{" "}
+            {selected.size === 1 ? t("settings.storage.confirm.body.fileSingular") : t("settings.storage.confirm.body.filePlural")} (
+            <strong className="text-char">
+              {humanBytesStorage(totalSelectedBytes)}
+            </strong>
+            ) <strong className="text-char">{t("settings.storage.confirm.body.middle")}</strong>{t("settings.storage.confirm.body.after")}
+          </p>
+          <p className="text-char font-medium">{t("settings.storage.confirm.cantUndo")}</p>
+          {result && (
+            <div className="bg-sage-dim/40 border border-sage/20 rounded px-3 py-2 text-sm text-char">
+              {t("settings.storage.confirm.done", { bytes: humanBytesStorage(result.bytes_freed) })}
+            </div>
+          )}
+          {runErr && (
+            <div className="bg-danger/10 border border-danger/30 rounded px-3 py-2 text-sm text-danger">
+              {runErr}
+            </div>
+          )}
+          {!result && (
+            <label className="block">
+              <span className="text-xs uppercase tracking-wide text-t3">
+                {t("settings.storage.confirm.typeToConfirm.before")}<strong className="text-char">DELETE</strong>{t("settings.storage.confirm.typeToConfirm.after")}
+              </span>
+              <input
+                type="text"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                disabled={running}
+                autoFocus
+                className="mt-1 w-full px-3 py-2 rounded border border-bd2 bg-bg text-char focus:border-yel focus:outline-none font-mono"
+                placeholder={t("settings.storage.confirm.placeholder")}
+              />
+            </label>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            {result ? (
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                className="px-4 py-2 rounded-md bg-yel text-on-yel hover:bg-yel2 text-sm font-medium"
+              >
+                {t("settings.storage.confirm.doneButton")}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setConfirmOpen(false)}
+                  disabled={running}
+                  className="px-4 py-2 rounded-md border border-bd2 bg-bg hover:bg-bg-soft text-char text-sm"
+                >
+                  {t("settings.storage.confirm.cancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={runReclaim}
+                  disabled={
+                    running || confirmText.trim().toLowerCase() !== "delete"
+                  }
+                  className="px-4 py-2 rounded-md bg-danger text-bg hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  {running
+                    ? t("settings.storage.confirm.deleting")
+                    : t("settings.storage.confirm.confirmButton")}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/**
+ * Inline recovery panel for the "server freed space but this device is
+ * still stuck" scenario. Common after a reclaim-space run on a
+ * different device, or after this device's `workspace.purged`
+ * WebSocket handler failed (app was closed, network drop mid-receive,
+ * etc.). Runs the server-fetch + hard-reset chain that `cmd_sync`
+ * deliberately avoids — we *don't* want to push stale local commits
+ * back to the server after a purge.
+ */
+function AlignWithServerPanel({ onRefresh }: { onRefresh: () => Promise<void> }) {
+  const t = useT();
+  const [status, setStatus] = useState<"idle" | "running" | "ok" | "error">("idle");
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+
+  const run = async () => {
+    setStatus("running");
+    setErrMsg(null);
+    setSummary(null);
+    try {
+      const out = await api.forceAlignWithServer(true);
+      const n = out.commits_ahead;
+      setSummary(
+        n === 0
+          ? t("settings.align.alreadyInSync")
+          : t(
+              n === 1
+                ? "settings.align.dropped.singular"
+                : "settings.align.dropped.plural",
+              { count: String(n) },
+            ),
+      );
+      setStatus("ok");
+      await onRefresh();
+    } catch (e) {
+      setErrMsg(String(e));
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="mb-5 border border-bd rounded-lg p-3 bg-bg-soft">
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-xs text-t2 leading-relaxed max-w-prose">
+          <strong className="text-char">{t("settings.align.title")}</strong>{" "}
+          {t("settings.align.body")}
+        </div>
+        <button
+          type="button"
+          onClick={run}
+          disabled={status === "running"}
+          className="shrink-0 px-3 py-1.5 rounded-md bg-yel text-on-yel hover:bg-yel2 disabled:opacity-50 text-xs font-medium whitespace-nowrap"
+        >
+          {status === "running" ? t("settings.align.syncing") : t("settings.align.button")}
+        </button>
+      </div>
+      {summary && status === "ok" && (
+        <div className="mt-2 text-xs text-char bg-sage-dim/40 border border-sage/20 rounded px-2.5 py-1.5">
+          {summary}
+        </div>
+      )}
+      {errMsg && status === "error" && (
+        <div className="mt-2 text-xs text-danger bg-danger/10 border border-danger/30 rounded px-2.5 py-1.5">
+          {errMsg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function humanBytesStorage(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "?";
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  for (const u of units) {
+    if (v < 1024) return `${v.toFixed(v < 10 ? 1 : 0)} ${u}`;
+    v /= 1024;
+  }
+  return `${v.toFixed(1)} PB`;
+}
+
 // ─────────────── shortcuts ───────────────
 
 function ShortcutsPane() {
+  const t = useT();
   const groups: { title: string; items: { label: string; keys: string }[] }[] = [
     {
-      title: "Getting around",
+      title: t("settings.shortcuts.group.gettingAround"),
       items: [
-        { label: "Command palette — search, jump, run", keys: SK.palette },
-        { label: "Quick note switcher (fuzzy title)",    keys: SK.quickSwitch },
-        { label: "Switch workspace",                     keys: SK.switchWorkspace },
-        { label: "Jump to today's journal",              keys: SK.jumpToday },
-        { label: "Open settings",                        keys: SK.settings },
+        { label: t("settings.shortcuts.palette"),         keys: SK.palette },
+        { label: t("settings.shortcuts.quickSwitch"),     keys: SK.quickSwitch },
+        { label: t("settings.shortcuts.switchWorkspace"), keys: SK.switchWorkspace },
+        { label: t("settings.shortcuts.jumpToday"),       keys: SK.jumpToday },
+        { label: t("settings.shortcuts.openSettings"),    keys: SK.settings },
       ],
     },
     {
-      title: "Writing",
+      title: t("settings.shortcuts.group.writing"),
       items: [
-        { label: "New note",                             keys: SK.newNote },
-        { label: "Explore a new direction (new path)",   keys: SK.newDirection },
-        { label: "Branch from the current note",          keys: SK.branchFromHere },
-        { label: "Toggle focus mode (hide sidebars)",    keys: SK.focusToggle },
-        { label: "Toggle scratchpad",                    keys: SK.scratchpad },
+        { label: t("settings.shortcuts.newNote"),         keys: SK.newNote },
+        { label: t("settings.shortcuts.newDirection"),    keys: SK.newDirection },
+        { label: t("settings.shortcuts.branchFromHere"),  keys: SK.branchFromHere },
+        { label: t("settings.shortcuts.focusToggle"),     keys: SK.focusToggle },
+        { label: t("settings.shortcuts.scratchpad"),      keys: SK.scratchpad },
       ],
     },
   ];
 
+  const platformLabel = isMacCopy()
+    ? t("settings.shortcuts.platform.mac")
+    : t("settings.shortcuts.platform.other");
+
   return (
     <Section
-      title="Keyboard shortcuts"
-      hint={`Shown in ${isMacCopy() ? "macOS" : "Windows / Linux"} style. These aren't configurable yet.`}
+      title={t("settings.shortcuts.title")}
+      hint={t("settings.shortcuts.hint", { platform: platformLabel })}
     >
       {groups.map((g) => (
         <div key={g.title} className="mb-5 last:mb-0">
@@ -2249,10 +3503,10 @@ function ShortcutsPane() {
         </div>
       ))}
       <div className="text-2xs text-t3 mt-4 leading-relaxed">
-        Right-click in the editor to insert a <kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">[[wikilink]]</kbd>
-        {" "}or <kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">![[embed]]</kbd>
-        {" "}— pick a note from the list, toggle inline if you want to transclude it. Type <kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">??</kbd>
-        {" "}at the start of a line to mark an open question.
+        {t("settings.shortcuts.editorHint.before")}<kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">[[wikilink]]</kbd>
+        {t("settings.shortcuts.editorHint.or")}<kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">![[embed]]</kbd>
+        {t("settings.shortcuts.editorHint.middle")}<kbd className="font-mono text-[11px] bg-s2 border border-bd rounded px-1.5">??</kbd>
+        {t("settings.shortcuts.editorHint.after")}
       </div>
     </Section>
   );
@@ -2267,17 +3521,14 @@ function isMacCopy(): boolean {
 // ─────────────── about ───────────────
 
 function AboutPane() {
+  const t = useT();
   return (
-    <Section title="About Yarrow">
+    <Section title={t("settings.about.title")}>
       <p className="text-sm text-t2 leading-relaxed">
-        Yarrow is a note-taking tool for non-linear thinking. Your notes are
-        plain markdown files in a folder — open them in any editor, back them
-        up anywhere. Yarrow only keeps track of connections and versions for
-        you.
+        {t("settings.about.body1")}
       </p>
       <p className="text-sm text-t2 leading-relaxed">
-        Every save is a checkpoint. Every "new direction" is a path you can
-        switch back to. Nothing you write is ever lost.
+        {t("settings.about.body2")}
       </p>
       <div className="mt-4 pt-4 border-t border-bd">
         <button
@@ -2291,7 +3542,7 @@ function AboutPane() {
           </svg>
         </button>
         <div className="text-2xs text-t3 font-mono mt-2">
-          version {APP_VERSION} · local-first · plain markdown
+          {t("settings.about.versionLine", { version: APP_VERSION })}
         </div>
       </div>
     </Section>

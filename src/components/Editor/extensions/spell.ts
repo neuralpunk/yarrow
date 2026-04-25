@@ -15,10 +15,15 @@ import { isCorrect, loadSpell, suggest as spellSuggest } from "../../../lib/spel
 // with squiggles. The English dictionary loads asynchronously; until
 // ready the plugin produces no decorations.
 //
-// The ~800 KB dictionary + nspell runtime live inside `../../../lib/spell`
-// — this module imports from there, which means pulling in *this* module
-// (via NoteEditor's dynamic import) is what triggers the dictionary
-// fetch. Keeping the import here is the whole point of the split.
+// Rebuild discipline (2.1): the v2.0 plugin rebuilt the entire decoration
+// set on every selection change, even when the doc was untouched and the
+// active line hadn't crossed a boundary. On a long note that's tens of
+// thousands of regex executions per cursor twitch. We now keep the prior
+// decorations cached across selection-only updates and only rebuild when
+// (a) the doc actually changed, (b) the viewport scrolled / resized, or
+// (c) the active line changed (so the previously-skipped line gets
+// re-decorated and the new active line is cleared). Saves measurable
+// frame time on 5k-line drafts without changing visible behaviour.
 
 const SPELL_WORD_RE = /[A-Za-z][A-Za-z'\-]{2,}/g;
 const SPELL_SKIP_RE = /\[\[[^\]]+\]\]|`[^`]+`|https?:\/\/\S+/g;
@@ -33,11 +38,22 @@ function spellPluginFactory(): Extension {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
+      activeLine = -1;
       constructor(view: EditorView) {
+        this.activeLine = view.state.doc.lineAt(view.state.selection.main.head).number;
         this.decorations = this.build(view);
       }
       update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged || update.selectionSet) {
+        const nextActive = update.state.doc.lineAt(
+          update.state.selection.main.head,
+        ).number;
+        const activeChanged = nextActive !== this.activeLine;
+        const needs =
+          update.docChanged ||
+          update.viewportChanged ||
+          (update.selectionSet && activeChanged);
+        if (needs) {
+          this.activeLine = nextActive;
           this.decorations = this.build(update.view);
         }
       }

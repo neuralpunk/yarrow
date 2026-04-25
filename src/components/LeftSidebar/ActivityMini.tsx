@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { api } from "../../lib/tauri";
 import type { ActivityDay } from "../../lib/types";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   /** Click → open the full Activity modal. */
@@ -66,6 +67,7 @@ function shortDate(iso: string): string {
  * can drill into longer windows + streak stats.
  */
 function ActivityMiniInner({ onOpen }: Props) {
+  const t = useT();
   const [data, setData] = useState<ActivityDay[] | null>(null);
 
   useEffect(() => {
@@ -101,13 +103,15 @@ function ActivityMiniInner({ onOpen }: Props) {
     <div className="mt-5 pt-5 pb-2 border-t border-bd/20">
       <div className="flex items-baseline justify-between px-4 mb-2">
         <div className="text-2xs uppercase tracking-wider text-t3 font-semibold">
-          Activity
+          {t("sidebar.activity.title")}
         </div>
-        <div className="text-[10px] text-t3 font-mono">{DAYS} days</div>
+        <div className="text-[10px] text-t3 font-mono">
+          {t("sidebar.activity.window", { days: String(DAYS) })}
+        </div>
       </div>
       <button
         onClick={onOpen}
-        title="Open the full activity heatmap"
+        title={t("sidebar.activity.openTooltip")}
         className="w-full px-4 py-2 text-left hover:bg-s2/60 transition group"
       >
         {padded ? (
@@ -115,7 +119,12 @@ function ActivityMiniInner({ onOpen }: Props) {
             {padded.map((d) => (
               <div
                 key={d.date}
-                title={`${d.count} checkpoint${d.count === 1 ? "" : "s"} · ${shortDate(d.date)}`}
+                title={t(
+                  d.count === 1
+                    ? "sidebar.activity.cellTooltipOne"
+                    : "sidebar.activity.cellTooltipMany",
+                  { count: String(d.count), date: shortDate(d.date) },
+                )}
                 style={{
                   flex: "1 1 0",
                   height: CELL_HEIGHT,
@@ -136,16 +145,20 @@ function ActivityMiniInner({ onOpen }: Props) {
             <>
               <span>
                 <span className="text-char font-medium">{total}</span>{" "}
-                checkpoint{total === 1 ? "" : "s"}
+                {t(
+                  total === 1
+                    ? "sidebar.activity.totalOne"
+                    : "sidebar.activity.totalMany",
+                )}
               </span>
               {streak > 0 && (
                 <span className="text-yeld">
-                  {streak}-day streak
+                  {t("sidebar.activity.streak", { n: String(streak) })}
                 </span>
               )}
             </>
           ) : (
-            <span className="italic text-t3">reading history…</span>
+            <span className="italic text-t3">{t("sidebar.activity.loading")}</span>
           )}
         </div>
       </button>

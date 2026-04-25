@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Yarrow Connect — Coming July 2026</title>
+<meta name="description" content="Yarrow Connect — a companion service for your notes. Sync, end-to-end encryption, publish & edit. Arriving July 2026. Yarrow itself remains free and open source, forever." />
+
+<!-- Open Graph -->
+<meta property="og:title" content="Yarrow Connect — Coming July 2026" />
+<meta property="og:description" content="A companion service for your notes — not a replacement for them. Sync, end-to-end encryption, and publishing. Arriving July 2026." />
+<meta property="og:type" content="website" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..500,0..100,0..1;1,9..144,300..500,0..100,0..1&family=Figtree:wght@400..600&family=JetBrains+Mono:wght@400;500&display=swap"
+  rel="stylesheet"
+/>
+
+<link rel="stylesheet" href="connect.css" />
+</head>
+<body class="yc">
+  <main class="yc-stage" aria-labelledby="yc-title">
+    <!-- Masthead: tiny serif-adjacent mono labels at the top corners. -->
+    <header class="yc-mast">
+      <span class="yc-mast-l">Yarrow · est. 2024</span>
+      <span class="yc-mast-r">A dispatch to subscribers</span>
+    </header>
+    <div class="yc-hairline" aria-hidden="true"></div>
+
+    <!-- The centered "letter": feather hero, wordmark, preface, promise. -->
+    <section class="yc-inner">
+      <div class="yc-feather" aria-hidden="true">
+        <img src="feather.png" alt="" width="612" height="491" />
+      </div>
+
+      <div class="yc-mark">
+        <hr class="yc-rule yc-rule-top" />
+        <h1 id="yc-title" class="yc-word">Yarrow <em>Connect</em></h1>
+        <div class="yc-meta">Vol. II · № I · Arriving July MMXXVI</div>
+        <hr class="yc-rule yc-rule-bot" />
+      </div>
+
+      <div class="yc-blurb">
+        <p class="yc-blurb-lead"><em>A companion service for your notes —<br/>not a replacement for them.</em></p>
+        <p>
+          Sync across your devices. Edit from anywhere. Publish a path when it&rsquo;s
+          ready to be read. All of it behind end-to-end encryption, so the only
+          person reading your drafts is still&nbsp;you.
+        </p>
+      </div>
+
+      <div class="yc-promise">
+        Yarrow, the app, is free &middot; open source &middot; forever
+        <br/>
+        <span class="yc-promise-sub">Connect is an optional paid add-on</span>
+      </div>
+    </section>
+
+    <!-- Bottom ticker summarizing the promise. -->
+    <footer class="yc-ticker">
+      <span>Sync</span><span class="yc-dot" aria-hidden="true"></span>
+      <span>E2E Encrypted</span><span class="yc-dot" aria-hidden="true"></span>
+      <span>Publish &amp; Edit</span>
+      <span class="yc-dot yc-dot-wide" aria-hidden="true"></span>
+      <span class="yc-optional">Optional · Paid</span>
+    </footer>
+  </main>
+
+  <!-- Mouse parallax on the feather. No-ops on touch devices and when
+       prefers-reduced-motion is on. -->
+  <script>
+    (function () {
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      if (matchMedia('(hover: none)').matches) return;
+      var stage = document.querySelector('.yc-stage');
+      var feather = document.querySelector('.yc-feather');
+      if (!stage || !feather) return;
+      stage.addEventListener('mousemove', function (e) {
+        var r = stage.getBoundingClientRect();
+        var x = (e.clientX - r.left) / r.width - 0.5;
+        var y = (e.clientY - r.top) / r.height - 0.5;
+        feather.style.transform =
+          'translate3d(' + (x * -16).toFixed(2) + 'px,' + (y * -10).toFixed(2) + 'px,0) ' +
+          'rotate(' + (x * 1.2).toFixed(2) + 'deg)';
+      });
+      stage.addEventListener('mouseleave', function () {
+        feather.style.transform = '';
+      });
+    })();
+  </script>
+</body>
+</html>

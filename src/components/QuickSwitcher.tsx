@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { NoteSummary } from "../lib/types";
 import { SearchIcon, Kbd, EnterKeyIcon, NoteIcon } from "../lib/icons";
 import { SK } from "../lib/platform";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -26,6 +27,7 @@ export default function QuickSwitcher({
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!open) return;
@@ -84,7 +86,7 @@ export default function QuickSwitcher({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-char/20 backdrop-blur-[2px] pt-28 animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-char/20 pt-28 animate-fadeIn"
       onMouseDown={onClose}
     >
       <div
@@ -97,7 +99,7 @@ export default function QuickSwitcher({
             ref={inputRef}
             value={q}
             onChange={(e) => { setQ(e.target.value); setCursor(0); }}
-            placeholder="Jump to a note…"
+            placeholder={t("modals.quickSwitcher.placeholder")}
             className="flex-1 bg-transparent outline-none text-char placeholder:text-t3 text-base"
           />
           <Kbd>esc</Kbd>
@@ -106,7 +108,7 @@ export default function QuickSwitcher({
         <div ref={listRef} className="max-h-[380px] overflow-y-auto py-1">
           {matches.length === 0 && (
             <div className="px-4 py-8 text-center text-sm text-t3">
-              No notes match "{q}".
+              {t("modals.quickSwitcher.noMatch", { query: q })}
             </div>
           )}
           {matches.map(({ note }, i) => (
@@ -137,9 +139,9 @@ export default function QuickSwitcher({
         </div>
 
         <div className="px-4 py-2 border-t border-bd bg-s1 text-2xs text-t3 flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5"><Kbd>↑↓</Kbd> move</span>
-          <span className="inline-flex items-center gap-1.5"><Kbd><EnterKeyIcon /></Kbd> open</span>
-          <span className="ml-auto inline-flex items-center gap-1.5"><Kbd>{SK.quickSwitch}</Kbd> to toggle</span>
+          <span className="inline-flex items-center gap-1.5"><Kbd>↑↓</Kbd> {t("modals.quickSwitcher.move")}</span>
+          <span className="inline-flex items-center gap-1.5"><Kbd><EnterKeyIcon /></Kbd> {t("modals.quickSwitcher.openLabel")}</span>
+          <span className="ml-auto inline-flex items-center gap-1.5"><Kbd>{SK.quickSwitch}</Kbd> {t("modals.quickSwitcher.toggle")}</span>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { NoteSummary, PathCollection } from "../../lib/types";
 import { api } from "../../lib/tauri";
 import { relativeTime } from "../../lib/format";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   collection: PathCollection;
@@ -63,6 +64,7 @@ export default function PathDetail({
   onBranchFromNote,
   onRequestPromote,
 }: Props) {
+  const t = useT();
   const [busy, setBusy] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [adding, setAdding] = useState(false);
@@ -116,21 +118,23 @@ export default function PathDetail({
   }, [currentPathName, collection.name, allNotes, titleFor]);
 
   // Group a list of decorated notes by tag for the diff panel — notes with
-  // multiple tags appear under each, untagged ones gather under "untagged".
+  // multiple tags appear under each, untagged ones gather under a sentinel
+  // bucket displayed with the localized "untagged" label.
+  const UNTAGGED_KEY = "__untagged__";
   const groupByTag = (rows: NoteRow[]): Array<[string, NoteRow[]]> => {
     if (rows.length === 0) return [];
     const buckets = new Map<string, NoteRow[]>();
     for (const r of rows) {
-      const tags = r.tags.length ? r.tags : ["untagged"];
-      for (const t of tags) {
-        if (!buckets.has(t)) buckets.set(t, []);
-        buckets.get(t)!.push(r);
+      const tags = r.tags.length ? r.tags : [UNTAGGED_KEY];
+      for (const tag of tags) {
+        if (!buckets.has(tag)) buckets.set(tag, []);
+        buckets.get(tag)!.push(r);
       }
     }
     return [...buckets.entries()].sort((a, b) => {
-      // Push "untagged" to the bottom; otherwise alphabetical.
-      if (a[0] === "untagged") return 1;
-      if (b[0] === "untagged") return -1;
+      // Push untagged to the bottom; otherwise alphabetical.
+      if (a[0] === UNTAGGED_KEY) return 1;
+      if (b[0] === UNTAGGED_KEY) return -1;
       return a[0].localeCompare(b[0]);
     });
   };
@@ -183,24 +187,42 @@ export default function PathDetail({
         <div className="flex items-center mb-1">
           {isGhost ? (
             <span className="text-2xs uppercase tracking-[0.2em] font-mono text-t3">
-              Ghost path · branched from{" "}
-              <span className="text-t2 not-italic">{collection.parent || "—"}</span>
+              {(() => {
+                const parts = t("paths.detail.ghostHeader").split("{parent}");
+                return (
+                  <>
+                    {parts[0]}
+                    <span className="text-t2 not-italic">
+                      {collection.parent || t("paths.detail.ghostHeaderUnknown")}
+                    </span>
+                    {parts[1] ?? ""}
+                  </>
+                );
+              })()}
             </span>
           ) : isRoot ? (
             <span className="text-2xs uppercase tracking-[0.2em] font-mono text-yeld">
-              ★ Main · the trunk
+              {t("paths.detail.mainHeader")}
             </span>
           ) : (
             <span className="text-2xs uppercase tracking-[0.2em] font-mono text-t3">
-              Side path · branched from{" "}
-              <span className="text-yeld not-italic">{parentName}</span>
+              {(() => {
+                const parts = t("paths.detail.sideHeader").split("{parent}");
+                return (
+                  <>
+                    {parts[0]}
+                    <span className="text-yeld not-italic">{parentName}</span>
+                    {parts[1] ?? ""}
+                  </>
+                );
+              })()}
             </span>
           )}
           <button
             onClick={onClose}
             className="ml-auto text-t3 hover:text-char w-6 h-6 flex items-center justify-center rounded hover:bg-s2"
-            aria-label="Close detail"
-            title="Close (Esc)"
+            aria-label={t("paths.detail.closeAria")}
+            title={t("paths.detail.closeTitle")}
           >×</button>
         </div>
         <div className="flex items-center gap-2">
@@ -211,8 +233,8 @@ export default function PathDetail({
             <button
               onClick={onRename}
               className="text-2xs text-t3 hover:text-char"
-              title="Rename this path"
-            >rename</button>
+              title={t("paths.detail.renameTitle")}
+            >{t("paths.detail.rename")}</button>
           )}
         </div>
         <button
@@ -220,24 +242,28 @@ export default function PathDetail({
           className={`mt-1.5 text-left w-full text-xs leading-snug ${
             collection.condition ? "text-yeld italic hover:text-yel" : "text-t3 italic hover:text-t2"
           }`}
-          title="Click to edit the question this path is asking"
+          title={t("paths.detail.editConditionTitle")}
         >
           {collection.condition
             ? `“${collection.condition}”`
-            : "+ Name this path — what 'if…' is it asking?"}
+            : t("paths.detail.namePrompt")}
         </button>
         <div className="mt-2 flex items-center gap-2 text-2xs font-mono text-t3 tracking-wider">
-          <span>{collection.members.length} note{collection.members.length === 1 ? "" : "s"}</span>
+          <span>
+            {collection.members.length === 1
+              ? t("paths.detail.notesCountOne", { count: String(collection.members.length) })
+              : t("paths.detail.notesCountMany", { count: String(collection.members.length) })}
+          </span>
           <span>·</span>
-          <span>created {relativeTime(collection.created_at)}</span>
+          <span>{t("paths.detail.created", { when: relativeTime(collection.created_at) })}</span>
         </div>
         <div className="mt-2.5 flex items-center gap-3 flex-wrap">
           <button
             onClick={() => onOpenMap(collection.main_note || undefined)}
             className="text-xs px-2.5 py-1 rounded-md border border-bd text-t2 hover:bg-s2 hover:text-char inline-flex items-center gap-1.5"
-            title="Show the connection graph filtered to this path's notes"
+            title={t("paths.detail.openMapTitle")}
           >
-            <MapIcon /> Open the map for this path
+            <MapIcon /> {t("paths.detail.openMap")}
           </button>
           <ColorPicker
             current={collection.color ?? null}
@@ -256,23 +282,33 @@ export default function PathDetail({
           <section className="px-4 pt-3 pb-3 border-b border-bd/60 bg-bg/40">
             <div className="flex items-baseline gap-2 mb-2">
               <div className="text-2xs uppercase tracking-[0.18em] font-mono text-t3">
-                If you take this path
+                {t("paths.detail.diffHeading")}
                 <span className="ml-2 normal-case tracking-normal text-t3/80">
-                  vs <span className="text-yeld">{currentPathName}</span>
+                  {(() => {
+                    const tpl = t("paths.detail.diffVs");
+                    const parts = tpl.split("{name}");
+                    return (
+                      <>
+                        {parts[0]}
+                        <span className="text-yeld">{currentPathName}</span>
+                        {parts[1] ?? ""}
+                      </>
+                    );
+                  })()}
                 </span>
               </div>
               <button
                 onClick={() => setGroupTags((g) => !g)}
                 className="ml-auto text-2xs text-t3 hover:text-char"
-                title="Cluster the lists by their tags"
+                title={t("paths.detail.diffGroupTitle")}
               >
-                {groupTags ? "flat list" : "group by tag"}
+                {groupTags ? t("paths.detail.diffFlat") : t("paths.detail.diffGroup")}
               </button>
             </div>
 
             <DiffGroup
               tone="gain"
-              label="you'd gain"
+              label={t("paths.detail.diffGain")}
               rows={memberDiff?.gained ?? []}
               groupTags={groupTags}
               groupByTag={groupByTag}
@@ -280,7 +316,7 @@ export default function PathDetail({
             />
             <DiffGroup
               tone="modified"
-              label="present on both, but edited differently"
+              label={t("paths.detail.diffEdited")}
               rows={modified ?? []}
               groupTags={groupTags}
               groupByTag={groupByTag}
@@ -288,17 +324,17 @@ export default function PathDetail({
             />
             <DiffGroup
               tone="lose"
-              label="you'd leave behind"
+              label={t("paths.detail.diffLose")}
               rows={memberDiff?.lost ?? []}
               groupTags={groupTags}
               groupByTag={groupByTag}
               onOpenNote={onOpenNote}
-              titleSuffix={`Not on ${collection.name} — open to inspect`}
+              titleSuffix={t("paths.detail.diffLoseTitle", { name: collection.name })}
             />
 
             {modified === null && (
               <div className="text-2xs text-t3 italic mt-1">
-                checking for divergent edits…
+                {t("paths.detail.diffChecking")}
               </div>
             )}
           </section>
@@ -329,18 +365,18 @@ export default function PathDetail({
         >
           <div className="px-4 flex items-baseline gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-yel" />
-            <span className="font-serif text-[15px] text-char">In this path</span>
+            <span className="font-serif text-[15px] text-char">{t("paths.detail.inThisPath")}</span>
             <span className="text-2xs font-mono text-t3">{members.length}</span>
             <button
               onClick={() => setAdding((x) => !x)}
               className="ml-auto text-2xs text-t3 hover:text-char"
             >
-              {adding ? "done" : "+ add note"}
+              {adding ? t("paths.detail.adding") : t("paths.detail.add")}
             </button>
           </div>
           {members.length === 0 && !adding && (
             <div className="px-4 py-3 text-xs text-t3 italic">
-              No notes on this path yet. Use “+ add note”.
+              {t("paths.detail.emptyMembers")}
             </div>
           )}
           <ul className="mt-1">
@@ -352,12 +388,12 @@ export default function PathDetail({
                 <button
                   onClick={() => onOpenNote(m.slug)}
                   className="flex-1 min-w-0 text-left px-4 py-2 text-sm text-char truncate flex items-center gap-2"
-                  title="Open this note"
+                  title={t("paths.detail.openTitle")}
                 >
                   {collection.main_note === m.slug ? (
                     <span
                       className="text-yeld shrink-0"
-                      title="Main note for this path"
+                      title={t("paths.detail.mainNoteTitle")}
                     >★</span>
                   ) : (
                     <span className="text-t3 text-xs shrink-0 w-3 text-center">·</span>
@@ -370,26 +406,26 @@ export default function PathDetail({
                       onClick={() => act(m.slug, onSetMainNote)}
                       disabled={busy === m.slug}
                       className="text-2xs px-2 py-0.5 text-t3 hover:text-yeld hover:bg-yelp/40 rounded"
-                      title="Designate this as the main note for this path"
+                      title={t("paths.detail.markMainTitle")}
                     >
-                      mark main
+                      {t("paths.detail.markMain")}
                     </button>
                   )}
                   <button
                     onClick={() => onBranchFromNote(m.slug)}
                     className="text-2xs px-2 py-0.5 text-t3 hover:text-yeld hover:bg-yelp/40 rounded"
-                    title="Turn this note into a new child path"
+                    title={t("paths.detail.branchTitle")}
                   >
-                    branch
+                    {t("paths.detail.branch")}
                   </button>
                   {!(isRoot && members.length === 1) && (
                     <button
                       onClick={() => act(m.slug, onRemoveNote)}
                       disabled={busy === m.slug}
                       className="text-2xs px-2 py-0.5 text-t3 hover:text-danger hover:bg-s2 rounded"
-                      title="Remove this note from this path (doesn't delete the note)"
+                      title={t("paths.detail.removeTitle")}
                     >
-                      {busy === m.slug ? "…" : "remove"}
+                      {busy === m.slug ? "…" : t("paths.detail.remove")}
                     </button>
                   )}
                 </div>
@@ -405,13 +441,13 @@ export default function PathDetail({
               autoFocus
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="filter notes…"
+              placeholder={t("paths.detail.filterPlaceholder")}
               className="w-full px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-xs"
             />
             <div className="mt-2 text-2xs text-t3 italic">
               {candidates.length === 0
-                ? "No notes match. Every note is already on this path."
-                : `${candidates.length} not on this path`}
+                ? t("paths.detail.filterEmpty")
+                : t("paths.detail.filterCount", { count: String(candidates.length) })}
             </div>
             <ul className="mt-1 max-h-[280px] overflow-y-auto">
               {candidates.map((n) => (
@@ -438,30 +474,30 @@ export default function PathDetail({
             className="text-xs px-2.5 py-1.5 rounded-md border border-yel/60 text-yeld hover:bg-yelp inline-flex items-center gap-1.5"
             title={
               isGhost
-                ? `Bring ${collection.name} back as the workspace's main path`
-                : `Make ${collection.name} the workspace's main path`
+                ? t("paths.detail.promoteTitleGhost", { name: collection.name })
+                : t("paths.detail.promoteTitle", { name: collection.name })
             }
           >
-            ★ {isGhost ? "Bring back as main…" : "Promote to main…"}
+            {isGhost ? t("paths.detail.bringBack") : t("paths.detail.promote")}
           </button>
         )}
         {!isRoot && !isGhost && (
           <button
             onClick={onDelete}
             className="ml-auto text-xs px-2.5 py-1.5 rounded-md border border-bd/70 text-t3 hover:text-danger hover:border-danger/60"
-            title="Remove this path (doesn't delete any notes)"
+            title={t("paths.detail.deletePathTitle")}
           >
-            Delete this path
+            {t("paths.detail.deletePath")}
           </button>
         )}
         {isRoot && (
           <div className="text-2xs text-t3 italic w-full text-center">
-            This is the trunk. Everything else branches off here.
+            {t("paths.detail.trunkNote")}
           </div>
         )}
         {isGhost && (
           <div className="ml-auto text-2xs text-t3 italic">
-            Historical · promote to bring this era back.
+            {t("paths.detail.ghostNote")}
           </div>
         )}
       </footer>
@@ -494,6 +530,7 @@ function DiffGroup({
   onOpenNote: (slug: string) => void;
   titleSuffix?: string;
 }) {
+  const t = useT();
   if (rows.length === 0) return null;
   const styles = TONE_STYLES[tone];
   const sign = tone === "lose" ? "−" : tone === "modified" ? "~" : "+";
@@ -521,13 +558,13 @@ function DiffGroup({
           {groupByTag(rows).map(([tag, items]) => (
             <div key={tag}>
               <div className="text-2xs text-t3 font-mono px-2">
-                #{tag} <span className="text-t3/70">· {items.length}</span>
+                {tag === "__untagged__" ? t("paths.detail.diffUntagged") : `#${tag}`} <span className="text-t3/70">· {items.length}</span>
               </div>
               <ul className="space-y-0.5">
                 {items.slice(0, 5).map(renderRow)}
                 {items.length > 5 && (
                   <li className="text-2xs text-t3 italic px-2">
-                    … and {items.length - 5} more
+                    {t("paths.detail.diffMore", { count: String(items.length - 5) })}
                   </li>
                 )}
               </ul>
@@ -539,7 +576,7 @@ function DiffGroup({
           {rows.slice(0, 5).map(renderRow)}
           {rows.length > 5 && (
             <li className="text-2xs text-t3 italic px-2">
-              … and {rows.length - 5} more
+              {t("paths.detail.diffMore", { count: String(rows.length - 5) })}
             </li>
           )}
         </ul>
@@ -590,15 +627,16 @@ function AutoTagRow({
   memberCount: number;
   onSet: (tag: string | null) => Promise<void> | void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(current ?? "");
   useEffect(() => {
     setDraft(current ?? "");
   }, [current]);
   const commit = async () => {
-    const t = draft.trim().replace(/^#/, "");
+    const next = draft.trim().replace(/^#/, "");
     setEditing(false);
-    await onSet(t ? t : null);
+    await onSet(next ? next : null);
   };
   if (!editing && !current) {
     return (
@@ -606,9 +644,9 @@ function AutoTagRow({
         <button
           onClick={() => { setEditing(true); setDraft(""); }}
           className="text-2xs text-t3 hover:text-char italic font-serif transition"
-          title="Auto-add every note tagged with a given value to this path"
+          title={t("paths.detail.autoTagAddTitle")}
         >
-          + auto-include notes by tag
+          {t("paths.detail.autoTagAdd")}
         </button>
       </div>
     );
@@ -616,24 +654,26 @@ function AutoTagRow({
   if (!editing && current) {
     return (
       <div className="mt-2 flex items-center gap-2 flex-wrap text-2xs">
-        <span className="font-serif italic text-t3">auto-includes</span>
+        <span className="font-serif italic text-t3">{t("paths.detail.autoIncludes")}</span>
         <span className="px-2 py-0.5 rounded-full bg-yelp text-yeld font-mono text-[10px]">
           #{current}
         </span>
         <span className="font-serif italic text-t3">
-          · {memberCount} note{memberCount === 1 ? "" : "s"} match
+          {memberCount === 1
+            ? t("paths.detail.autoMatchOne", { count: String(memberCount) })
+            : t("paths.detail.autoMatchMany", { count: String(memberCount) })}
         </span>
         <button
           onClick={() => setEditing(true)}
           className="text-t3 hover:text-char transition"
         >
-          change
+          {t("paths.detail.change")}
         </button>
         <button
           onClick={() => onSet(null)}
           className="text-t3 hover:text-danger transition"
         >
-          clear
+          {t("paths.detail.clear")}
         </button>
       </div>
     );
@@ -646,26 +686,26 @@ function AutoTagRow({
       }}
       className="mt-2 flex items-center gap-1.5"
     >
-      <span className="text-2xs font-serif italic text-t3">auto-include notes tagged</span>
+      <span className="text-2xs font-serif italic text-t3">{t("paths.detail.autoLead")}</span>
       <input
         autoFocus
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        placeholder="tag name"
+        placeholder={t("paths.detail.autoTagPlaceholder")}
         className="px-2 py-0.5 bg-s1 border border-bd rounded text-char text-2xs focus:outline-none focus:border-yeld w-[140px]"
       />
       <button
         type="submit"
         className="px-2 py-0.5 bg-char text-bg rounded text-2xs hover:bg-yeld transition"
       >
-        save
+        {t("paths.detail.autoSave")}
       </button>
       <button
         type="button"
         onClick={() => { setEditing(false); setDraft(current ?? ""); }}
         className="text-2xs text-t3 hover:text-char transition"
       >
-        cancel
+        {t("paths.detail.autoCancel")}
       </button>
     </form>
   );
@@ -678,12 +718,13 @@ function ColorPicker({
   current: string | null;
   onPick: (color: string | null) => Promise<void> | void;
 }) {
+  const t = useT();
   return (
     <div className="inline-flex items-center gap-1.5">
-      <span className="text-2xs font-serif italic text-t3">accent</span>
+      <span className="text-2xs font-serif italic text-t3">{t("paths.detail.accent")}</span>
       <button
         onClick={() => onPick(null)}
-        title="Clear accent — use the default palette hue"
+        title={t("paths.detail.accentClearTitle")}
         className={`w-5 h-5 rounded-full border border-bd flex items-center justify-center text-t3 text-[10px] transition ${
           !current ? "ring-2 ring-yeld ring-offset-1 ring-offset-bg" : "hover:border-t2"
         }`}
@@ -701,10 +742,10 @@ function ColorPicker({
               ? "ring-2 ring-yeld ring-offset-1 ring-offset-bg"
               : "hover:scale-110"
           }`}
-          aria-label={`Set accent to ${c}`}
+          aria-label={t("paths.detail.accentSetAria", { value: c })}
         />
       ))}
-      <label className="w-5 h-5 rounded-full border border-dashed border-bd flex items-center justify-center text-t3 cursor-pointer hover:border-t2" title="Pick a custom color">
+      <label className="w-5 h-5 rounded-full border border-dashed border-bd flex items-center justify-center text-t3 cursor-pointer hover:border-t2" title={t("paths.detail.accentCustomTitle")}>
         <input
           type="color"
           value={current ?? "#c97a3a"}

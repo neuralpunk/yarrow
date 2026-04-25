@@ -1,106 +1,412 @@
-/* Source Serif 4 loaded as a full variable font (opsz + wght + ital) so
-   `font-optical-sizing: auto` below can pick Caption-grade glyphs for
-   small UI chrome (pills, labels) and Display-grade glyphs for large
-   headings. Static cuts look aliased at 11–13px on webkit2gtk; the VF
-   axis was literally designed to fix that. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,ital,wght@8..60,0,400..700;8..60,1,400..600&family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Instrument+Serif:ital,wght@0,400;1,400&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=Roboto+Serif:ital,opsz,wght@0,8..144,400..600;1,8..144,400..500&family=Frank+Ruhl+Libre:wght@400;500;600&family=Merriweather:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
-
+/* 2.1 type stack (revised after user report).
+ *
+ *   --serif   → Newsreader.   Variable opsz 6..72, designed for screen
+ *                             body reading. Warm, legible, stays crisp
+ *                             on Linux/webkit2gtk at 14–18px.
+ *   --display → Fraunces.     Reserved for true display contexts:
+ *                             44px+ note titles, drop caps, pull quotes,
+ *                             the Yarrow wordmark. Never for body.
+ *   --sans    → Inter Tight.  Chrome.
+ *   --mono    → JetBrains Mono.
+ *
+ * Webfonts load from index.html via <link rel="stylesheet"> with
+ * preconnect — NOT via CSS @import. @import here would block parsing of
+ * the rest of this file until the request resolved, making the visible
+ * font-swap window longer (and "fuzzier" perceptually as the fallback
+ * gives way to the webface). */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────
-   Palettes
+   Calm Palettes (2.1)
+
+   Two themes, one accent each, quiet everywhere else:
+     Light — Linen & Gold.    Warm cream paper, editorial gold as the
+                              single accent. Plum is retired to a
+                              supporting role (rare dividers, open-
+                              question dashes).
+     Dark  — Plum & Graphite. Warm graphite canvas (#14110F), dusty
+                              plum accent. Gold survives here only as
+                              the home-node ring.
+
+   Principles:
+     • One accent does the work. Plum in dark, gold in light.
+     • Value (not hue) carries tone shifts — surfaces differ by 2–4 %
+       lightness, never by hue.
+     • The accent never appears as a background fill — only as pills,
+       active-row tints at low alpha, outlines, icons, and text.
+     • Text cascades in four steps: char → ch2 → t1/t2 → t3.
+     • Borders are low-alpha ink, not grey.
    ───────────────────────────────────────────────────────────── */
 
-:root {
+:root,
+html[data-theme="light"] {
   color-scheme: light;
 
-  /* paper & plum (light) */
-  --bg:      #F7F5F0;   /* paper — primary canvas */
-  --bg-soft: #F2EFE8;   /* subtle wash */
-  --s1:      #EFECE4;   /* sidebar bg */
-  --s2:      #E8E4DA;   /* raised surface / pressed rows */
-  --s3:      #DDD8CB;   /* hover on raised */
+  /* ── surfaces ──────────────────────────────────────────── */
+  --bg:        #F6F1E6;   /* linen — primary canvas */
+  --bg-soft:   #F1EBDC;   /* band / sidebar wash */
+  --bg-bone:   #EEE8D8;   /* quieter reading band */
+  --s1:        #EAE2CE;   /* sidebar */
+  --s2:        #E1D8C0;   /* raised / pressed row */
+  --s3:        #D4CAAF;   /* hover on raised */
+  --ink-wash:  rgba(35, 28, 16, 0.04);
 
-  /* accent (plum — was warm yellow; token names preserved) */
-  --yel:     #7A4E6E;   /* primary accent — active paths, pills */
-  --yel2:    #8C5A80;   /* hover */
-  --yelp:    #EEE4EC;   /* pale accent — active-row bg, wikilink pill */
-  --yeld:    #5A3852;   /* dark accent — text on accent backgrounds */
+  /* ── gold (primary accent) ────────────────────────────── */
+  --yel:       #B38230;   /* active paths, pills, icons */
+  --yel2:      #C89642;   /* hover — warmer, slightly lighter */
+  --yelp:      #F1E3BE;   /* pale-accent — active-row bg, wikilink pill bg */
+  --yeld:      #6E4D1A;   /* dark-accent — text on gold-tinted bg */
 
-  --char:    #22201C;   /* primary text */
-  --ch2:     #3A3832;   /* secondary headings */
-  --t2:      #5A5550;   /* muted body */
-  --t3:      #928C82;   /* tertiary — labels, timestamps */
+  /* ── supporting accents (use sparingly) ───────────────── */
+  --plum:      #7A4E6E;   /* rare — section dividers, open-question dashes */
+  --plump:     #EEE4EC;   /* pale plum bg (for plum pills only) */
+  --sage:      #5B7A5E;   /* "supports" edges */
+  --rose:      #B06074;   /* "challenges" edges / danger-adjacent */
+  --stone:     #978E7E;   /* "came-from" edges */
 
-  --bd:      rgba(30,28,22,0.10);
-  --bd2:     rgba(30,28,22,0.18);
+  /* ── type ─────────────────────────────────────────────── */
+  --char:      #1C1812;   /* primary — warm near-black */
+  --ch2:       #2F2A20;   /* secondary headings */
+  --t1:        #4A4337;   /* senior muted */
+  --t2:        #6A6154;   /* muted body */
+  --t3:        #978E7E;   /* tertiary — timestamps, labels */
 
-  --danger:  #A64A3C;
-  --accent2: #5B7A5E;   /* sage — secondary accent (e.g. "supports") */
-  --accent2-dim: #D9E0DA;
+  /* ── lines ────────────────────────────────────────────── */
+  --bd:        rgba(28, 22, 14, 0.09);
+  --bd2:       rgba(28, 22, 14, 0.17);
+  --bd3:       rgba(28, 22, 14, 0.28);
+  --rule:      rgba(28, 22, 14, 0.14);
 
-  --on-yel:  #FFFFFF;   /* text on plum button */
-  --link:    #7A4E6E;
+  /* ── semantic ─────────────────────────────────────────── */
+  --danger:    #A64A3C;
+  --accent2:       #5B7A5E;   /* == --sage, aliased for back-compat */
+  --accent2-dim:   #D9E0DA;
+
+  --on-yel:    #FFFFFF;       /* white text on gold — 4.55:1, WCAG AA */
+  --link:      #6E4D1A;       /* == --yeld */
+
+  /* ── shadows ──────────────────────────────────────────── */
+  --shadow-lift: 0 1px 2px rgba(0,0,0,0.03),
+                 0 8px 24px -12px rgba(28,22,14,0.14),
+                 0 28px 60px -36px rgba(28,22,14,0.18);
+  --shadow-hero: 0 2px 4px rgba(0,0,0,0.04),
+                 0 16px 44px -18px rgba(28,22,14,0.22),
+                 0 48px 120px -54px rgba(28,22,14,0.28);
+
+  /* ── typed-connection edges (theme-aware via CSS var) ── */
+  --link-supports:      var(--sage);
+  --link-challenges:    #A64A3C;
+  --link-came-from:     var(--stone);
+  --link-open-question: var(--plum);
+
+  /* ── home-node ring (workspace main note marker) ────────
+     Spec: gold in both themes. In light that's the primary accent
+     (--yel); in dark it's the supporting --gold. One token means
+     ConnectionGraph + the sidebar star glow pull from the same
+     source. */
+  --home-ring: var(--yel);
 }
 
-html.dark {
+html.dark,
+html[data-theme="dark"] {
   color-scheme: dark;
 
-  /* ink & plum (dark) */
-  --bg:      #1B1D1C;
-  --bg-soft: #1F2221;
-  --s1:      #1F2221;
-  --s2:      #262A28;
-  --s3:      #2F3431;
+  /* ── surfaces (revised 2.1 — cool charcoal, not warm graphite) ─
+     The earlier #14110F canvas read as red-brown under long use.
+     Per user reference (docs/assets/main-reading-dark.png) the
+     preferred dark palette is a cool near-black with the faintest
+     blue-green lean. Surfaces step by lightness only — no hue
+     drift across the ladder. */
+  --bg:        #161819;   /* cool charcoal — primary canvas */
+  --bg-soft:   #1A1C1D;   /* band / editor gutters */
+  --bg-bone:   #181A1B;   /* quieter reading band */
+  --s1:        #1D1F20;   /* sidebar */
+  --s2:        #242627;   /* raised / pressed row */
+  --s3:        #2E3031;   /* hover on raised */
+  --ink-wash:  rgba(255, 255, 255, 0.035);
 
-  --yel:     #B07FA0;   /* plum — lifted for dark */
-  --yel2:    #C494B4;
-  --yelp:    #2E2329;
-  --yeld:    #D8B5CC;
+  /* ── plum (primary accent) ────────────────────────────── */
+  --yel:       #C08BA8;   /* active paths, pill text, icons */
+  --yel2:      #D3A5BE;   /* hover */
+  --yelp:      #2B202A;   /* pale-accent — faintly cooler to match */
+  --yeld:      #E8C9DA;   /* dark-accent — text on plum-tinted bg */
 
-  --char:    #ECE8DE;
-  --ch2:     #D6D1C4;
-  --t2:      #ACA89D;
-  --t3:      #70695E;
+  /* ── supporting accents (use sparingly) ───────────────── */
+  --gold:      #D9B470;   /* home-node ring, rare brand flourishes */
+  --goldp:     #26231A;   /* pale gold bg (for gold pills only) */
+  --sage:      #8FA892;   /* "supports" edges */
+  --rose:      #D98A9C;   /* "challenges" edges / danger-adjacent */
+  --stone:     #6D6B68;   /* "came-from" edges */
 
-  --bd:      rgba(255,255,255,0.07);
-  --bd2:     rgba(255,255,255,0.14);
+  /* ── type (cooler off-white, no amber cast) ───────────── */
+  --char:      #E6E7E0;   /* primary */
+  --ch2:       #CFD1CA;   /* secondary headings */
+  --t1:        #A8AAA4;   /* senior muted */
+  --t2:        #878985;   /* muted body */
+  --t3:        #5E6060;   /* tertiary — timestamps, labels */
 
-  --danger:  #E08B7A;
-  --accent2: #8AA88D;
-  --accent2-dim: #2C3430;
+  /* ── lines ────────────────────────────────────────────── */
+  --bd:        rgba(255, 255, 255, 0.07);
+  --bd2:       rgba(255, 255, 255, 0.14);
+  --bd3:       rgba(255, 255, 255, 0.22);
+  --rule:      rgba(255, 255, 255, 0.12);
 
-  --on-yel:  #1B1D1C;
-  --link:    #D8B5CC;
+  /* ── semantic ─────────────────────────────────────────── */
+  --danger:    #E08B7A;
+  --accent2:       #8FA892;   /* == --sage, aliased for back-compat */
+  --accent2-dim:   #2A312C;
+
+  --on-yel:    #161819;       /* ink on plum button — still AAA contrast */
+  --link:      #E8C9DA;       /* == --yeld */
+
+  /* ── shadows ──────────────────────────────────────────── */
+  --shadow-lift: 0 2px 4px rgba(0,0,0,0.45),
+                 0 14px 40px -18px rgba(0,0,0,0.6),
+                 0 40px 100px -50px rgba(0,0,0,0.55);
+  --shadow-hero: 0 4px 10px rgba(0,0,0,0.55),
+                 0 24px 64px -22px rgba(0,0,0,0.68),
+                 0 70px 160px -64px rgba(0,0,0,0.6);
+
+  /* ── typed-connection edges ───────────────────────────── */
+  --link-supports:      var(--sage);
+  --link-challenges:    var(--rose);
+  --link-came-from:     var(--stone);
+  --link-open-question: var(--gold);
+
+  /* ── home-node ring ──────────────────────────────────── */
+  --home-ring: var(--gold);
 }
 
-/* TODO(post-launch): reintroduce Blueberry palette (html[data-theme="blueberry"]) */
+/* ─────────────────────────────────────────────────────────────
+   ASHROSE (2.1 — third theme). A dusty-rose paper canvas with a
+   deep-wine primary accent and warm muted greys. Light family
+   (color-scheme: light), so transforms / text-rendering match
+   the Light theme; only colours change. Source palette:
+     #C6ABAF · #5C2E38 · #23181E · #746B6E · #C5CBCA · #A39A9B
+     #D88D9B · #695F63 · #6F464F
+   The page bg is lighter than the lightest palette tone (paper,
+   not chip — backgrounds need that extra step of lift to read as
+   "page" rather than "card"); chips and sidebars step down into
+   the palette proper.
+   ───────────────────────────────────────────────────────────── */
+html[data-theme="ashrose"] {
+  color-scheme: light;
+
+  /* ── surfaces ──────────────────────────────────────────── */
+  --bg:        #F6E5EA;   /* paper — pale dusty rose, lighter for the writing canvas */
+  --bg-soft:   #F0DAE0;   /* band / sidebar wash */
+  --bg-bone:   #F2DDE3;   /* quieter reading band */
+  --s1:        #E8CBD2;   /* sidebar */
+  --s2:        #DCBDC4;   /* raised / pressed row */
+  --s3:        #C6ABAF;   /* hover on raised — straight from palette */
+  --ink-wash:  rgba(35, 24, 30, 0.04);
+
+  /* ── deep wine (primary accent) ────────────────────────── */
+  --yel:       #5C2E38;   /* active paths, pills, icons */
+  --yel2:      #6F464F;   /* hover — lifted from palette */
+  --yelp:      #ECD3D9;   /* pale-accent — active-row bg, wikilink pill */
+  --yeld:      #5C2E38;   /* dark-accent — text on yelp-tinted bg */
+
+  /* ── supporting accents ───────────────────────────────── */
+  --plum:      #6F464F;   /* rare — section dividers, open-question dashes */
+  --plump:     #E0C5CC;   /* pale plum bg (for plum pills only) */
+  --sage:      #93A39B;   /* "supports" edges */
+  --rose:      #D88D9B;   /* "challenges" edges / danger-adjacent */
+  --stone:     #A39A9B;   /* "came-from" edges */
+
+  /* ── gold (kept for journal-kit highlights) ───────────── */
+  --gold:      #B49870;
+  --goldp:     #ECDFCB;
+
+  /* ── type — darkened on the original Ashrose pass to clear
+        WCAG AA against the pale rose paper. The palette source
+        tones (#A39A9B, #695F63) were too soft as text on a
+        light-pink bg; these darker rose-greys hold the editorial
+        feel while staying legibly contrasted. */
+  --char:      #1F141A;   /* primary — slightly darker than palette */
+  --ch2:       #2D1F25;   /* secondary headings */
+  --t1:        #3F2E33;   /* senior muted */
+  --t2:        #564047;   /* muted body */
+  --t3:        #7B6A6F;   /* tertiary */
+
+  /* ── lines ────────────────────────────────────────────── */
+  --bd:        rgba(35, 24, 30, 0.10);
+  --bd2:       rgba(35, 24, 30, 0.18);
+  --bd3:       rgba(35, 24, 30, 0.28);
+  --rule:      rgba(35, 24, 30, 0.14);
+
+  /* ── semantic ─────────────────────────────────────────── */
+  --danger:    #A04A4A;
+  --accent2:       #93A39B;
+  --accent2-dim:   #DCE0DC;
+
+  --on-yel:    #FFFFFF;       /* white text on deep wine — AAA contrast */
+  --link:      #5C2E38;       /* == --yel */
+
+  /* ── shadows — tuned for the rose paper ──────────────── */
+  --shadow-lift: 0 1px 2px rgba(0,0,0,0.03),
+                 0 8px 24px -12px rgba(35,24,30,0.18),
+                 0 28px 60px -36px rgba(35,24,30,0.22);
+  --shadow-hero: 0 2px 4px rgba(0,0,0,0.04),
+                 0 16px 44px -18px rgba(35,24,30,0.26),
+                 0 48px 120px -54px rgba(35,24,30,0.32);
+
+  /* ── typed-connection edges ───────────────────────────── */
+  --link-supports:      var(--sage);
+  --link-challenges:    #A04A4A;
+  --link-came-from:     var(--stone);
+  --link-open-question: var(--plum);
+
+  /* ── home-node ring ──────────────────────────────────── */
+  --home-ring: var(--gold);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Type families (2.1 revised). Declared once in :root — fonts
+   don't vary by theme. The --ui-font-family and --editor-font-family
+   overrides still win when set by the Settings → Appearance pickers;
+   these are the defaults those pickers fall back to.
+
+   --serif is the body workhorse (Newsreader). --display is reserved
+   for surfaces where display contrast is the *goal* — 44px note
+   titles, drop caps, pull quotes, the wordmark. Everywhere else
+   reads --serif.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --display: 'Fraunces', 'Source Serif 4', 'Newsreader', ui-serif, Georgia, serif;
+  --serif:   'Newsreader', 'Source Serif 4', 'Lora', ui-serif, Georgia, 'Times New Roman', serif;
+  --sans:    'Inter Tight', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --mono:    'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* Universal selection color: accent-pale background, accent-deep text.
+   Applies to every surface so the selection feels like a consistent
+   piece of "this app," not a different OS style on each view. */
+::selection { background: var(--yelp); color: var(--yeld); }
+
+/* Paper & Warmth (2.1, scoped). The texture is a property of the
+   *writing canvas* — not of the whole app. Settings, modals, the
+   command palette, the onboarding screens all use `bg-bg` for their
+   panels, and applying a texture to all of them made the texture
+   leak into chrome it didn't belong in.
+
+   The texture now lives on a single `.yarrow-paper` class that is
+   applied to exactly one surface in AppShell: the container that
+   holds the NoteEditor / NoteReader / InlineDiffPane. Every other
+   `bg-bg` surface stays flat. */
+.yarrow-paper {
+  background-image: var(--paper-texture, none);
+  background-size: var(--paper-texture-size, auto);
+}
 
 /* ─────────────────────────────────────────────────────────────
    Base
    ───────────────────────────────────────────────────────────── */
 
 html, body, #root {
+  /* Desktop / legacy browsers: 100% of the layout viewport (unchanged).
+     Mobile browsers where the URL bar retracts on scroll (iOS Safari,
+     Chrome on Android): `100dvh` tracks the *dynamic* viewport so the
+     page doesn't bounce 60-80 px every time the chrome shows/hides,
+     which was audited as "page bouncing around due to reflow UI."
+     Falls through to 100% on browsers that don't support dvh (any
+     2024+ browser does). `min-height` not `height` so a scrollable
+     page isn't clipped inside a short viewport. */
+  min-height: 100%;
+  min-height: 100dvh;
   height: 100%;
+  height: 100dvh;
   margin: 0;
+}
+
+/* Safe-area insets. Read `env(safe-area-inset-*)` once into CSS
+   custom properties so components can compose them with static
+   padding via `calc()` without repeating the env() dance. Zero on
+   desktop, honors iOS notch / home-indicator / Android gesture-nav. */
+:root {
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+}
+
+/* iOS Safari zooms the page on focus when an input's computed
+   font-size is under 16px. The CodeMirror theme already overrides its
+   own font-size; this rule catches every other input (login, search,
+   settings fields, modals). Inline 12-14px labels still work — the
+   rule targets interactive controls only. Scoped to mobile widths so
+   desktop keeps the tighter look. */
+@media (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* overflow-anchor stabilizes scroll position when DOM above the
+   viewport changes size (note-list refresh, conflict banner mount,
+   sync status line wrap). Without it, a mid-scroll async state update
+   can throw the caret out of view on mobile. Default is `auto`; we
+   set it explicitly on the chrome containers so a future `none`
+   further down the tree won't silently opt out. */
+body {
+  overflow-anchor: auto;
+}
+
+/* Tap-highlight on iOS Safari defaults to a translucent blue square
+   on every tappable element — jarring against our warm palette.
+   Kill globally; individual buttons still get the `:active` state
+   that our own CSS defines. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Tailwind-friendly safe-area utilities. Use `pb-safe` on sticky
+   bottom bars, `pt-safe` on sticky top bars, `px-safe` on anything
+   that should sit clear of landscape notches. */
+.pt-safe { padding-top: var(--safe-top); }
+.pb-safe { padding-bottom: var(--safe-bottom); }
+.pl-safe { padding-left: var(--safe-left); }
+.pr-safe { padding-right: var(--safe-right); }
+.px-safe { padding-left: var(--safe-left); padding-right: var(--safe-right); }
+/* Compose with an existing numeric pad. `pb-2 pb-safe-3` → max(8px, safe-bottom + 12px). */
+.pt-safe-3 { padding-top: calc(var(--safe-top) + 0.75rem); }
+.pb-safe-3 { padding-bottom: calc(var(--safe-bottom) + 0.75rem); }
+/* Extra-generous bottom padding — used by the mobile auth form sheet
+   so the primary "Sign in" button + footer links sit comfortably above
+   the iPhone home-indicator bar. */
+.pb-safe-6 { padding-bottom: calc(var(--safe-bottom) + 1.5rem); }
+
+/* Min-touch-target utility. Apple HIG says 44×44, Material says 48dp.
+   Use `min-tap` on buttons/links that are icon-only; anything with
+   text label and default padding already exceeds the threshold. */
+.min-tap { min-width: 44px; min-height: 44px; }
+
+/* Keyframe used by the workspace loading overlay's pulsing dot. The
+   outer circle ripples out from the inner dot — calmer than a
+   spinner and matches the editorial tone of the rest of the UI. */
+@keyframes yarrow-quill-pulse {
+  0%   { transform: scale(0.8); opacity: 0.55; }
+  70%  { transform: scale(1.7); opacity: 0; }
+  100% { transform: scale(1.7); opacity: 0; }
 }
 
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* "liga" 1 keeps standard ligatures on globally (browsers enable them
-     by default for most serifs; declaring explicitly makes intent clear
-     and survives any future fighting with a reset). The cv02-cv11/ss01
-     pairs are Inter character-variant selectors — harmless no-ops for
-     the serif-defaulted UI but still useful if the user picks Inter. */
-  font-feature-settings: "liga" 1, "cv02", "cv03", "cv04", "cv11", "ss01";
+  /* "liga" 1 keeps standard ligatures on globally. The cv02..cv11/ss01
+     pairs are Inter character-variant selectors — inert no-ops for the
+     serif-defaulted UI (the OpenType engine silently ignores variants a
+     font doesn't define) but still useful when the user picks Inter. */
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "cv02", "cv03", "cv04", "cv11", "ss01";
   font-synthesis: none;
   /* Let the browser pick the right optical-size master for whatever
-     pixel size a glyph gets rendered at — Source Serif 4 then hands
-     back sturdier, larger-x-height cuts for small chrome text. */
+     pixel size a glyph gets rendered at — Newsreader then hands back
+     sturdier, larger-x-height cuts for small chrome text. */
   font-optical-sizing: auto;
 }
 
@@ -129,41 +435,121 @@ html {
   letter-spacing: 0;
 }
 
+/* 2.1 Paper & Warmth. `--paper-texture` holds the background-image stack
+   (default is `none` → no-op), `--paper-texture-size` tiles it, and
+   `--paper-warmth-filter` applies a subtle sepia/hue-rotate on the body
+   surface only. We stay out of the editor's way: the CodeMirror wrapper
+   below resets the filter back to `none` so typographic contrast is
+   untouched. */
 body {
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--char);
-  /* The UI font comes from a CSS var so the Settings → Appearance picker
-     can swap it at runtime. Default is Merriweather — chosen for its
-     editorial weight and strong rendering at small UI sizes on
-     webkit2gtk. Tailwind's font-serif / font-sans utilities route
-     through the same var, so picking a different face in Settings
-     cascades to every component (sidebar, modals, diff views). */
-  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif);
-  font-size: 14px;
+  /* Chrome font default (2.1): Inter Tight. When the user picks a
+     different family via Settings → Appearance, that hook sets
+     --ui-font-family and takes precedence. We keep --sans as the
+     fallback so the chrome never falls through to a system default
+     that looks alien against the editorial tone. */
+  font-family: var(--ui-font-family, var(--sans));
+  font-size: 14.5px;
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.55;
   letter-spacing: 0;
-  /* Whole-app chrome scale. Zoom on body touches the editor too, so we
-     counter-zoom inside .cm-editor below to preserve the user's
-     editor-font-size setting as source of truth for prose. */
+  font-feature-settings: 'kern', 'liga', 'calt';
+}
+
+/* Perf — body-level `filter` + `zoom` are now opt-in rather than
+   always-on. Both used to be declared with a `var(--…, default)`
+   fallback, which still pinned the body into a single composited
+   layer (filter) or forced layout-recalc paths (zoom) even when the
+   value resolved to the no-op default. The warmth slider and UI-scale
+   selector now flip a `data-*` attribute on <html>; the rules below
+   only apply the heavy property when that attribute is present, and
+   on the default settings the body stays a flat, hardware-friendly
+   surface. This was the single largest contributor to scroll/hover
+   sluggishness on Linux (webkit2gtk re-rasterised the entire body
+   every paint when `filter` was set, even to `none`). */
+html[data-paper-warmth-active="true"] body {
+  filter: var(--paper-warmth-filter, none);
+}
+html[data-ui-zoom-active="true"] body {
   zoom: var(--ui-zoom, 1);
-  /* Smooth theme crossfade: swap between light/dark doesn't snap. */
-  transition: background-color 220ms ease, color 220ms ease;
 }
-
-/* Counter-zoom the editor so the Writing → Editor font size preference
-   stays the source of truth for prose, independent of UI scale. */
-.cm-editor {
+html[data-ui-zoom-active="true"] .cm-editor {
   zoom: var(--ui-zoom-inv, 1);
+  filter: none;
 }
 
-/* Surfaces that shift with the palette get a gentle transition so the
-   whole chrome moves together, not piecemeal. Tightened from 220 ms →
-   140 ms so hover state changes (note rows, buttons) feel snappy without
-   losing the theme-toggle crossfade — the body's own 220 ms transition
-   already carries that. */
-aside, header, .toolbar, .note-row, [class*="bg-s"], [class*="bg-bg"] {
-  transition: background-color 140ms ease, border-color 140ms ease, color 100ms ease;
+/* Theme-switch crossfade. We keep this scoped to <html> + a temporary
+   class so it ONLY fires during a deliberate theme toggle, not during
+   every dynamic CSS-var write (paper warmth slider, UI scale change,
+   path-tinted caret swap, etc). Components flip `.theme-transitioning`
+   on <html> for ~250ms during a theme change; the rule below picks up
+   the body's bg/color transition just for that window.
+
+   The previous version applied
+     transition: background-color 140ms, border-color 140ms, color 100ms
+   to every `[class*="bg-s"]` / `[class*="bg-bg"]` element — i.e. most of
+   the app. Even though those properties transition cheaply, having
+   thousands of elements participating in a transition group inflated
+   compositor bookkeeping on Linux and made every hover state change
+   carry a 100-140ms tail. */
+html.theme-transitioning,
+html.theme-transitioning body,
+html.theme-transitioning aside,
+html.theme-transitioning header,
+html.theme-transitioning .toolbar,
+html.theme-transitioning .note-row {
+  transition: background-color 220ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Perf — containment + content-visibility utilities
+
+   `contain` lets the browser treat a subtree as an island for layout,
+   paint, and style so changes inside don't invalidate work outside.
+   `content-visibility: auto` skips rendering off-screen subtrees
+   altogether until they scroll into view. Together they cut the
+   per-frame paint budget on long lists and modal-heavy surfaces by
+   1-2 orders of magnitude on Linux (webkit2gtk).
+
+   Applied via class so we can dial these on/off per surface:
+     .yarrow-paint-island  — for major scroll containers (note list,
+                             modal body, settings pane). Isolates
+                             layout/paint so scroll inside doesn't
+                             repaint the rest of the app.
+     .yarrow-row-island    — for repeated long-list rows. Adds
+                             `content-visibility: auto` so off-screen
+                             rows are skipped during paint.
+     .yarrow-gpu-scroll    — for any container where the user scrolls.
+                             Promotes to a compositor layer so scroll
+                             happens on the GPU, not the CPU.
+
+   Intrinsic-size hints (`contain-intrinsic-*`) tell the browser how
+   much space each off-screen card "would" take so the scrollbar
+   geometry doesn't pop when content paints in. The values are sized
+   to the most common card height — a few px off doesn't hurt; way
+   off would just degrade scroll-anchor smoothness. */
+.yarrow-paint-island {
+  contain: layout paint style;
+}
+.yarrow-row-island {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
+}
+.yarrow-card-island {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
+.yarrow-gpu-scroll {
+  /* `translateZ(0)` is the cheapest, most-supported way to lift a
+     container onto its own GPU layer. `will-change: transform` on its
+     own would also work but we deliberately avoid `will-change` on
+     hot paths because webkit promotes more aggressively from it and
+     can blow the layer budget. */
+  transform: translateZ(0);
+  /* Don't promote subpixel rounding into the editor — the writing
+     surface needs crisp text. Components that wrap CodeMirror omit
+     this class for that reason. */
 }
 
 button, input, select, textarea {
@@ -194,10 +580,19 @@ button, input, select, textarea {
 .cm-editor {
   background: transparent;
   color: var(--char);
-  font-family: var(--editor-font-family, 'Newsreader', ui-serif, Georgia, serif);
+  /* 2.1 revised: editor body defaults to Newsreader (`--serif`). The
+     Settings → Writing → Editor font picker overrides via
+     `--editor-font-family`. */
+  font-family: var(--editor-font-family, var(--serif));
   font-size: var(--editor-font-size, 17px);
-  font-weight: 400;
-  line-height: var(--editor-line-height, 1.65);
+  /* Pin the opsz axis to a body master. Newsreader's axis is 6..72;
+     Source Serif 4's is 8..60; Fraunces's is 9..144. opsz 14 sits
+     comfortably in all three ranges and maps to "body copy size" for
+     each. Harmless for non-variable fonts (Inter Tight / Georgia
+     ignore unknown axes). */
+  font-variation-settings: "opsz" 14;
+  font-weight: 420;
+  line-height: var(--editor-line-height, 1.66);
   letter-spacing: 0;
 }
 .cm-editor.cm-focused { outline: none; }
@@ -220,24 +615,30 @@ button, input, select, textarea {
 }
 .cm-editor .cm-gutters { display: none; }
 
-/* markdown headings — Source Serif 4 handles both weights and italics */
+/* Markdown headings inherit the editor family so a Newsreader user
+   gets Newsreader headings and a Fraunces user gets Fraunces headings.
+   We pin opsz per heading size — Newsreader's 6..72 axis, Source
+   Serif 4's 8..60, and Fraunces's 9..144 all accept these values. */
 .cm-editor .cm-heading1 {
-  font-family: var(--editor-font-family, 'Newsreader', ui-serif, Georgia, serif);
+  font-family: inherit;
   font-size: 32px; line-height: 1.2;
-  font-weight: 500;
+  font-variation-settings: "opsz" 48;
+  font-weight: 600;
   color: var(--char);
 }
 .cm-editor .cm-heading2 {
-  font-family: var(--editor-font-family, 'Newsreader', ui-serif, Georgia, serif);
+  font-family: inherit;
   font-size: 22px; line-height: 1.25;
-  font-weight: 500;
+  font-variation-settings: "opsz" 32;
+  font-weight: 600;
   font-style: italic;
   color: var(--char);
 }
 .cm-editor .cm-heading3 {
-  font-family: var(--editor-font-family, 'Newsreader', ui-serif, Georgia, serif);
+  font-family: inherit;
   font-size: 18px; line-height: 1.3;
-  font-weight: 500;
+  font-variation-settings: "opsz" 22;
+  font-weight: 600;
   color: var(--char);
 }
 
@@ -361,7 +762,7 @@ button, input, select, textarea {
   padding: 8px 14px;
   font-weight: 600;
   font-size: 0.95em;
-  font-family: 'Source Serif 4', ui-serif, Georgia, serif;
+  font-family: var(--serif);
   font-style: italic;
   letter-spacing: 0.01em;
   color: var(--char);
@@ -562,9 +963,14 @@ button, input, select, textarea {
    Reading mode — themed render of pulldown-cmark output
    ───────────────────────────────────────────────────────────── */
 .yarrow-reading {
-  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  /* Reader tracks the same font pref as the editor so switching in
+     Settings cascades everywhere. Default is Newsreader via --serif. */
+  font-family: var(--editor-font-family, var(--serif));
   font-size: 17px;
-  line-height: 1.65;
+  /* Body opsz master. See .cm-editor above for why this is pinned. */
+  font-variation-settings: "opsz" 14;
+  font-weight: 420;
+  line-height: var(--editor-line-height, 1.66);
   color: var(--char);
 }
 .yarrow-reading h1,
@@ -573,11 +979,23 @@ button, input, select, textarea {
 .yarrow-reading h4,
 .yarrow-reading h5,
 .yarrow-reading h6 {
-  font-family: 'Fraunces', Georgia, serif;
+  /* Headings inherit the reader's font family (so a Newsreader-using
+     user gets Newsreader headings and a Fraunces-using user gets
+     Fraunces headings). Only the drop cap and pull quote reach past
+     the user's preference to --display — see the .yarrow-editorial
+     rules below. */
+  font-family: inherit;
+  font-weight: 600;
   color: var(--char);
   margin: 1.6em 0 0.5em;
   line-height: 1.2;
 }
+.yarrow-reading h1 { font-variation-settings: "opsz" 48; }
+.yarrow-reading h2 { font-variation-settings: "opsz" 32; }
+.yarrow-reading h3 { font-variation-settings: "opsz" 22; }
+.yarrow-reading h4,
+.yarrow-reading h5,
+.yarrow-reading h6 { font-variation-settings: "opsz" 18; }
 .yarrow-reading h1:first-child,
 .yarrow-reading h2:first-child { margin-top: 0; }
 .yarrow-reading h1 { font-size: 30px; letter-spacing: -0.5px; }
@@ -669,7 +1087,7 @@ button, input, select, textarea {
 .yarrow-reading th {
   background: var(--s1);
   font-weight: 700;
-  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif);
+  font-family: var(--ui-font-family, var(--sans));
 }
 .yarrow-reading img {
   max-width: 100%;
@@ -704,6 +1122,35 @@ button, input, select, textarea {
   text-underline-offset: 3px;
 }
 
+/* 2.1 Sensitive-tag pill. Tags that mark a note as clinical / private
+   render with the rose accent (the same hue the spec uses for the
+   "challenges" edge type and danger-adjacent surfaces) so the eye reads
+   them as "different" from the everyday gold tag. Both themes resolve
+   `--rose` to a contrast-paired tone, so the rule is one-shot. */
+.yarrow-tag-sensitive {
+  background: color-mix(in srgb, var(--rose) 22%, transparent);
+  color: var(--rose);
+}
+.dark .yarrow-tag-sensitive {
+  /* In dark mode the rose token is lighter; ratchet the wash up so the
+     pill still reads as a distinct surface against the bg. */
+  background: color-mix(in srgb, var(--rose) 18%, transparent);
+}
+
+/* 2.1 PHI / de-identification highlighter. Subtle warm-amber wash on
+   the run plus a wavy underline in the same hue — present enough that
+   the writer can't miss it on a glance over a finished note, quiet
+   enough that they can keep typing through it. */
+.cm-yarrow-phi {
+  background: color-mix(in srgb, #c97a3a 16%, transparent);
+  border-radius: 3px;
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: #c97a3a;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
 /* KaTeX math */
 .cm-yarrow-math-inline {
   display: inline-block;
@@ -727,18 +1174,32 @@ button, input, select, textarea {
    ───────────────────────────────────────────────────────────── */
 
 .radial-menu {
-  filter: drop-shadow(0 14px 36px rgba(0, 0, 0, 0.32));
+  /* Shape-rendering: geometricPrecision forces sub-pixel-accurate curve
+     sampling, keeping wedge arcs razor-sharp at any DPI. `crispEdges`
+     would be wrong here — it'd disable anti-aliasing on the diagonals
+     and make the wedge boundaries stair-step. */
+  shape-rendering: geometricPrecision;
   overflow: visible;
+  /* Drop-shadow moved off `filter:` (which re-rasterizes the entire
+     SVG each animation frame at the filter's default resolution and
+     blurs the edges). Shadow now lives on the wrapper div as a
+     box-shadow — see .radial-menu-wrapper. */
 }
 .radial-wedge path {
-  fill: color-mix(in srgb, var(--s2) 96%, transparent);
+  /* Fully opaque fill so edges are crisp against the editor behind.
+     The previous 96%/transparent mix was letting paper texture
+     through the wedge, making everything read slightly foggy. */
+  fill: var(--s2);
   stroke: var(--bd2);
   stroke-width: 1;
+  /* Redeclared here in addition to the parent .radial-menu — some
+     webkit2gtk builds don't cascade shape-rendering to SVG children,
+     so each path opts in explicitly. */
+  shape-rendering: geometricPrecision;
   cursor: pointer;
-  transition:
-    fill 120ms ease,
-    transform 120ms ease;
-  transform-origin: center center;
+  /* Transitioning `transform` on the path was causing rasterization
+     wobble during hover — remove it, keep only the colour crossfade. */
+  transition: fill 100ms ease, stroke 100ms ease;
 }
 .radial-wedge:hover path,
 .radial-wedge.is-selected path {
@@ -797,6 +1258,7 @@ button, input, select, textarea {
   fill: var(--s1);
   stroke: var(--bd2);
   stroke-width: 1;
+  shape-rendering: geometricPrecision;
   cursor: pointer;
   transition: fill 120ms ease;
 }
@@ -881,22 +1343,42 @@ g:has(> .radial-center:hover) .radial-still-ghost,
   fill: var(--yeld);
   opacity: 0.45;
 }
+/* Radial wrapper — holds the box-shadow that gives the menu depth.
+   Using a box-shadow on a DOM element (not a filter on the SVG) means
+   the shadow is rasterized once by the compositor and stays crisp
+   during the zoom-in animation. The SVG itself stays a vector layer,
+   edges untouched. */
+.radial-menu-wrapper {
+  border-radius: 50%;
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.18),
+    0 18px 44px -12px rgba(0, 0, 0, 0.34),
+    0 32px 80px -40px rgba(0, 0, 0, 0.28);
+}
+
+/* Snappy "zoomed into existence" animation. ~100 ms with an emphasized
+   decelerate curve — accelerates off the initial scale fast, then
+   eases firmly into place. Starting scale bumped from 0.82 → 0.6 so
+   the movement reads as a proper zoom-in rather than a tiny pop. */
 @keyframes radialIn {
-  0% {
+  from {
     opacity: 0;
-    transform: scale(0.82);
+    transform: scale(0.6);
   }
-  60% {
-    opacity: 1;
-  }
-  100% {
+  to {
     opacity: 1;
     transform: scale(1);
   }
 }
 .animate-radialIn {
-  animation: radialIn 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: radialIn 110ms cubic-bezier(0.05, 0.7, 0.1, 1);
   transform-origin: center center;
+  /* 2.1 sharpness fix: NO will-change / translateZ / preserve-3d here.
+     Those hints promote the SVG to a GPU texture layer, which webkit2gtk
+     rasterizes at the compositor's resolution — lower than screen DPI.
+     That was keeping the radial soft even after the animation finished.
+     For a 110 ms animation, CPU rasterization per frame is plenty fast,
+     and the vector layer stays pin-sharp at native DPI forever after. */
 }
 
 /* autocomplete — slash menu + [[wikilink]] dropdown. Rendered into
@@ -908,7 +1390,7 @@ g:has(> .radial-center:hover) .radial-still-ghost,
   border: 1px solid var(--bd2) !important;
   border-radius: 8px !important;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2);
-  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif) !important;
+  font-family: var(--ui-font-family, var(--sans)) !important;
   font-size: 14px !important;
   font-weight: 450 !important;
   /* Above toolbars, modals' backdrops, etc. The tooltip is a child of
@@ -1122,12 +1604,25 @@ button, a {
 }
 
 /* Crossfade the editor when the note changes — gives the new note a
-   half-beat to settle rather than snapping. */
+   half-beat to settle rather than snapping. The 2.0 version of this
+   keyframe also pulled `filter: blur(0.5px)` through the transition;
+   that left the editor measurably unsharp on every note switch and on
+   slower hardware the rasterized blur layer never fully recomposed
+   back to native DPI. Pure opacity is just as kind on the eye and the
+   text stays pin-sharp throughout. */
 @keyframes editorFade {
-  from { opacity: 0.35; filter: blur(0.5px); }
-  to   { opacity: 1;    filter: blur(0);     }
+  from { opacity: 0.35; }
+  to   { opacity: 1;    }
 }
-.cm-editor { animation: editorFade 180ms ease-out; }
+/* Scope to the note-editor host so this fade only fires on the main
+   editor surface. Without the `.yarrow-note-host` parent, every
+   `.cm-editor` we (or a future addition) mount anywhere — preview
+   surfaces, embedded code blocks, the writable scratchpad — would
+   inherit the same fade-in transition. The audit also flagged that
+   the bare-class selector relies on a CodeMirror-owned class staying
+   the same across versions; pinning it to a Yarrow-owned ancestor
+   makes the animation contract explicit. */
+.yarrow-note-host > .cm-editor { animation: editorFade 180ms ease-out; }
 
 /* Gentle pulse for the saved indicator, replacing the harsh highlight. */
 @keyframes savedBreath {
@@ -1321,14 +1816,19 @@ button, a {
    .yarrow-pull (see NoteReader post-processor), generous leading.
    ───────────────────────────────────────────────────────────── */
 .yarrow-reading.yarrow-editorial {
-  font-family: 'Fraunces', 'Newsreader', Georgia, serif;
+  /* Editorial-reading inherits the editor-font-family from .yarrow-reading
+     above so the Settings picker still cascades. Only body *styling*
+     changes here (generous leading, a touch more size) — the family
+     stays whatever the user chose. The opsz bump matches the 19px
+     body size so Fraunces serves a cut appropriate for that scale. */
   font-size: 19px;
+  font-variation-settings: "opsz" 18;
   line-height: 1.78;
   letter-spacing: 0.005em;
 }
 .yarrow-reading.yarrow-editorial > p:first-of-type::first-letter,
 .yarrow-reading.yarrow-editorial > p.yarrow-dropcap::first-letter {
-  font-family: 'Fraunces', 'Instrument Serif', Georgia, serif;
+  font-family: var(--display);
   font-style: normal;
   font-weight: 500;
   float: left;
@@ -1338,7 +1838,7 @@ button, a {
   color: var(--yeld);
 }
 .yarrow-reading.yarrow-editorial blockquote.yarrow-pull {
-  font-family: 'Fraunces', 'Instrument Serif', Georgia, serif;
+  font-family: var(--display);
   font-style: italic;
   font-size: 1.42em;
   line-height: 1.38;
@@ -1354,7 +1854,7 @@ button, a {
 .yarrow-reading.yarrow-editorial h1,
 .yarrow-reading.yarrow-editorial h2,
 .yarrow-reading.yarrow-editorial h3 {
-  font-family: 'Fraunces', 'Instrument Serif', Georgia, serif;
+  font-family: var(--display);
   font-style: italic;
   font-weight: 400;
   letter-spacing: -0.01em;
@@ -1386,7 +1886,7 @@ button, a {
   border-radius: 0 6px 6px 0;
   padding: 10px 12px 10px 12px;
   margin-bottom: 10px;
-  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif);
+  font-family: var(--ui-font-family, var(--sans));
   font-size: 12.5px;
   line-height: 1.45;
   color: var(--char);
@@ -1465,11 +1965,29 @@ button, a {
   position: relative;
   margin: 10px 14px 0 14px;
   padding: 14px 18px 12px 20px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--yelp) 68%, transparent), color-mix(in srgb, var(--yelp) 20%, transparent));
-  border: 1px solid color-mix(in srgb, var(--yel) 28%, transparent);
+  /* Rebased (2.1 fix): the previous `color-mix(var(--yelp) 68%,
+     transparent)` gradient was effectively invisible on the cool
+     charcoal dark canvas — yelp is a near-bg plum in dark mode, and
+     diluting it 68% against transparent pushed it below perceptible
+     contrast. The banner now sits on a raised `--s2` base with a
+     plum tint overlaid; it reads as "a warm card above the canvas"
+     in both themes. The accent bar on the left still announces the
+     welcome-back framing. */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--yel) 14%, var(--s2) 86%),
+      color-mix(in srgb, var(--yel) 4%, var(--s2) 96%));
+  border: 1px solid color-mix(in srgb, var(--yel) 34%, var(--bd));
   border-left: 3px solid var(--yel);
   border-radius: 8px;
-  font-family: var(--ui-font-family, Merriweather, ui-serif, Georgia, serif);
+  box-shadow: var(--shadow-lift);
+  font-family: var(--ui-font-family, var(--sans));
+  animation: wiloIn 180ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+@keyframes wiloIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .yarrow-wilo-banner .l1 {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -1481,7 +1999,7 @@ button, a {
   margin-bottom: 4px;
 }
 .yarrow-wilo-banner .l2 {
-  font-family: 'Fraunces', 'Instrument Serif', Georgia, serif;
+  font-family: var(--display);
   font-style: italic;
   font-size: 17px;
   color: var(--char);
@@ -1530,4 +2048,230 @@ button, a {
   font-size: 10px;
   color: var(--yel);
 }
+
+/* Appearance-preference hooks. Actual values come from localStorage
+ * via `installAppearanceAtBoot` in lib/appearance.ts. Defaults match
+ * the pre-appearance-prefs look so first-run users get the same UI. */
+:root {
+  --ui-font: var(--serif, ui-serif, Georgia, serif);
+  --ui-font-size: 14px;
+  --editor-font: var(--serif, ui-serif, Georgia, serif);
+  --editor-font-size: 15px;
+}
+body {
+  font-family: var(--ui-font);
+  font-size: var(--ui-font-size);
+}
+.cm-editor .cm-content {
+  font-family: var(--editor-font) !important;
+  font-size: var(--editor-font-size) !important;
+}
+
+/* ── Production polish: focus rings + transitions + input rhythm ── */
+/* Scoped lightly enough that existing Tailwind classes stay authoritative,
+ * but adds the small details that separate "functional" from "finished":
+ *   - Keyboard focus rings on every interactive element (a11y table-stakes)
+ *   - 120ms ease-out transitions on color/bg/border changes (feels snappy)
+ *   - Custom-styled scrollbars that match the theme instead of the
+ *     browser's default gunmetal gray
+ *   - Consistent selection color drawn from the yel accent
+ * Anything truly component-specific stays in the component; this file
+ * handles the cross-cutting stuff. */
+
+*, *::before, *::after {
+  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+/* Explicit opt-out for elements where transitions cause flicker
+ * (CodeMirror gutter, long-running animations). */
+.cm-editor *, .yarrow-reader pre, .yarrow-reader pre * {
+  transition: none !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--yel);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus-visible,
+a:focus-visible {
+  outline-offset: 2px;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none; /* border colour change handles it cleanly */
+}
+
+::selection {
+  background: color-mix(in srgb, var(--yel) 35%, transparent);
+  color: var(--char);
+}
+
+/* Custom scrollbars — tiny detail that makes the app feel designed. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bd) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--bd);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--t3);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* Subtle lift on interactive cards when hovered. Class opt-in so we
+ * don't apply to every bordered div by accident. */
+.yarrow-card-hover {
+  transition: border-color 120ms ease-out, transform 160ms ease-out, box-shadow 160ms ease-out;
+}
+.yarrow-card-hover:hover {
+  border-color: color-mix(in srgb, var(--yel) 50%, var(--bd));
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px -12px color-mix(in srgb, var(--char) 40%, transparent);
+}
+
+/* Skeleton shimmer for loading states. Preferred over "loading…" for
+ * structured views — keeps the layout stable while data resolves. */
+@keyframes yarrow-shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+.yarrow-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--s1) 0%,
+    var(--s2) 40%,
+    var(--s1) 80%
+  );
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  animation: yarrow-shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* Toast-y flash-in for newly-mounted cards (dashboard workspace list,
+ * settings sections). Keeps things feeling alive without being busy. */
+@keyframes yarrow-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.yarrow-fade-in {
+  animation: yarrow-fade-in 200ms ease-out both;
+}
+
+/* ── Markdown reader (web build) ──────────────────────────────── */
+.yarrow-reader {
+  font-family: var(--serif, ui-serif, Georgia, serif);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--char);
+}
+.yarrow-reader h1, .yarrow-reader h2, .yarrow-reader h3,
+.yarrow-reader h4, .yarrow-reader h5, .yarrow-reader h6 {
+  font-family: var(--serif, ui-serif, Georgia, serif);
+  color: var(--char); font-weight: 600; line-height: 1.25;
+  margin: 1.6em 0 0.5em;
+}
+.yarrow-reader h1 { font-size: 2em; border-bottom: 1px solid var(--bd); padding-bottom: 0.2em; }
+.yarrow-reader h2 { font-size: 1.5em; }
+.yarrow-reader h3 { font-size: 1.25em; }
+.yarrow-reader h4 { font-size: 1.1em; }
+.yarrow-reader p { margin: 0.8em 0; }
+.yarrow-reader a { color: var(--yel); text-decoration: underline; text-underline-offset: 2px; }
+.yarrow-reader strong { font-weight: 600; }
+.yarrow-reader em { font-style: italic; }
+.yarrow-reader code {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 0.9em; padding: 0.15em 0.35em;
+  background: var(--s1); border: 1px solid var(--bd); border-radius: 4px;
+}
+.yarrow-reader pre {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 0.9em; padding: 1em;
+  background: var(--s1); border: 1px solid var(--bd); border-radius: 6px;
+  overflow-x: auto; line-height: 1.55; margin: 1em 0;
+}
+.yarrow-reader pre code { padding: 0; background: none; border: none; }
+.yarrow-reader blockquote {
+  margin: 1em 0; padding: 0.2em 1em;
+  border-left: 3px solid var(--bd); color: var(--t2); font-style: italic;
+}
+.yarrow-reader ul, .yarrow-reader ol { margin: 0.8em 0; padding-left: 1.5em; }
+.yarrow-reader ul { list-style: disc; }
+.yarrow-reader ol { list-style: decimal; }
+.yarrow-reader li { margin: 0.3em 0; }
+.yarrow-reader li.yarrow-task { list-style: none; margin-left: -1.2em; }
+.yarrow-reader .yarrow-taskbox { accent-color: var(--yel); margin-right: 0.4em; vertical-align: -0.15em; }
+.yarrow-reader hr { border: none; border-top: 1px solid var(--bd); margin: 2em 0; }
+.yarrow-reader table { border-collapse: collapse; margin: 1em 0; font-size: 0.95em; }
+.yarrow-reader th, .yarrow-reader td { border: 1px solid var(--bd); padding: 0.45em 0.8em; text-align: left; }
+.yarrow-reader th { background: var(--s1); font-weight: 600; }
+.yarrow-reader img { max-width: 100%; border-radius: 4px; }
+.yarrow-reader a.yarrow-wikilink {
+  color: var(--yel); text-decoration: none;
+  border-bottom: 1px dashed var(--yel); padding-bottom: 1px;
+}
+.yarrow-reader a.yarrow-wikilink:hover { border-bottom-style: solid; }
+.yarrow-reader a.yarrow-wikilink.broken {
+  color: var(--t3); border-bottom-color: var(--t3); font-style: italic; cursor: not-allowed;
+}
+.yarrow-reader .yarrow-callout {
+  margin: 1.2em 0;
+  border-left: 3px solid var(--yel);
+  background: color-mix(in srgb, var(--yel) 10%, var(--bg));
+  border-radius: 4px; padding: 0.9em 1.2em;
+}
+.yarrow-reader .yarrow-callout-header {
+  display: flex; align-items: center; gap: 0.6em;
+  font-weight: 600; color: var(--char); margin-bottom: 0.3em;
+}
+.yarrow-reader .yarrow-callout-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.4em; height: 1.4em; border-radius: 4px;
+  background: var(--yel); color: var(--on-yel, #2a2a2a);
+  font-size: 0.85em; font-weight: 700; font-style: normal; flex-shrink: 0;
+}
+.yarrow-reader .yarrow-callout-body > :first-child { margin-top: 0; }
+.yarrow-reader .yarrow-callout-body > :last-child { margin-bottom: 0; }
+.yarrow-reader .callout-tip, .yarrow-reader .callout-success {
+  border-left-color: #4caf50; background: color-mix(in srgb, #4caf50 10%, var(--bg));
+}
+.yarrow-reader .callout-tip .yarrow-callout-icon,
+.yarrow-reader .callout-success .yarrow-callout-icon { background: #4caf50; color: #fff; }
+.yarrow-reader .callout-warning, .yarrow-reader .callout-caution {
+  border-left-color: #d9a400; background: color-mix(in srgb, #d9a400 12%, var(--bg));
+}
+.yarrow-reader .callout-warning .yarrow-callout-icon,
+.yarrow-reader .callout-caution .yarrow-callout-icon { background: #d9a400; color: #2a2a2a; }
+.yarrow-reader .callout-danger, .yarrow-reader .callout-failure,
+.yarrow-reader .callout-bug, .yarrow-reader .callout-important {
+  border-left-color: #e05c5c; background: color-mix(in srgb, #e05c5c 10%, var(--bg));
+}
+.yarrow-reader .callout-danger .yarrow-callout-icon,
+.yarrow-reader .callout-failure .yarrow-callout-icon,
+.yarrow-reader .callout-bug .yarrow-callout-icon,
+.yarrow-reader .callout-important .yarrow-callout-icon { background: #e05c5c; color: #fff; }
+.yarrow-reader .callout-info, .yarrow-reader .callout-note,
+.yarrow-reader .callout-quote, .yarrow-reader .callout-abstract,
+.yarrow-reader .callout-example, .yarrow-reader .callout-question,
+.yarrow-reader .callout-todo {
+  border-left-color: #4a8dc2; background: color-mix(in srgb, #4a8dc2 10%, var(--bg));
+}
+.yarrow-reader .callout-info .yarrow-callout-icon,
+.yarrow-reader .callout-note .yarrow-callout-icon,
+.yarrow-reader .callout-quote .yarrow-callout-icon,
+.yarrow-reader .callout-abstract .yarrow-callout-icon,
+.yarrow-reader .callout-example .yarrow-callout-icon,
+.yarrow-reader .callout-question .yarrow-callout-icon,
+.yarrow-reader .callout-todo .yarrow-callout-icon { background: #4a8dc2; color: #fff; }
 

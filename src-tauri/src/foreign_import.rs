@@ -334,6 +334,8 @@ fn write_note(
         salt: String::new(),
         nonce: String::new(),
         annotations: vec![],
+        private: false,
+        folder: None,
     };
     notes::write(
         notes_dir.parent().unwrap(),

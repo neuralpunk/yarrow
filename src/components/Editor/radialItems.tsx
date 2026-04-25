@@ -1,9 +1,15 @@
 import type { RadialMenuItem } from "./RadialMenu";
+import type { StringKey } from "../../lib/i18n";
+import { editorEN } from "../../lib/i18n/strings/editor";
 
 // ────────────── Editor radial items ──────────────
 // Two variants: one when the user right-clicked without a selection
 // (inserts) and one with a selection (transforms). Kept out of
 // `AppShell.tsx` to keep that file from ballooning any further.
+//
+// Labels are provided through a `t` translator passed in by the caller —
+// a `useT()` from the hosting component. This keeps the radial items
+// translatable without taking a hook dependency in this module.
 
 const stroke = {
   fill: "none",
@@ -121,37 +127,51 @@ function dispatchInsertRaw(
   );
 }
 
+/** Translator type — accepts the same shape `useT()` returns. */
+type Translator = (key: StringKey, vars?: Record<string, string>) => string;
+
+/** Default translator that returns the English string for the given key.
+ *  Used when callers don't pass a translator (e.g. existing AppShell call
+ *  sites that haven't yet been wired to `useT`). The radial labels are
+ *  short enough that an EN fallback is acceptable when the locale isn't
+ *  threaded through. */
+const enFallback: Translator = (key) =>
+  (editorEN as Record<string, string>)[key] ?? key;
+
 /** Items shown when no text is selected — six inserts for headings,
  *  tasks, callouts, code blocks, tables, and wikilinks. */
-export function buildRadialInsertItems(cb: RadialCallbacks): RadialMenuItem[] {
+export function buildRadialInsertItems(
+  cb: RadialCallbacks,
+  t: Translator = enFallback,
+): RadialMenuItem[] {
   return [
     {
       id: "wikilink",
-      label: "Wikilink",
-      sublabel: "[[ … ]]",
+      label: t("editor.radial.insert.wikilink"),
+      sublabel: t("editor.radial.insert.wikilinkSub"),
       icon: WikilinkIcon,
       disabled: !cb.mappingEnabled,
       onSelect: cb.openWikilinkPicker,
     },
     {
       id: "table",
-      label: "Table",
-      sublabel: "rows × cols",
+      label: t("editor.radial.insert.table"),
+      sublabel: t("editor.radial.insert.tableSub"),
       icon: TableIcon,
       onSelect: cb.openTableInsert,
     },
     {
       id: "task",
-      label: "Task",
-      sublabel: "- [ ]",
+      label: t("editor.radial.insert.task"),
+      sublabel: t("editor.radial.insert.taskSub"),
       icon: TaskIcon,
       onSelect: () =>
         cb.insertRaw("- [ ] ", { atLineStart: true }),
     },
     {
       id: "code",
-      label: "Code",
-      sublabel: "``` block",
+      label: t("editor.radial.insert.code"),
+      sublabel: t("editor.radial.insert.codeSub"),
       icon: CodeIcon,
       // Caret lands between the fences, on the empty middle line.
       onSelect: () =>
@@ -162,8 +182,8 @@ export function buildRadialInsertItems(cb: RadialCallbacks): RadialMenuItem[] {
     },
     {
       id: "callout",
-      label: "Callout",
-      sublabel: "note, tip, warning…",
+      label: t("editor.radial.insert.callout"),
+      sublabel: t("editor.radial.insert.calloutSub"),
       icon: CalloutIcon,
       // Opens a dedicated modal with type picker, title/body inputs,
       // and a live preview so the author sees exactly what will land.
@@ -171,8 +191,8 @@ export function buildRadialInsertItems(cb: RadialCallbacks): RadialMenuItem[] {
     },
     {
       id: "heading",
-      label: "Heading",
-      sublabel: "#",
+      label: t("editor.radial.insert.heading"),
+      sublabel: t("editor.radial.insert.headingSub"),
       icon: HeadingIcon,
       onSelect: () => cb.insertRaw("# ", { atLineStart: true }),
     },
@@ -185,55 +205,56 @@ export function buildRadialInsertItems(cb: RadialCallbacks): RadialMenuItem[] {
 export function buildRadialSelectionItems(
   selection: string,
   cb: RadialCallbacks,
+  t: Translator = enFallback,
 ): RadialMenuItem[] {
   return [
     {
       id: "wikilink",
-      label: "Wikilink",
-      sublabel: "replace",
+      label: t("editor.radial.selection.wikilink"),
+      sublabel: t("editor.radial.selection.wikilinkSub"),
       icon: WikilinkIcon,
       disabled: !cb.mappingEnabled,
       onSelect: cb.openWikilinkPicker,
     },
     {
       id: "path",
-      label: "New path",
-      sublabel: "from this",
+      label: t("editor.radial.selection.newPath"),
+      sublabel: t("editor.radial.selection.newPathSub"),
       icon: PathIcon,
       onSelect: () => cb.startPathFrom(selection),
     },
     {
       id: "bold",
-      label: "Bold",
-      sublabel: "**…**",
+      label: t("editor.radial.selection.bold"),
+      sublabel: t("editor.radial.selection.boldSub"),
       icon: BoldIcon,
       onSelect: () => dispatchInsertRaw(`**${selection}**`),
     },
     {
       id: "italic",
-      label: "Italic",
-      sublabel: "*…*",
+      label: t("editor.radial.selection.italic"),
+      sublabel: t("editor.radial.selection.italicSub"),
       icon: ItalicIcon,
       onSelect: () => dispatchInsertRaw(`*${selection}*`),
     },
     {
       id: "annotate",
-      label: "Annotate",
-      sublabel: "margin ink",
+      label: t("editor.radial.selection.annotate"),
+      sublabel: t("editor.radial.selection.annotateSub"),
       icon: AnnotateIcon,
       onSelect: () => cb.annotateSelection(selection),
     },
     {
       id: "scratch",
-      label: "Scratchpad",
-      sublabel: "send to",
+      label: t("editor.radial.selection.scratchpad"),
+      sublabel: t("editor.radial.selection.scratchpadSub"),
       icon: ScratchpadIcon,
       onSelect: () => cb.sendSelectionToScratchpad(selection),
     },
     {
       id: "copy",
-      label: "Copy",
-      sublabel: "⌘C",
+      label: t("editor.radial.selection.copy"),
+      sublabel: t("editor.radial.selection.copySub"),
       icon: CopyIcon,
       onSelect: () => {
         navigator.clipboard?.writeText(selection).catch(() => {});

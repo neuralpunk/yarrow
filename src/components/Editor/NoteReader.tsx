@@ -9,6 +9,8 @@ import WikilinkPreview, {
   type WikilinkPreviewData,
 } from "../WikilinkPreview";
 import { decorateChangedBlocks, synthesizeDiffMarkdown } from "../../lib/readerDiff";
+import { isExternalHref, openExternal } from "../../lib/openExternal";
+import { useT } from "../../lib/i18n";
 
 interface Props {
   note: Note;
@@ -44,6 +46,7 @@ export default function NoteReader({
   note, currentPath, notes, currentBody, mainBody, pathNotes,
   onNavigate, onBranchFromWikilink, onSwitchToWriting,
 }: Props) {
+  const t = useT();
   const [html, setHtml] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<WikilinkPreviewData | null>(null);
@@ -160,6 +163,11 @@ export default function NoteReader({
     if (href.startsWith("yarrow:")) {
       e.preventDefault();
       onNavigate(decodeURIComponent(href.slice("yarrow:".length)));
+      return;
+    }
+    if (isExternalHref(href)) {
+      e.preventDefault();
+      openExternal(href);
     }
   };
 
@@ -229,25 +237,25 @@ export default function NoteReader({
     <div className="note-enter relative flex-1 overflow-y-auto px-12 py-12 2xl:px-24">
       <div className="w-full max-w-[680px] xl:max-w-[820px] 2xl:max-w-[960px] mx-auto">
         <div className="font-serif italic text-xs text-t3 mb-5 inline-block px-1 py-0.5 rounded">
-          {editorialDate(note.frontmatter.modified)} · written in the{" "}
+          {editorialDate(note.frontmatter.modified)} · {t("editor.note.writtenInThe")}{" "}
           {timeOfDayPhrase(note.frontmatter.modified)}
           <span className="text-t3/70"> · </span>
           <span className="font-mono not-italic text-2xs">{currentPath || "main"}</span>
           <span className="text-t3/70"> · </span>
-          <span className="not-italic">edited {relativeTime(note.frontmatter.modified)}</span>
+          <span className="not-italic">{t("editor.note.edited")} {relativeTime(note.frontmatter.modified)}</span>
           <span className="text-t3/70"> · </span>
           <button
             onClick={() => setEditorialOn(!editorialOn)}
             className="not-italic underline decoration-dotted text-yeld hover:text-char mr-2"
-            title={editorialOn ? "Switch to plain reading" : "Switch to editorial reading — drop caps, pull quotes, generous leading"}
+            title={editorialOn ? t("editor.reader.editorialOnTitle") : t("editor.reader.editorialOffTitle")}
           >
-            {editorialOn ? "plain" : "editorial"}
+            {editorialOn ? t("editor.reader.editorialPlain") : t("editor.reader.editorial")}
           </button>
           <button
             onClick={onSwitchToWriting}
             className="not-italic underline decoration-dotted text-yeld hover:text-char"
           >
-            switch to writing
+            {t("editor.reader.switchToWriting")}
           </button>
         </div>
         <h1 className="font-serif text-[44px] leading-[1.1] text-char tracking-[-1px] mb-2">
@@ -255,12 +263,12 @@ export default function NoteReader({
         </h1>
         {error && (
           <div className="mt-4 text-xs text-danger bg-danger/10 px-3 py-2 rounded">
-            Couldn't render: {error}
+            {t("editor.reader.couldNotRender", { error })}
           </div>
         )}
         {currentBody !== undefined && currentBody !== note.body && (
           <div className="mt-2 text-2xs italic text-t3 font-serif">
-            Showing the saved version — switch to writing to see your unsaved edits.
+            {t("editor.reader.showingSaved")}
           </div>
         )}
         <div

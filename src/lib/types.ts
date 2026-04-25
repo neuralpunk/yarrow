@@ -29,6 +29,14 @@ export interface Frontmatter {
   salt?: string;
   nonce?: string;
   annotations?: Annotation[];
+  /** 2.1: when true (or when `tags` includes `clinical`), the note is
+   *  registered in `.git/info/exclude` and never enters the commit log
+   *  or sync. */
+  private?: boolean;
+  /** 2.1: optional folder name for sidebar grouping. Pure metadata —
+   *  the file always lives at `notes/<slug>.md`. Notes with no folder
+   *  fall through to the existing time-based grouping unchanged. */
+  folder?: string;
 }
 
 export interface NoteSummary {
@@ -39,6 +47,11 @@ export interface NoteSummary {
   pinned?: boolean;
   tags?: string[];
   encrypted?: boolean;
+  /** 2.1: lifted from Frontmatter so the sidebar can show a lock badge
+   *  without rereading each note's body. */
+  private?: boolean;
+  /** 2.1: lifted folder field for sidebar grouping. */
+  folder?: string;
 }
 
 export interface Note {
@@ -125,6 +138,78 @@ export interface SyncOutcome {
   fetched: boolean;
   pushed: boolean;
   message: string;
+  conflicts?: ConflictResolution[];
+  /** Workspace-relative paths (e.g. `notes/foo.md`) whose on-disk
+   *  contents were rewritten by the pull. The shell uses this to
+   *  reload any open editor pointed at one of these files — without
+   *  that reload, the editor's stale React buffer overwrites the
+   *  server's edit on the next autosave. */
+  files_changed?: string[];
+  /** Populated when the pre-push quota check aborted the sync locally
+   *  (stage 1 of the trash / quota rework). The UI reads this to show
+   *  named culprit files + "discard unsynced changes" action instead
+   *  of a generic error banner. Both `ok` and `pushed` are false when
+   *  this is set. */
+  quota_blocked?: QuotaBlockInfo;
+}
+
+export interface BlobCulprit {
+  path: string;
+  size: number;
+  oid: string;
+}
+
+export interface QuotaBlockInfo {
+  estimated_bytes: number;
+  remaining_bytes: number;
+  culprits: BlobCulprit[];
+  shrink_hint: string;
+}
+
+export interface DiscardedCommit {
+  oid: string;
+  summary: string;
+  time: number;
+}
+
+export interface DiscardOutcome {
+  performed: boolean;
+  commits_ahead: number;
+  commits: DiscardedCommit[];
+  reset_to_oid?: string | null;
+  reset_to_summary?: string | null;
+}
+
+export interface LargeBlobEntry {
+  oid: string;
+  path: string;
+  size: number;
+}
+
+export interface ReclaimSpaceOutcome {
+  bytes_before: number;
+  bytes_after: number;
+  bytes_freed: number;
+  new_head_sha?: string | null;
+  paths_purged: number;
+}
+
+export interface ConflictResolution {
+  /** Path of the note that conflicted. */
+  path: string;
+  /**
+   * Action taken. Common values:
+   *  - "kept-server-version-saved-local-as-copy": both sides edited,
+   *    server won, local saved at `copy_path`.
+   *  - "accepted-remote-delete-saved-local-as-copy": server deleted,
+   *    local edited — delete honored, local saved at `copy_path`.
+   *  - "kept-server-version-over-local-delete": local deleted, server
+   *    edited — server's version restored.
+   *  - "both-sides-deleted": no recovery needed.
+   */
+  action: string;
+  /** When present, the local version lives here and needs review. */
+  copy_path?: string;
 }
 
 export interface GraphNode {
@@ -267,6 +352,23 @@ export interface ConflictContent {
 
 export type WorkspaceMode = "mapped" | "basic";
 
+/** Per-workspace association with a Yarrow server (self-hosted or the
+ *  Yarrow Connect hosted tier — the desktop treats them identically).
+ *  The PAT itself is never serialised to the frontend; presence of
+ *  this object is what tells the UI "connected". */
+export interface WorkspaceServerConfig {
+  server_url: string;
+  email: string;
+  pat_id?: string | null;
+  pat_label?: string | null;
+  workspace_id?: string | null;
+  workspace_name?: string | null;
+  /** Dev escape hatch for self-signed certs on local Yarrow servers.
+   *  When true, every TLS call to this server skips certificate
+   *  verification — never turn on for production hosts. */
+  insecure_skip_tls_verify?: boolean;
+}
+
 export interface WorkspaceConfig {
   workspace: {
     name: string;
@@ -276,6 +378,7 @@ export interface WorkspaceConfig {
     remote_url?: string;
     remote_type: string;
     token?: string;
+    server?: WorkspaceServerConfig | null;
   };
   preferences: {
     decay_days: number;
@@ -285,6 +388,8 @@ export interface WorkspaceConfig {
     editor_font_size: number;
     encryption_idle_timeout_secs: number;
     search_index_enabled: boolean;
+    /** Auto-sync cadence in minutes. 0 disables. */
+    autosync_minutes: number;
   };
   mapping: {
     mode: WorkspaceMode;
@@ -296,6 +401,16 @@ export interface TemplateInfo {
   name: string;
   label: string;
   is_daily: boolean;
+  /** 2.1 Kits: templates that carry a `<!-- kit: <kind> -->` flag get
+   *  grouped into the kits picker. `is_kit` is true when any kit_kind
+   *  is set; `kit_kind` distinguishes journal / research / clinical /
+   *  work / learning / writing / everyday / decision / spiritual. */
+  is_kit?: boolean;
+  kit_kind?: string;
+  /** 2.1: true when the template name matches a Yarrow-bundled entry,
+   *  false when the user authored it themselves. Drives the split
+   *  between the kits picker and the custom-templates picker. */
+  is_bundled?: boolean;
 }
 
 export interface TrashEntry {
@@ -366,9 +481,16 @@ export const LINK_TYPE_LABELS: Record<LinkType, string> = {
   "open-question": "open question",
 };
 
+// 2.1 Calm Palettes: link-type colors are now theme-aware. The palette in
+// index.css declares --link-supports / --link-challenges / --link-came-from /
+// --link-open-question per theme (sage/rose/stone/plum in light; same
+// four, lifted, in dark — with open-question promoted to gold in dark
+// per the spec, so the dashed edge reads distinct from the solid plum
+// accent). Anything consuming LINK_TYPE_COLORS is handed a CSS var()
+// ref, so swaps happen at the pixel level without React re-renders.
 export const LINK_TYPE_COLORS: Record<LinkType, string> = {
-  "supports": "#5B7A5E",
-  "challenges": "#A64A3C",
-  "came-from": "#928C82",
-  "open-question": "#7A4E6E",
+  "supports": "var(--link-supports)",
+  "challenges": "var(--link-challenges)",
+  "came-from": "var(--link-came-from)",
+  "open-question": "var(--link-open-question)",
 };

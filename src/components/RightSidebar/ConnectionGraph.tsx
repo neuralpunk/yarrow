@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { Graph, LinkType } from "../../lib/types";
+import { useT } from "../../lib/i18n";
 
-function themeColor(name: string, fallback: string): string {
-  const v = getComputedStyle(document.documentElement)
-    .getPropertyValue(name)
-    .trim();
-  return v || fallback;
+/// Returns a CSS `var(--name, fallback)` reference. Applied via
+/// `.style("fill", ...)` / `.style("stroke", ...)` so the browser
+/// repaints the SVG when the theme flips, without rerunning the D3
+/// simulation just to pick up a recoloured palette.
+function themeVar(name: string, fallback: string): string {
+  return `var(${name}, ${fallback})`;
 }
 
 interface Props {
@@ -58,6 +60,7 @@ export default function ConnectionGraph({
   onBulkAddToPath,
   pathNames,
 }: Props) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
 
   // Close on Escape while expanded
@@ -89,10 +92,10 @@ export default function ConnectionGraph({
             </svg>
           </div>
           <div className="text-xs text-t2 leading-relaxed">
-            Create a few notes, then come back here.
+            {t("sidebar.graph.emptyHeadline")}
           </div>
           <div className="text-2xs text-t3 mt-1 leading-relaxed">
-            The Map shows every note in your vault — even the disconnected ones — so you can drag them into relationships.
+            {t("sidebar.graph.emptyHint")}
           </div>
         </div>
       </div>
@@ -117,7 +120,7 @@ export default function ConnectionGraph({
       />
       {expanded && (
         <div
-          className="fixed inset-0 z-50 bg-char/30 backdrop-blur-[3px] flex items-center justify-center animate-fadeIn"
+          className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center animate-fadeIn"
           onMouseDown={() => setExpanded(false)}
         >
           <div
@@ -125,14 +128,19 @@ export default function ConnectionGraph({
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="px-5 py-3 border-b border-bd bg-s1 flex items-center gap-3">
-              <div className="font-serif text-lg text-char">Connections graph</div>
+              <div className="font-serif text-lg text-char">{t("sidebar.graph.expandedTitle")}</div>
               <div className="text-2xs text-t3 font-mono">
-                {totalNodes} notes · {graph.links.length} connection{graph.links.length === 1 ? "" : "s"} · click a node to open it · esc to close
+                {t(
+                  graph.links.length === 1
+                    ? "sidebar.graph.expandedMetaOne"
+                    : "sidebar.graph.expandedMetaMany",
+                  { notes: String(totalNodes), links: String(graph.links.length) },
+                )}
               </div>
               <button
                 onClick={() => setExpanded(false)}
                 className="ml-auto w-8 h-8 flex items-center justify-center rounded hover:bg-s2 text-t2 hover:text-char"
-                aria-label="Close"
+                aria-label={t("sidebar.graph.closeAria")}
               >
                 ×
               </button>
@@ -193,6 +201,7 @@ function GraphView({
   onBulkAddToPath,
   pathNames,
 }: ViewProps) {
+  const t = useT();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const recenterRef = useRef<() => void>(() => {});
@@ -220,6 +229,13 @@ function GraphView({
   });
   const layoutModeRef = useRef(layoutMode);
   layoutModeRef.current = layoutMode;
+  // 2.1 M7 — theme switches no longer rebuild the D3 simulation. All
+  // colors derived from CSS custom properties are applied via `.style()`
+  // with `var(--name, fallback)` so the browser repaints them for free
+  // when the `dark` / `data-theme` attribute on <html> flips. This means
+  // chord pins, drag positions, and the active simulation don't reset
+  // on a theme toggle — and the previous MutationObserver + themeTick
+  // state machine is gone entirely.
   useEffect(() => {
     try { localStorage.setItem("yarrow.mapLayoutMode", layoutMode); } catch {}
   }, [layoutMode]);
@@ -431,23 +447,23 @@ function GraphView({
     const zoomLayer = svg.append("g").attr("class", "zoom-layer");
     const g = zoomLayer.append("g");
 
-    // Editorial style: one quiet edge color, no arrows, no direction. The
-    // Color each edge by its link type so the graph reads as grammar,
-    // not just topology — the same palette the ConnectPopover uses
-    // when the user picks a type during drag-to-connect. Falls back to
-    // the plum accent if a future type shows up we don't know about.
+    // Editorial style: one quiet edge color, no arrows, no direction. 2.1
+    // Calm Palettes: edge colors live in CSS as --link-* tokens so the
+    // graph reads consistently with the typed-connection chips in
+    // LinkedNotesList and the ConnectPopover. Falls back to the primary
+    // accent if a future link type shows up we don't know about.
     const linkColor = (t: LinkType): string => {
       switch (t) {
         case "supports":
-          return themeColor("--yel", "#c97a3a");
+          return themeVar("--link-supports", "#5B7A5E");
         case "challenges":
-          return themeColor("--danger", "#c43d5b");
+          return themeVar("--link-challenges", "#A64A3C");
         case "came-from":
-          return themeColor("--yeld", "#a85cc9");
+          return themeVar("--link-came-from", "#978E7E");
         case "open-question":
-          return themeColor("--ch2", "#5c6dc9");
+          return themeVar("--link-open-question", "#7A4E6E");
         default:
-          return themeColor("--yel", "#7A4E6E");
+          return themeVar("--yel", "#B38230");
       }
     };
     const linkSel = g
@@ -456,7 +472,7 @@ function GraphView({
       .selectAll<SVGPathElement, Link>("path")
       .data(visibleLinks)
       .join("path")
-      .attr("stroke", (d) => linkColor(d.type))
+      .style("stroke", (d) => linkColor(d.type))
       .attr("stroke-opacity", 0.55)
       .attr("stroke-width", expanded ? 1.5 : 1.2)
       .attr("stroke-linecap", "round")
@@ -494,16 +510,22 @@ function GraphView({
       .on("mouseenter", function (event, d) {
         const rect = containerRef.current!.getBoundingClientRect();
         const connCount = adj[d.slug]?.size ?? 0;
-        const mainTag = d.isMain ? "★ main · " : "";
+        const mainTag = d.isMain ? t("sidebar.graph.hoverMainTag") : "";
         const hint =
-          modeRef.current === "connect" ? "drag to connect"
-          : layoutModeRef.current === "chord" ? "click to highlight connections"
-          : "click to open";
+          modeRef.current === "connect" ? t("sidebar.graph.hoverConnect")
+          : layoutModeRef.current === "chord" ? t("sidebar.graph.hoverHighlight")
+          : t("sidebar.graph.hoverOpen");
+        const sub = t(
+          connCount === 1
+            ? "sidebar.graph.hoverConnOne"
+            : "sidebar.graph.hoverConnMany",
+          { count: String(connCount), hint },
+        );
         setHover({
           x: event.clientX - rect.left,
           y: event.clientY - rect.top,
           title: d.title,
-          sub: `${mainTag}${connCount} connection${connCount === 1 ? "" : "s"} · ${hint}`,
+          sub: `${mainTag}${sub}`,
         });
       })
       .on("mousemove", function (event) {
@@ -512,17 +534,22 @@ function GraphView({
       })
       .on("mouseleave", () => setHover(null));
 
-    const activeFill = themeColor("--yel", "#7A4E6E");
-    const activeText = themeColor("--on-yel", "#FFFFFF");
-    const neighborFill = themeColor("--s2", "#E8E4DA");
-    const neighborStroke = themeColor("--bd2", "rgba(30,28,22,0.18)");
-    const textColor = themeColor("--char", "#22201C");
-    const mutedText = themeColor("--t2", "#5A5550");
-    // Warm gold specifically for the workspace's main note. Distinct from
-    // the plum `--yel` used for the active node so "main" reads even when
-    // you're viewing a different note — and reads doubly when main *is*
-    // the active note (plum fill + gold ring).
-    const mainColor = "#D4A04A";
+    // 2.1 Calm Palettes: fallback hexes updated to Linen & Gold defaults
+    // so the graph renders correctly even if a CSS var fails to resolve
+    // during an early repaint. M7: these are CSS `var()` references so
+    // theme switches repaint without rerunning the simulation.
+    const activeFill = themeVar("--yel", "#B38230");
+    const activeText = themeVar("--on-yel", "#FFFFFF");
+    const neighborFill = themeVar("--s2", "#E1D8C0");
+    const neighborStroke = themeVar("--bd2", "rgba(28,22,14,0.17)");
+    const textColor = themeVar("--char", "#1C1812");
+    const mutedText = themeVar("--t2", "#6A6154");
+    // Home-node ring: pulls from `--home-ring`, which is gold in both
+    // themes (primary accent in light, supporting --gold in dark). The
+    // ring + fill combo reads as "main" even when you're viewing a
+    // different note, and doubly so when main IS the active note
+    // (accent fill + gold ring).
+    const mainColor = themeVar("--home-ring", "#B38230");
 
     // Bigger, flatter, editorial circles. The active note is plum-filled; all
     // neighbors share the same muted paper chip treatment regardless of
@@ -538,8 +565,8 @@ function GraphView({
     nodeSel
       .append("circle")
       .attr("r", radiusFor)
-      .attr("fill", (d) => (d.isActive ? activeFill : neighborFill))
-      .attr("stroke", (d) => {
+      .style("fill", (d) => (d.isActive ? activeFill : neighborFill))
+      .style("stroke", (d) => {
         if (d.isMain) return mainColor;
         if (d.isActive) return activeFill;
         return neighborStroke;
@@ -564,7 +591,7 @@ function GraphView({
       .attr("text-anchor", "middle")
       .attr("y", (d) => -radiusFor(d) - 6)
       .attr("font-size", 12)
-      .attr("fill", mainColor)
+      .style("fill", mainColor)
       .text("★");
 
     // Labels live INSIDE the circles — italic serif, wrapped to two lines
@@ -589,7 +616,7 @@ function GraphView({
         .attr("font-style", "italic")
         .attr("font-size", fontSize(d))
         .attr("font-weight", d.isActive ? 500 : 400)
-        .attr("fill", d.isActive ? activeText : textColor)
+        .style("fill", d.isActive ? activeText : textColor)
         .attr("opacity", d.isActive ? 1 : d.distance <= 1 ? 0.95 : 0.75)
         .attr("pointer-events", "none")
         .attr("dominant-baseline", "central");
@@ -610,7 +637,7 @@ function GraphView({
           .attr("font-family", "'Source Serif 4', ui-serif, Georgia, serif")
           .attr("font-style", "italic")
           .attr("font-size", expanded ? 10.5 : 9.5)
-          .attr("fill", mutedText)
+          .style("fill", mutedText)
           .attr("opacity", 0.7)
           .attr("pointer-events", "none")
           .text(truncate(d.title, expanded ? 22 : 16));
@@ -906,13 +933,16 @@ function GraphView({
         <span className="w-1.5 h-1.5 rounded-full bg-yel shrink-0" />
         {activeSlug ? (
           <span className="truncate">
-            <span className="text-char font-medium">{activeDegree}</span> direct
+            <span className="text-char font-medium">{activeDegree}</span> {t("sidebar.graph.statDirect")}
             <span className="text-t3"> · </span>
-            {Math.max(0, graph.notes.length - 1)} total
+            {Math.max(0, graph.notes.length - 1)} {t("sidebar.graph.statTotal")}
           </span>
         ) : (
           <span className="truncate">
-            {graph.notes.length} notes · {graph.links.length} links
+            {t("sidebar.graph.statNotesLinks", {
+              notes: String(graph.notes.length),
+              links: String(graph.links.length),
+            })}
           </span>
         )}
       </span>
@@ -924,21 +954,21 @@ function GraphView({
           <button
             onClick={() => setLayoutMode("force")}
             className={`px-2 h-6 text-2xs font-mono ${layoutMode === "force" ? "bg-yelp text-yeld" : "text-t2 hover:text-char hover:bg-s2"}`}
-            title="Force-directed layout — the default radial web"
-          >force</button>
+            title={t("sidebar.graph.layoutForceTip")}
+          >{t("sidebar.graph.layoutForce")}</button>
           <button
             onClick={() => setLayoutMode("chord")}
             className={`px-2 h-6 text-2xs font-mono ${layoutMode === "chord" ? "bg-yelp text-yeld" : "text-t2 hover:text-char hover:bg-s2"}`}
-            title="Chord layout — every note on an outer ring, edges through centre"
-          >chord</button>
+            title={t("sidebar.graph.layoutChordTip")}
+          >{t("sidebar.graph.layoutChord")}</button>
         </div>
         {onAddLink && (
           <button
             onClick={() => setMode((m) => (m === "connect" ? "view" : "connect"))}
             title={
               mode === "connect"
-                ? "Exit connect mode — drags will reposition notes again"
-                : "Connect mode — drag from one note to another to link them"
+                ? t("sidebar.graph.connectExitTip")
+                : t("sidebar.graph.connectEnterTip")
             }
             className={`inline-flex items-center gap-1 px-2 h-6 rounded border transition ${
               mode === "connect"
@@ -948,22 +978,22 @@ function GraphView({
           >
             <ConnectModeIcon />
             <span className="text-2xs font-mono">
-              {mode === "connect" ? "connecting" : "connect"}
+              {mode === "connect" ? t("sidebar.graph.connecting") : t("sidebar.graph.connect")}
             </span>
           </button>
         )}
         <IconBtn
           onClick={() => setNearbyOnly((v) => !v)}
-          title={nearbyOnly ? "Show every note" : "Focus on nearby notes"}
+          title={nearbyOnly ? t("sidebar.graph.nearbyAll") : t("sidebar.graph.nearbyOnly")}
           active={!nearbyOnly}
         >
           <FilterIcon />
         </IconBtn>
-        <IconBtn onClick={() => recenterRef.current()} title="Re-center graph">
+        <IconBtn onClick={() => recenterRef.current()} title={t("sidebar.graph.recenter")}>
           <RecenterIcon />
         </IconBtn>
         {!expanded && onExpand && (
-          <IconBtn onClick={onExpand} title="Expand — see the full graph">
+          <IconBtn onClick={onExpand} title={t("sidebar.graph.expand")}>
             <ExpandIcon />
           </IconBtn>
         )}
@@ -1092,12 +1122,12 @@ function GraphView({
             onMouseDown={(e) => e.stopPropagation()}
           >
             <ConnectModeIcon />
-            <span>Connect mode — drag a note onto another to link them</span>
+            <span>{t("sidebar.graph.connectBanner")}</span>
             <button
               onClick={() => setMode("view")}
               className="text-bg/80 hover:text-bg underline decoration-dotted"
             >
-              exit
+              {t("sidebar.graph.exit")}
             </button>
           </div>
         )}
@@ -1109,7 +1139,7 @@ function GraphView({
         <CoachMarks totalLinks={graph.links.length} expanded={!!expanded} />
 
         {expanded && (
-          <div className="absolute top-2 left-2 right-2 flex items-center gap-2 px-2 py-1.5 rounded-md bg-bg/85 backdrop-blur border border-bd">
+          <div className="absolute top-2 left-2 right-2 flex items-center gap-2 px-2 py-1.5 rounded-md bg-bg/85 border border-bd">
             {Toolbar}
           </div>
         )}
@@ -1119,41 +1149,41 @@ function GraphView({
             mode we also show the link-type color key so the typed edges
             read as grammar, not just topology. */}
         {mainNoteSlug && (
-          <div className="absolute bottom-3 left-3 flex items-center gap-3 px-2.5 py-1.5 rounded-md bg-bg/90 backdrop-blur border border-bd text-2xs font-mono text-t2">
-            <LegendSwatch kind="main" label="main" />
-            <LegendSwatch kind="active" label="you're here" />
-            <LegendSwatch kind="neighbor" label="connected" />
+          <div className="absolute bottom-3 left-3 flex items-center gap-3 px-2.5 py-1.5 rounded-md bg-bg/90 border border-bd text-2xs font-mono text-t2">
+            <LegendSwatch kind="main" label={t("sidebar.graph.legendMain")} />
+            <LegendSwatch kind="active" label={t("sidebar.graph.legendActive")} />
+            <LegendSwatch kind="neighbor" label={t("sidebar.graph.legendNeighbor")} />
           </div>
         )}
         {expanded && graph.links.length > 0 && (
           <div
-            className="absolute top-14 left-3 flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-bg/90 backdrop-blur border border-bd text-2xs font-mono text-t2"
+            className="absolute top-14 left-3 flex flex-col gap-0.5 px-2.5 py-2 rounded-md bg-bg/90 border border-bd text-2xs font-mono text-t2"
             onMouseLeave={() => setHighlightType(null)}
           >
             <div className="font-serif italic text-[10px] text-t3 mb-1">
-              hover a kind to filter
+              {t("sidebar.graph.legendHint")}
             </div>
             <LinkLegend
               color="var(--yel)"
-              label="supports"
+              label={t("sidebar.graph.legendSupports")}
               onHover={() => setHighlightType("supports")}
               active={highlightType === "supports"}
             />
             <LinkLegend
               color="var(--danger)"
-              label="challenges"
+              label={t("sidebar.graph.legendChallenges")}
               onHover={() => setHighlightType("challenges")}
               active={highlightType === "challenges"}
             />
             <LinkLegend
               color="var(--yeld)"
-              label="came from"
+              label={t("sidebar.graph.legendCameFrom")}
               onHover={() => setHighlightType("came-from")}
               active={highlightType === "came-from"}
             />
             <LinkLegend
               color="var(--ch2)"
-              label="open question"
+              label={t("sidebar.graph.legendOpenQuestion")}
               dashed
               onHover={() => setHighlightType("open-question")}
               active={highlightType === "open-question"}
@@ -1164,7 +1194,7 @@ function GraphView({
         {expanded && (
           <div className="absolute bottom-3 right-3 flex items-center justify-end">
             <div className="text-2xs text-t3 font-mono hidden md:block">
-              scroll to zoom · drag to pan · click a node to open
+              {t("sidebar.graph.controlsHint")}
             </div>
           </div>
         )}
@@ -1352,7 +1382,7 @@ function LegendSwatch({ kind, label }: { kind: "main" | "active" | "neighbor"; l
   const styles: Record<typeof kind, React.CSSProperties> = {
     main: {
       background: "var(--s2)",
-      border: "2px solid #D4A04A",
+      border: "2px solid var(--home-ring)",
     },
     active: {
       background: "var(--yel)",
@@ -1444,6 +1474,7 @@ function wrapLabel(s: string, maxChars: number, maxLines: number): string[] {
 const COACH_DISMISS_KEY = "yarrow.graphCoach.dismissed";
 
 function CoachMarks({ totalLinks, expanded }: { totalLinks: number; expanded: boolean }) {
+  const t = useT();
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(COACH_DISMISS_KEY) === "true";
@@ -1470,7 +1501,7 @@ function CoachMarks({ totalLinks, expanded }: { totalLinks: number; expanded: bo
           <path d="M4.6 7h4.8M8.2 5.4L9.4 7 8.2 8.6" />
         </svg>
       ),
-      text: "Click “connect” in the toolbar, then drag one note onto another to link them. Flip back to view mode when you're done.",
+      text: t("sidebar.graph.coachTip1"),
     },
     {
       icon: (
@@ -1479,7 +1510,7 @@ function CoachMarks({ totalLinks, expanded }: { totalLinks: number; expanded: bo
           <path d="M7 2v1.5M7 10.5V12M2 7h1.5M10.5 7H12" />
         </svg>
       ),
-      text: "Click any note to center the graph on it — neighbors pull closer, distant ideas fade back.",
+      text: t("sidebar.graph.coachTip2"),
     },
     {
       icon: (
@@ -1487,33 +1518,33 @@ function CoachMarks({ totalLinks, expanded }: { totalLinks: number; expanded: bo
           <path d="M2 7L6 3M2 7L6 11M2 7H12M12 7L8 3M12 7L8 11" />
         </svg>
       ),
-      text: "Shift+drag on empty space to lasso several notes — then tag them or add them to a path in one move.",
+      text: t("sidebar.graph.coachTip3"),
     },
   ];
 
   return (
     <div
-      className={`absolute z-10 ${expanded ? "top-20 right-6 w-[320px]" : "bottom-3 right-3 w-[260px]"} bg-bg/95 backdrop-blur border border-bd2 rounded-lg shadow-xl p-3 text-2xs animate-fadeIn`}
+      className={`absolute z-10 ${expanded ? "top-20 right-6 w-[320px]" : "bottom-3 right-3 w-[260px]"} bg-bg/95 border border-bd2 rounded-lg shadow-xl p-3 text-2xs animate-fadeIn`}
       // Don't swallow graph clicks; the dismiss button handles its own click.
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="flex items-baseline justify-between mb-2">
         <div className="font-serif italic text-[11px] text-t3">
-          Your graph is still growing —
+          {t("sidebar.graph.coachTitle")}
         </div>
         <button
           onClick={dismiss}
           className="text-t3 hover:text-char transition text-[10px]"
-          title="Hide these tips"
+          title={t("sidebar.graph.coachDismissTitle")}
         >
-          dismiss
+          {t("sidebar.graph.coachDismiss")}
         </button>
       </div>
       <ul className="space-y-2">
-        {tips.map((t, i) => (
+        {tips.map((tip, i) => (
           <li key={i} className="flex items-start gap-2 text-t2 leading-snug">
-            <span className="mt-[1px] text-yeld shrink-0">{t.icon}</span>
-            <span>{t.text}</span>
+            <span className="mt-[1px] text-yeld shrink-0">{tip.icon}</span>
+            <span>{tip.text}</span>
           </li>
         ))}
       </ul>
@@ -1545,6 +1576,7 @@ function ConnectPopover({
   onPick: (type: LinkType) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCancel();
@@ -1572,20 +1604,19 @@ function ConnectPopover({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="font-serif italic text-[11px] text-t3 mb-2 leading-snug">
-        connect <span className="text-char not-italic">{data.fromTitle}</span>{" "}
-        to <span className="text-char not-italic">{data.toTitle}</span> as…
+        {t("sidebar.graph.connectAsPrefix")}<span className="text-char not-italic">{data.fromTitle}</span>{t("sidebar.graph.connectAsTo")}<span className="text-char not-italic">{data.toTitle}</span>{t("sidebar.graph.connectAsSuffix")}
       </div>
       <div className="grid grid-cols-2 gap-1.5">
-        <ConnectTypeBtn label="supports" color="--yel" onClick={() => onPick("supports")} />
-        <ConnectTypeBtn label="challenges" color="--danger" onClick={() => onPick("challenges")} />
-        <ConnectTypeBtn label="came from" color="--yeld" onClick={() => onPick("came-from")} />
-        <ConnectTypeBtn label="open question" color="--ch2" onClick={() => onPick("open-question")} />
+        <ConnectTypeBtn label={t("sidebar.graph.legendSupports")} color="--yel" onClick={() => onPick("supports")} />
+        <ConnectTypeBtn label={t("sidebar.graph.legendChallenges")} color="--danger" onClick={() => onPick("challenges")} />
+        <ConnectTypeBtn label={t("sidebar.graph.legendCameFrom")} color="--yeld" onClick={() => onPick("came-from")} />
+        <ConnectTypeBtn label={t("sidebar.graph.legendOpenQuestion")} color="--ch2" onClick={() => onPick("open-question")} />
       </div>
       <button
         onClick={onCancel}
         className="mt-2 text-2xs text-t3 hover:text-char transition block"
       >
-        cancel
+        {t("sidebar.graph.connectCancel")}
       </button>
     </div>
   );
@@ -1632,6 +1663,7 @@ function LassoActionBar({
   onAddToPath: (path: string) => void;
   onClear: () => void;
 }) {
+  const t = useT();
   const [mode, setMode] = useState<"idle" | "tag" | "path">("idle");
   const [tagValue, setTagValue] = useState("");
   return (
@@ -1640,7 +1672,7 @@ function LassoActionBar({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <span className="font-serif italic text-2xs text-t3">
-        {count} selected
+        {t("sidebar.graph.lassoSelected", { count: String(count) })}
       </span>
       <span className="text-t3">·</span>
       {mode === "idle" && (
@@ -1649,15 +1681,15 @@ function LassoActionBar({
             onClick={() => setMode("tag")}
             className="px-2 py-1 rounded text-t2 hover:bg-s2 hover:text-char transition"
           >
-            Tag…
+            {t("sidebar.graph.lassoTag")}
           </button>
           <button
             onClick={() => setMode("path")}
             className="px-2 py-1 rounded text-t2 hover:bg-s2 hover:text-char transition"
             disabled={pathNames.length === 0}
-            title={pathNames.length === 0 ? "Create a path first" : undefined}
+            title={pathNames.length === 0 ? t("sidebar.graph.lassoPathDisabled") : undefined}
           >
-            Add to path…
+            {t("sidebar.graph.lassoPath")}
           </button>
         </>
       )}
@@ -1665,8 +1697,8 @@ function LassoActionBar({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            const t = tagValue.trim().replace(/^#/, "");
-            if (t) onApplyTag(t);
+            const tag = tagValue.trim().replace(/^#/, "");
+            if (tag) onApplyTag(tag);
           }}
           className="flex items-center gap-1"
         >
@@ -1674,14 +1706,14 @@ function LassoActionBar({
             autoFocus
             value={tagValue}
             onChange={(e) => setTagValue(e.target.value)}
-            placeholder="tag name"
+            placeholder={t("sidebar.graph.lassoTagPlaceholder")}
             className="px-2 py-1 bg-s1 border border-bd rounded text-char text-2xs focus:outline-none focus:border-yeld w-[140px]"
           />
           <button
             type="submit"
             className="px-2 py-1 bg-char text-bg rounded text-2xs hover:bg-yeld transition"
           >
-            apply
+            {t("sidebar.graph.lassoApply")}
           </button>
         </form>
       )}
@@ -1696,7 +1728,7 @@ function LassoActionBar({
           defaultValue=""
         >
           <option value="" disabled>
-            pick a path…
+            {t("sidebar.graph.lassoPickPath")}
           </option>
           {pathNames.map((n) => (
             <option key={n} value={n}>
@@ -1709,7 +1741,7 @@ function LassoActionBar({
         onClick={onClear}
         className="ml-1 text-2xs text-t3 hover:text-char transition"
       >
-        clear
+        {t("sidebar.graph.lassoClear")}
       </button>
     </div>
   );

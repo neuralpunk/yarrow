@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/tauri";
 import type { NoteSummary, PathCollection, PathCollectionsView } from "../lib/types";
+import { useT } from "../lib/i18n";
 
 interface Props {
   open: boolean;
@@ -26,6 +27,7 @@ const STAR_KEY = (workspaceTag: string) => `yarrow.matrixStarred:${workspaceTag}
 export default function DecisionMatrix({
   open, onClose, notes, initialCollections, currentPathName, onOpenNote,
 }: Props) {
+  const t = useT();
   const [collections, setCollections] = useState<PathCollection[]>(initialCollections ?? []);
   const [filter, setFilter] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
@@ -142,7 +144,7 @@ export default function DecisionMatrix({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-char/30 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-char/30 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
@@ -151,33 +153,33 @@ export default function DecisionMatrix({
       >
         <div className="px-5 py-4 border-b border-bd flex items-baseline gap-3">
           <div>
-            <div className="font-serif text-xl text-char">Decision matrix</div>
+            <div className="font-serif text-xl text-char">{t("paths.matrix.title")}</div>
             <div className="text-2xs text-t3 mt-0.5">
-              Star the notes you can't live without, then read each path's column to see who satisfies the most.
+              {t("paths.matrix.subtitle")}
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2 text-xs">
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="filter notes…"
+              placeholder={t("paths.matrix.filterPlaceholder")}
               className="px-2.5 py-1 bg-s1 border border-bd rounded text-char w-44 outline-none focus:border-yel"
             />
             <label className="flex items-center gap-1.5 cursor-pointer text-t2">
               <input type="checkbox" checked={showOnlyStarred} onChange={(e) => setShowOnlyStarred(e.target.checked)} />
-              <span>Only ★ rows</span>
+              <span>{t("paths.matrix.onlyStars")}</span>
             </label>
           </div>
         </div>
 
         {tagCounts.length > 0 && (
           <div className="px-5 py-2 border-b border-bd flex items-center gap-1.5 flex-wrap text-2xs">
-            <span className="text-t3 font-mono mr-1">tags:</span>
+            <span className="text-t3 font-mono mr-1">{t("paths.matrix.tagsLabel")}</span>
             <button
               onClick={() => setTagFilter(null)}
               className={`px-2 py-0.5 rounded-full ${tagFilter === null ? "bg-yel text-on-yel" : "bg-s2 text-t2 hover:bg-s3"}`}
             >
-              all
+              {t("paths.matrix.allTags")}
             </button>
             {tagCounts.slice(0, 12).map(([t, n]) => (
               <button
@@ -199,7 +201,7 @@ export default function DecisionMatrix({
                   className="text-left px-3 align-bottom border-b border-bd font-serif font-normal text-yeld text-xs sticky left-0 bg-yelp z-10 min-w-[260px]"
                   style={{ height: 150 }}
                 >
-                  <span className="inline-block pb-2">Note</span>
+                  <span className="inline-block pb-2">{t("paths.matrix.colHeader")}</span>
                 </th>
                 {collections.map((c) => {
                   const isCurrent = c.name === currentPathName;
@@ -228,7 +230,7 @@ export default function DecisionMatrix({
                           transformOrigin: "bottom left",
                           whiteSpace: "nowrap",
                         }}
-                        title={`${c.name} — click to sort rows by membership · click again to flip · click again to clear`}
+                        title={t("paths.matrix.colSortTitle", { name: c.name })}
                       >
                         <span
                           className={`font-serif text-[13px] leading-none ${
@@ -252,7 +254,7 @@ export default function DecisionMatrix({
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={1 + collections.length} className="text-center text-t3 italic py-10">
-                    No notes match.
+                    {t("paths.matrix.empty")}
                   </td>
                 </tr>
               ) : rows.map((n) => {
@@ -267,7 +269,7 @@ export default function DecisionMatrix({
                         <button
                           onClick={() => toggleStar(n.slug)}
                           className={`shrink-0 text-base leading-none transition-colors ${isStar ? "text-yeld" : "text-t3 hover:text-yel"}`}
-                          title={isStar ? "Unstar (no longer must-have)" : "Mark as must-have"}
+                          title={isStar ? t("paths.matrix.starOn") : t("paths.matrix.starOff")}
                         >
                           {isStar ? "★" : "☆"}
                         </button>
@@ -313,13 +315,13 @@ export default function DecisionMatrix({
 
         <div className="px-5 py-3 border-t border-bd flex justify-between items-center text-2xs text-t3">
           <div>
-            ✓ note is on the path · ✗ a starred note is missing · ★ marks a must-have row
+            {t("paths.matrix.legend")}
           </div>
           <button
             onClick={onClose}
             className="text-xs px-3 py-1.5 rounded bg-s2 text-t2 hover:bg-s3 hover:text-char"
           >
-            Close
+            {t("paths.matrix.close")}
           </button>
         </div>
       </div>
@@ -331,6 +333,7 @@ export default function DecisionMatrix({
  *  cleanly and keep the marks legible at every UI size — text glyphs
  *  varied a lot across font fallbacks. */
 function CellMark({ inPath, isStar }: { inPath: boolean; isStar: boolean }) {
+  const t = useT();
   if (inPath) {
     // Star rows show a chunkier check in the accent colour; non-star
     // rows still show a check, just thinner and quieter.
@@ -341,7 +344,7 @@ function CellMark({ inPath, isStar }: { inPath: boolean; isStar: boolean }) {
         width="20" height="20" viewBox="0 0 20 20"
         fill="none" stroke={color} strokeWidth={stroke}
         strokeLinecap="round" strokeLinejoin="round"
-        aria-label="present"
+        aria-label={t("paths.matrix.cellPresent")}
         style={{ display: "inline-block", verticalAlign: "middle" }}
       >
         <path d="M4 10.5 L8.5 15 L16 6" />
@@ -355,7 +358,7 @@ function CellMark({ inPath, isStar }: { inPath: boolean; isStar: boolean }) {
         width="20" height="20" viewBox="0 0 20 20"
         fill="none" stroke="var(--danger)" strokeWidth={3}
         strokeLinecap="round"
-        aria-label="missing must-have"
+        aria-label={t("paths.matrix.cellMissing")}
         style={{ display: "inline-block", verticalAlign: "middle" }}
       >
         <path d="M5 5 L15 15 M15 5 L5 15" />
@@ -365,7 +368,7 @@ function CellMark({ inPath, isStar }: { inPath: boolean; isStar: boolean }) {
   // Quiet dot for "this note isn't on this path, and isn't starred."
   return (
     <span
-      aria-label="not on this path"
+      aria-label={t("paths.matrix.cellAbsent")}
       className="inline-block w-1.5 h-1.5 rounded-full bg-bd2 align-middle"
     />
   );

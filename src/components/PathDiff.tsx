@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/tauri";
+import { useT } from "../lib/i18n";
 
 interface Props {
   currentPath: string;
@@ -44,6 +45,7 @@ export default function PathDiff({ currentPath, otherPath, onClose }: Props) {
   const [other, setOther] = useState<Snap[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const t = useT();
 
   useEffect(() => {
     (async () => {
@@ -99,10 +101,10 @@ export default function PathDiff({ currentPath, otherPath, onClose }: Props) {
   const selectedChange = selected ? changes.find((c) => c.slug === selected) : differing[0];
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg/95 backdrop-blur-sm flex flex-col animate-fadeIn">
+    <div className="fixed inset-0 z-50 bg-bg/95 flex flex-col animate-fadeIn">
       <div className="flex items-center px-5 py-3 border-b border-bd bg-s1">
         <div className="font-serif text-lg text-char">
-          Compare paths
+          {t("paths.diff.title")}
         </div>
         <div className="ml-3 text-xs text-t2">
           <span className="text-char font-medium">{currentPath}</span>
@@ -113,18 +115,21 @@ export default function PathDiff({ currentPath, otherPath, onClose }: Props) {
           onClick={onClose}
           className="ml-auto px-3 py-1 text-xs text-t2 hover:text-char"
         >
-          close
+          {t("paths.diff.close")}
         </button>
       </div>
 
-      {err && <div className="p-4 text-sm text-danger">Could not load: {err}</div>}
+      {err && <div className="p-4 text-sm text-danger">{t("paths.diff.loadError", { message: err })}</div>}
 
       {!err && (
         <div className="flex-1 min-h-0 grid grid-cols-[280px_1fr_1fr] overflow-hidden">
           <aside className="border-r border-bd bg-s1/60 overflow-y-auto">
             <div className="px-4 py-3 border-b border-bd">
               <div className="text-2xs text-t3 font-mono">
-                {differing.length} differ · {changes.length - differing.length} identical
+                {t("paths.diff.summary", {
+                  differing: String(differing.length),
+                  identical: String(changes.length - differing.length),
+                })}
               </div>
             </div>
             <ul className="p-2 space-y-0.5">
@@ -152,7 +157,7 @@ export default function PathDiff({ currentPath, otherPath, onClose }: Props) {
               ))}
               {differing.length === 0 && (
                 <li className="px-3 py-4 text-xs text-t3 italic">
-                  These paths have identical notes.
+                  {t("paths.diff.identical")}
                 </li>
               )}
             </ul>
@@ -160,15 +165,15 @@ export default function PathDiff({ currentPath, otherPath, onClose }: Props) {
 
           <Pane
             title={currentPath}
-            label="current"
+            label={t("paths.diff.labelCurrent")}
             body={selectedChange?.a ?? ""}
-            empty={selectedChange?.kind === "added" ? "Not on this path." : undefined}
+            empty={selectedChange?.kind === "added" ? t("paths.diff.notOnPath") : undefined}
           />
           <Pane
             title={otherPath}
-            label="other"
+            label={t("paths.diff.labelOther")}
             body={selectedChange?.b ?? ""}
-            empty={selectedChange?.kind === "removed" ? "Not on this path." : undefined}
+            empty={selectedChange?.kind === "removed" ? t("paths.diff.notOnPath") : undefined}
           />
         </div>
       )}
