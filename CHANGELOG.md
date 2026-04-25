@@ -6,6 +6,16 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.1.1] — 2026-04-25
+
+macOS scroll fix. Same-day patch on top of 2.1.0.
+
+### Fixed
+
+- **macOS document-scroll regression.** On macOS Tahoe with `decorations: false`, the webview occasionally reported its viewport a few pixels taller than the actual visible content area. Combined with the previous default of `overflow: visible` on `html` / `body` / `#root`, that turned the entire window into a scrollable webpage: a two-finger trackpad swipe up or down would shift the whole app, hiding the status bar (notes count, paths count, sync pill, off-server indicator) and the sidebar's utility row (Journal, Activity, Trash, Settings) below the visible edge. Adding `overflow: hidden` on `html` / `body` / `#root` plus `position: fixed; inset: 0` on `#root` pins the root exactly to the viewport so document-level scrolling is mechanically impossible. Yarrow's own internal scroll containers (note list, Settings panes, editor scroller, modal bodies) are unaffected — they each have their own `overflow-y: auto`.
+- **Status bar `shrink-0`.** Defence in depth. The 28 px status bar at the bottom of AppShell gains `shrink-0` so a constrained flex column can never squeeze it out of view, regardless of what an over-tall body might do upstream.
+- **`html` / `body` / `#root` height tightening.** Switched from `min-height: 100dvh` to `height: 100dvh`, so the surface is exactly viewport-tall — never larger. Combined with `overflow: hidden`, this closes every path that previously let document overflow accumulate.
+
 ## [2.1.0] — 2026-04-25
 
 A warmth + workflow release. 75 bundled kits across nine categories, a research workflow with `@cite` + BibTeX import, a privacy-first clinical surface with on-device PHI scanning + air-gapped sync, optional sidebar folders, three UI languages, and a substantial pass on responsiveness, security, and data-leak hardening.

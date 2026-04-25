@@ -3396,8 +3396,12 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         );
       })()}
 
-      {/* Status bar */}
-      <div className="h-7 bg-s2 border-t border-bd flex items-center px-3 text-2xs text-t2 gap-3 font-mono">
+      {/* Status bar — `shrink-0` so a constrained flex column never
+          squeezes its 28 px out of view. Without this, an over-tall
+          body in the editor pane could push the status bar below the
+          window's bottom edge on macOS (where the webview's reported
+          height occasionally disagrees with the true content area). */}
+      <div className="h-7 shrink-0 bg-s2 border-t border-bd flex items-center px-3 text-2xs text-t2 gap-3 font-mono">
         <span>{t("appshell.status.notes", { count: String(notes.length) })}</span>
         <span className="text-t3">·</span>
         <span>{t("appshell.status.paths", { count: String(pathCount) })}</span>
