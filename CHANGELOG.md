@@ -6,6 +6,19 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.1.5] — 2026-04-25
+
+Two follow-ups to 2.1.4: a Linux duplicate-bar fix and a deeper macOS bottom-cutoff fix backed by additional research into how `titleBarStyle: "Overlay"` interacts with the webview viewport.
+
+### Fixed
+
+- **macOS bottom-cutoff (the real fix).** Switched `titleBarStyle: "Overlay"` → `titleBarStyle: "Transparent"`. With Overlay, the webview takes the full window and our HTML extends *under* the (overlaid) title bar — but Tauri's docs explicitly call out "the height of the title bar is different on different OS versions, which can lead to window controls and title not being where you expect," and that's exactly the class of bug the user kept hitting on macOS Tahoe: webview viewport overshooting the visible content area by the title-bar height delta and pushing the bottom off-screen, even in fullscreen. With Transparent, the title bar is still drawn (transparent background, traffic lights at the OS-standard position) but the webview is sized to the window minus the title bar — so 100dvh resolves to actually-visible content and nothing overflows. This also drops the explicit `trafficLightPosition` (no longer needed; OS uses its standard position).
+- **Linux duplicate "Yarrow" bar removed.** Fedora 43 (GNOME) does paint a native title bar with `decorations: true`, so our defensive custom Titlebar with min/max/close was rendering as a confusing second bar below the OS one. The custom Titlebar component now renders **only on macOS** — there it serves as the workspace identity strip ("Yarrow v2.1.5 · workspace name") just below the transparent OS title bar. On Linux and Windows, the native title bar carries the app's identity via its title text and there's no second bar.
+
+### Trade-off
+
+Linux and Windows users no longer see the workspace name in chrome — only in the sidebar's workspace switcher. The native title bar shows just "Yarrow." If we want workspace name back in the OS title bar, a future release can call `window.set_title()` on workspace switch to reflect the active workspace.
+
 ## [2.1.4] — 2026-04-25
 
 macOS rebuild from the ground up, after web research surfaced two upstream Tauri bugs that were the actual cause of every 2.1.x macOS regression.
