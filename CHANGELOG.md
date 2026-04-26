@@ -6,6 +6,21 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.1.6] — 2026-04-25
+
+macOS bottom-cutoff — really, this time. Diagnosis: both `titleBarStyle: "Overlay"` and `titleBarStyle: "Transparent"` set the underlying NSWindow's `.fullSizeContentView` style mask on macOS, which makes the WKWebView take the **full window height** including the title-bar region; the title bar is then drawn over the top of the webview. Our `100dvh` and `position: fixed; inset: 0` resolve to that full window height, so the layout's status bar lands ~28 px below the visible bottom edge — exactly the symptom we kept seeing across 2.1.0 → 2.1.5 in different forms.
+
+### Fixed
+
+- **macOS bottom-cutoff (the real fix).** Removed `titleBarStyle: "Transparent"` from `tauri.conf.json`. With no `titleBarStyle` at all, macOS uses the default `Visible` style which does **not** set `.fullSizeContentView`: the webview is sized to (window − title bar) and the visible content area matches what `100dvh` reports. The status bar now lands inside the visible window. This was tried in 2.1.3 but the buggy `tauri-plugin-window-state` was still poisoning state at that point; with the plugin gone since 2.1.4, plain `decorations: true` finally has the runway to do its job.
+- **Belt-and-suspenders flex-chain fix.** The App-level wrapper in `App.tsx` is now an explicit `flex flex-col` container, and `AppShell` uses `flex-1 min-h-0` instead of `h-full`. With only `flex-1` on the wrapper and `h-full` on AppShell, some browsers couldn't resolve `h-full` against an indefinite flex-child height and the layout would collapse to content size — letting the body pane spill past the viewport bottom and clip the status bar. The new chain has a definite flex-computed height at every level, so the status bar lands at the visible bottom on every browser engine regardless of what the OS does.
+
+- **Custom Titlebar identity strip removed on every platform.** With `decorations: true` painting a native title bar on macOS, Windows, and Linux alike, the second-bar duplication that bit Linux in 2.1.4 would have bitten macOS in 2.1.6 too. The custom `<Titlebar>` component is now a no-op on every platform; the OS's native title bar is the only thing at the top of the window. Workspace name is still visible in the sidebar's workspace switcher; version is in Settings → About.
+
+### Trade-off
+
+Every platform now gets its standard native title bar — traffic lights on macOS, native min/max/close on Windows, GTK/KDE-themed bar on Linux. It's the boring, native-feeling desktop app — same look you'd get from any other open-source app that doesn't pay Apple's $99/yr to do custom window chrome. We can revisit a stylish branded title bar in a future release once macOS Tahoe's NSWindow quirks have a documented workaround upstream.
+
 ## [2.1.5] — 2026-04-25
 
 Two follow-ups to 2.1.4: a Linux duplicate-bar fix and a deeper macOS bottom-cutoff fix backed by additional research into how `titleBarStyle: "Overlay"` interacts with the webview viewport.

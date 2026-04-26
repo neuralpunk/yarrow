@@ -2463,8 +2463,14 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const stableRootName = collectionsView?.root ?? "main";
 
   return (
-    <div className="h-full flex flex-col bg-bg text-char">
-      <div className="flex-1 flex overflow-hidden">
+    // `flex-1 min-h-0` (not `h-full`) so AppShell fills its flex
+    // parent (the wrapper in App.tsx is now `flex flex-col`) with a
+    // definite height. With `h-full` of a flex child, some browsers
+    // failed to resolve the height correctly and the status bar
+    // ended up below the visible edge — symptom that bit macOS in
+    // every 2.1.x release.
+    <div className="flex-1 min-h-0 flex flex-col bg-bg text-char">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
         {!focusMode && (
           <aside className="w-[268px] shrink-0 bg-s1 border-r border-bd flex flex-col overflow-hidden">
             <div className="relative px-3 pt-4 pb-3">

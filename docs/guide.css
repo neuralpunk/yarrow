@@ -11,55 +11,183 @@
   padding-bottom: 80px;
   align-items: start;
 }
+/* ── mobile floating "Contents" toggle (hidden on desktop) ── */
+.toc-toggle {
+  display: none;
+}
+.toc-close {
+  display: none;
+}
+.toc-backdrop {
+  display: none;
+}
+
 @media (max-width: 920px) {
-  .guide-layout { grid-template-columns: 1fr; gap: 16px; padding-top: 16px; padding-bottom: 48px; }
-  /* On mobile the sidebar TOC turns into a sticky-top accordion so the
-     index is one tap away without eating screen real estate. The
-     `<details>` wrapper is added by the inline guard script in
-     user-guide.html for browsers that support it; the CSS here
-     handles the stickiness, padding, and hairline. */
-  .guide-toc {
-    position: sticky !important;
-    top: 0;
-    z-index: 20;
-    max-height: none !important;
-    background: color-mix(in srgb, var(--bg) 92%, transparent);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border-right: 0;
-    border-bottom: 1px solid var(--bd);
-    padding: 10px var(--gutter);
-    margin: 0 calc(-1 * var(--gutter));
+  .guide-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding-top: 16px;
+    padding-bottom: 48px;
   }
-  .guide-toc nav { gap: 12px; max-height: 60vh; overflow-y: auto; padding-bottom: 4px; }
-  .guide-toc .toc-head { display: none; }
-  /* If the TOC has a <details> wrapper (mobile-only progressive
-     enhancement), use it for collapse. Falls back gracefully. */
-  .guide-toc details > summary {
-    list-style: none;
-    cursor: pointer;
-    font-family: var(--mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    color: var(--yel);
-    padding: 6px 0;
-    display: flex;
+
+  /* Floating "Contents" pill — pinned to the left edge, just below
+     the sticky masthead so the wordmark isn't covered. The masthead
+     is ~60–70 px tall on mobile, so we offset by ~78 px from the top.
+     Padded for a comfortable thumb tap (44 px hit target per Apple
+     HIG / Material 3). */
+  .toc-toggle {
+    display: inline-flex;
     align-items: center;
     gap: 8px;
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 78px);
+    left: calc(env(safe-area-inset-left, 0px) + 12px);
+    z-index: 50;
+    padding: 9px 14px 9px 11px;
+    min-height: 44px;
+    border-radius: 999px;
+    border: 1px solid var(--bd2);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    color: var(--char);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 6px 18px -10px rgba(42, 35, 28, 0.32);
+    transition: opacity 180ms ease, transform 180ms ease,
+      background 180ms ease;
   }
-  .guide-toc details > summary::-webkit-details-marker { display: none; }
-  .guide-toc details > summary::after {
-    content: "";
-    width: 7px; height: 7px;
-    border-right: 1.4px solid var(--yel);
-    border-bottom: 1.4px solid var(--yel);
-    transform: rotate(45deg) translateX(-2px);
-    transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
-    margin-left: auto;
+  .toc-toggle:hover {
+    background: color-mix(in srgb, var(--bg) 98%, transparent);
   }
-  .guide-toc details[open] > summary::after {
-    transform: rotate(-135deg) translateY(-2px) translateX(2px);
+  .toc-toggle:active { transform: scale(0.97); }
+  .toc-toggle svg { color: var(--yel); }
+  /* When the drawer is open, fade the hamburger out so it doesn't
+     compete with the in-drawer close button. */
+  html.toc-open .toc-toggle {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Drawer — slides in from the left edge. Until JS sets the open
+     class on <html>, it sits offscreen via translateX(-100%). */
+  .guide-toc {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(86vw, 320px);
+    max-height: none !important;
+    background: var(--bg);
+    border-right: 1px solid var(--bd);
+    border-bottom: 0;
+    padding: calc(env(safe-area-inset-top, 0px) + 18px) 18px
+      calc(env(safe-area-inset-bottom, 0px) + 18px) 18px;
+    margin: 0;
+    z-index: 60;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    transform: translateX(-100%);
+    transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: 8px 0 28px -12px rgba(42, 35, 28, 0);
+  }
+  html.toc-open .guide-toc {
+    transform: translateX(0);
+    box-shadow: 8px 0 28px -12px rgba(42, 35, 28, 0.45);
+  }
+
+  /* In-drawer close button (×). Top-right of the drawer, hidden on
+     desktop. Tap target ≥ 36 × 36. */
+  .toc-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    background: transparent;
+    color: var(--t2);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 160ms ease, color 160ms ease;
+  }
+  .toc-close:hover {
+    background: var(--s1);
+    color: var(--char);
+  }
+
+  /* Backdrop — semi-transparent dim that catches taps to dismiss
+     the drawer. Stacking just below the drawer. */
+  .toc-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(28, 22, 14, 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease;
+  }
+  html.toc-open .toc-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Body scroll-lock when drawer is open. Without this the page
+     under the drawer scrolls behind it on touch, which feels
+     broken — and on iOS can let the drawer's contents drift out
+     of position. */
+  html.toc-open,
+  html.toc-open body {
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+
+  /* Tap targets in the drawer: bigger spacing + larger hit area
+     so links are comfortable to thumb. Also a slightly larger
+     line-height so they don't read as cramped. */
+  .guide-toc nav {
+    gap: 18px;
+    padding-top: 28px;
+  }
+  .guide-toc a {
+    padding: 9px 8px;
+    margin-left: -8px;
+    font-size: 14.5px;
+    line-height: 1.35;
+    border-radius: 6px;
+  }
+  .guide-toc .toc-group { gap: 2px; }
+  .guide-toc .toc-group-h {
+    font-size: 13px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+  .guide-toc .toc-head {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--yel);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--bd);
+    margin-bottom: 4px;
+    padding-right: 40px; /* leave room for the close button */
+  }
+
+  /* The legacy <details> wrapper is forced-open by the JS and its
+     summary row is hidden — the drawer's own header carries the
+     "Contents" label now. */
+  .guide-toc details > summary {
+    display: none;
   }
 }
 

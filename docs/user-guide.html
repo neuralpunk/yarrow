@@ -89,12 +89,49 @@
   </div>
 </header>
 
+<!--
+  Mobile-only floating "Contents" toggle. Pinned to the top-left of
+  the viewport on screens < 920 px; hidden on desktop. Tapping it
+  slides the TOC drawer in from the left edge, with a backdrop that
+  closes the drawer on tap. Aria-controls / aria-expanded keep
+  screen readers in sync with the visual state.
+-->
+<button
+  type="button"
+  class="toc-toggle"
+  aria-controls="guide-toc-aside"
+  aria-expanded="false"
+  aria-label="Open contents"
+>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+    <line x1="4" y1="6" x2="20" y2="6" />
+    <line x1="4" y1="12" x2="20" y2="12" />
+    <line x1="4" y1="18" x2="20" y2="18" />
+  </svg>
+  <span>Contents</span>
+</button>
+
+<!-- Backdrop. Sits behind the drawer when it's open; transparent
+     and pointer-events-none otherwise. Tap to dismiss. -->
+<div class="toc-backdrop" aria-hidden="true"></div>
+
 <!-- ═══ guide layout — TOC + content ═══ -->
 <div class="guide-layout page">
 
-  <!-- ── sticky table of contents ── -->
-  <aside class="guide-toc" aria-label="Contents">
+  <!-- ── sticky table of contents (desktop) /
+         slide-out drawer (mobile) ── -->
+  <aside id="guide-toc-aside" class="guide-toc" aria-label="Contents">
     <div class="toc-head">Contents</div>
+    <button
+      type="button"
+      class="toc-close"
+      aria-label="Close contents"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+        <line x1="6" y1="6" x2="18" y2="18" />
+        <line x1="18" y1="6" x2="6" y2="18" />
+      </svg>
+    </button>
     <details class="toc-mobile-collapse" open>
     <summary>Contents</summary>
     <nav>
@@ -2568,33 +2605,84 @@ def hello():
     set(document.documentElement.getAttribute('data-theme') || 'light');
   })();
 
-  // ── on mobile, default the TOC `<details>` to closed so the
-  // first paint shows the guide content. On desktop it stays open
-  // (the summary row is hidden via CSS). We re-evaluate on resize
-  // so an orientation flip or window-drag does the right thing.
+  // ── mobile slide-out TOC drawer ──
+  // On screens <920 px the TOC turns into a fixed-position drawer
+  // that slides in from the left edge. We drive open/close by
+  // toggling `.toc-open` on <html> so CSS can:
+  //   · Move the drawer onto screen (`.guide-toc { transform }`)
+  //   · Show the backdrop (`.toc-backdrop { opacity / pointer-events }`)
+  //   · Lock body scroll (`html.toc-open { overflow: hidden }`)
+  //   · Update the toggle button's `aria-expanded`
+  //
+  // Close paths: tap the hamburger again, tap the backdrop, hit
+  // Escape, or tap any TOC link (so the user lands at the section).
+  // The `<details>` accordion that used to handle this on mobile is
+  // forced open and the summary hidden via CSS — kept in the DOM
+  // for desktop's invisible-grouping role.
   (function () {
-    var d = document.querySelector('.toc-mobile-collapse');
-    if (!d) return;
+    var html = document.documentElement;
+    var aside = document.getElementById('guide-toc-aside');
+    var toggle = document.querySelector('.toc-toggle');
+    var closeBtn = document.querySelector('.toc-close');
+    var backdrop = document.querySelector('.toc-backdrop');
+    var details = document.querySelector('.toc-mobile-collapse');
+    if (!aside || !toggle || !backdrop) return;
+
+    // Force the legacy <details> open so its content is always laid
+    // out — we drive visibility entirely via the drawer now.
+    if (details) details.open = true;
+
     var MQ = window.matchMedia('(max-width: 920px)');
-    var apply = function () {
-      // Don't fight the user — only change `open` on initial load /
-      // when crossing the breakpoint, never while a section is in
-      // active scroll-spy view.
-      d.open = !MQ.matches;
-    };
-    apply();
-    if (MQ.addEventListener) MQ.addEventListener('change', apply);
-    else if (MQ.addListener) MQ.addListener(apply);
-    // Tapping a TOC link on mobile should auto-collapse the menu so
-    // the user lands at the section without scrolling past the index.
-    d.addEventListener('click', function (e) {
+
+    function setOpen(open) {
+      if (open) {
+        html.classList.add('toc-open');
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.setAttribute('aria-label', 'Close contents');
+      } else {
+        html.classList.remove('toc-open');
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-label', 'Open contents');
+      }
+    }
+
+    toggle.addEventListener('click', function () {
+      setOpen(!html.classList.contains('toc-open'));
+    });
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function () { setOpen(false); });
+    }
+    backdrop.addEventListener('click', function () { setOpen(false); });
+
+    // Tap a TOC link → close the drawer so the user lands at the
+    // section. Defer the close by one frame so the in-page anchor
+    // jump fires first; otherwise removing the fixed-position
+    // drawer mid-jump confuses some Safari versions about the
+    // target's scroll-into-view position.
+    aside.addEventListener('click', function (e) {
       if (!MQ.matches) return;
       var t = e.target;
+      while (t && t !== aside && t.tagName !== 'A') t = t.parentNode;
       if (t && t.tagName === 'A') {
-        // Defer so the in-page anchor jump completes before collapse.
-        setTimeout(function () { d.open = false; }, 80);
+        requestAnimationFrame(function () { setOpen(false); });
       }
     });
+
+    // Escape closes the drawer.
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && html.classList.contains('toc-open')) {
+        setOpen(false);
+      }
+    });
+
+    // Crossing the desktop breakpoint while open would leave a
+    // half-state (drawer offscreen but body scroll-locked) — close
+    // proactively so desktop never inherits mobile-drawer state.
+    function onMediaChange() {
+      if (!MQ.matches) setOpen(false);
+    }
+    if (MQ.addEventListener) MQ.addEventListener('change', onMediaChange);
+    else if (MQ.addListener) MQ.addListener(onMediaChange);
   })();
 
   // ── highlight the active TOC link as you scroll ──

@@ -37,9 +37,19 @@ export default function App() {
             `decorations: true` setup, native window borders handle
             resize on every platform. */}
         <Titlebar />
-        <div className="flex-1 min-h-0">
+        {/* `flex flex-col` (not just `flex-1 min-h-0`) so the inner
+            child has an unambiguous flex-computed height. With only
+            `flex-1`, `h-full` on AppShell sometimes fails to resolve
+            in browsers where a flex item's height is "computed by
+            the algorithm" but not "definite," and the layout can
+            collapse to content height — which would let the editor
+            pane spill past the visible bottom edge and clip the
+            status bar. Adding `flex flex-col` here makes this wrapper
+            an explicit flex container and the layout chain
+            deterministic on every browser engine. */}
+        <div className="flex-1 min-h-0 flex flex-col">
           {loading ? (
-            <div className="h-full flex items-center justify-center text-t2">loading…</div>
+            <div className="flex-1 flex items-center justify-center text-t2">loading…</div>
           ) : !workspacePath ? (
             <Onboarding onReady={setWorkspacePath} />
           ) : (
