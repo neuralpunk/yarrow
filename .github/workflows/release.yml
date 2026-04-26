@@ -68,7 +68,14 @@ jobs:
             build-essential \
             curl \
             file \
-            wget
+            wget \
+            libfuse2
+          # `libfuse2` is needed by the `linuxdeploy` AppImage that
+          # tauri-action invokes to bundle Yarrow's own AppImage. The
+          # `ubuntu-22.04` runner image stopped shipping it a while
+          # back, so without this the build dies at the AppImage step
+          # with `failed to run linuxdeploy`. The deb and rpm bundles
+          # build fine without it (they don't invoke linuxdeploy).
 
       - name: Install npm dependencies
         run: npm ci
@@ -98,6 +105,14 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Belt-and-suspenders for the linuxdeploy AppImage step on
+          # Ubuntu CI runners. Even with libfuse2 installed,
+          # `APPIMAGE_EXTRACT_AND_RUN=1` makes any AppImage Tauri's
+          # bundler invokes self-extract instead of mounting via FUSE
+          # — which dodges sandboxing or kernel-module quirks the
+          # GitHub Actions runners occasionally surface. Recommended
+          # by the tauri-action docs as the standard CI fix.
+          APPIMAGE_EXTRACT_AND_RUN: 1
         with:
           tagName: ${{ steps.tag.outputs.tag }}
           releaseName: 'Yarrow ${{ steps.tag.outputs.version }}'
