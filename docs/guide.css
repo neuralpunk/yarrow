@@ -34,7 +34,13 @@
      the sticky masthead so the wordmark isn't covered. The masthead
      is ~60–70 px tall on mobile, so we offset by ~78 px from the top.
      Padded for a comfortable thumb tap (44 px hit target per Apple
-     HIG / Material 3). */
+     HIG / Material 3).
+     z-indexes are bumped into 4-figure territory because the page
+     has competing stacking contexts (body::before noise overlay,
+     masthead backdrop-filter, mix-blend-mode chrome) that on iOS
+     Safari have been observed to occasionally promote a sibling
+     above what the standard ordering predicts. Going to 9000-ish
+     keeps the drawer reliably on top regardless. */
   .toc-toggle {
     display: inline-flex;
     align-items: center;
@@ -42,7 +48,7 @@
     position: fixed;
     top: calc(env(safe-area-inset-top, 0px) + 78px);
     left: calc(env(safe-area-inset-left, 0px) + 12px);
-    z-index: 50;
+    z-index: 9050;
     padding: 9px 14px 9px 11px;
     min-height: 44px;
     border-radius: 999px;
@@ -74,7 +80,11 @@
   }
 
   /* Drawer — slides in from the left edge. Until JS sets the open
-     class on <html>, it sits offscreen via translateX(-100%). */
+     class on <html>, it sits offscreen via translateX(-100%).
+     Highest z-index of the mobile-overlay set so taps reliably
+     reach the drawer's links rather than the backdrop. Explicit
+     `pointer-events: auto` to override any inherited
+     `pointer-events: none` from the noise-overlay layer. */
   .guide-toc {
     position: fixed !important;
     top: 0;
@@ -88,12 +98,22 @@
     padding: calc(env(safe-area-inset-top, 0px) + 18px) 18px
       calc(env(safe-area-inset-bottom, 0px) + 18px) 18px;
     margin: 0;
-    z-index: 60;
+    z-index: 9100;
+    pointer-events: auto;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     transform: translateX(-100%);
     transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
     box-shadow: 8px 0 28px -12px rgba(42, 35, 28, 0);
+  }
+  /* Belt-and-suspenders: every interactive descendant of the drawer
+     stays clickable regardless of any inherited pointer-events
+     state. iOS Safari has been seen to inherit `pointer-events: none`
+     from a sibling stacking context in odd configurations; this rule
+     short-circuits any such inheritance for the drawer's contents. */
+  .guide-toc,
+  .guide-toc * {
+    pointer-events: auto;
   }
   html.toc-open .guide-toc {
     transform: translateX(0);
@@ -124,12 +144,13 @@
   }
 
   /* Backdrop — semi-transparent dim that catches taps to dismiss
-     the drawer. Stacking just below the drawer. */
+     the drawer. Stacking just below the drawer (z-index 9090 vs
+     9100), so the drawer always wins for clicks within its bounds. */
   .toc-backdrop {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 55;
+    z-index: 9090;
     background: rgba(28, 22, 14, 0.32);
     opacity: 0;
     pointer-events: none;

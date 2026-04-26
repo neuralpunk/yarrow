@@ -6,6 +6,23 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.1.7] — 2026-04-25
+
+macOS bottom-cutoff — final layer + Settings icon repositioned. After 2.1.6 made the editor's "This note connects to" footer visible on macOS Tahoe (a meaningful step), the status bar at the very bottom was still hidden. Web research surfaced two compounding upstream Tauri bugs that explain the residual ~28 px overflow:
+
+1. **`tauri-apps/tauri#6333`** — macOS treats the configured window height as **inclusive** of the title bar, while Linux and Windows treat it as **exclusive**. So `tauri.conf.json` `height: 900` is total-window-incl-title-bar on macOS but content-only on the others.
+2. **Tauri's docs caveat** — title-bar height varies across macOS versions. macOS Tahoe's NSWindow title bar is a different height from Sequoia's, and Tauri can't always infer it.
+
+Result: `100dvh` and `position: fixed; inset: 0` both resolved to a value that didn't match the actual visible content area in WKWebView. `window.innerHeight`, by contrast, reflects exactly what WKWebView has laid out for the document — i.e. the visible area.
+
+### Fixed
+
+- **JS-driven viewport height.** `main.tsx` now pins a `--vp-h` CSS custom property to `window.innerHeight` and re-syncs on `resize` / `orientationchange`. `html`, `body`, and `#root` use `height: var(--vp-h, 100dvh)` (with `100dvh` as the pre-JS fallback). `#root` is now `position: fixed; top: 0; left: 0; width: 100%; height: var(--vp-h)` — neither dimension depends on `100dvh` or `inset: 0` resolving correctly. The status bar finally lands inside the visible window on macOS Tahoe regardless of how WKWebView reports `100dvh`.
+
+### Right-rail tweak
+
+- **Settings icon moved up.** It used to live at the very bottom of the right rail (pushed there by a `flex-1` spacer). On macOS where earlier 2.1.x releases clipped the bottom of the visible area, the cog became unreachable. It's now placed just below the Scratchpad icon — with its own hairline divider above it so it still reads as a separate group — so you can always reach Settings even if the bottom 28 px somehow goes hidden.
+
 ## [2.1.6] — 2026-04-25
 
 macOS bottom-cutoff — really, this time. Diagnosis: both `titleBarStyle: "Overlay"` and `titleBarStyle: "Transparent"` set the underlying NSWindow's `.fullSizeContentView` style mask on macOS, which makes the WKWebView take the **full window height** including the title-bar region; the title bar is then drawn over the top of the webview. Our `100dvh` and `position: fixed; inset: 0` resolve to that full window height, so the layout's status bar lands ~28 px below the visible bottom edge — exactly the symptom we kept seeing across 2.1.0 → 2.1.5 in different forms.

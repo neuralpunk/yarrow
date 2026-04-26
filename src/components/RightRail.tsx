@@ -118,11 +118,20 @@ function RightRailInner({
         <ScratchpadIcon size={14} />
       </RailButton>
 
-      <div className="flex-1" />
+      {/* Settings used to live at the very bottom of the rail
+          (pushed there by `<div className="flex-1" />`). On platforms
+          where the OS / window-manager clipped the bottom of the
+          viewport the settings cog became unreachable, so we now
+          place it near the top half of the rail — just below
+          Scratchpad, with its own hairline divider so it still
+          reads as a distinct group. */}
+      <div className="w-5 h-px bg-bd my-1" />
 
       <RailButton active={false} onClick={onOpenSettings} label={t("sidebar.rail.settings")}>
         <SettingsIcon />
       </RailButton>
+
+      <div className="flex-1" />
     </aside>
   );
 }
