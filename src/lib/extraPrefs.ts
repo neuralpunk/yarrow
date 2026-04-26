@@ -18,7 +18,8 @@ export type ExtraKey =
   | "math"
   | "spell"
   | "imagePreview"
-  | "radialMenu";
+  | "radialMenu"
+  | "cooking";
 
 interface ExtraDescriptor {
   key: ExtraKey;
@@ -53,12 +54,28 @@ const DESCRIPTORS: Record<ExtraKey, ExtraDescriptor> = {
     key: "imagePreview",
     storageKey: "yarrow.extras.imagePreview",
     event: "yarrow:extras-imagePreview-changed",
+    // 2.2.0: defaulted on. With it off, paste/drop produced raw
+    // `![alt](attachments/…)` markdown — which read as "the image
+    // didn't get attached" even though the file was on disk and the
+    // ref was inserted. Inline preview is light enough to ship by
+    // default; users who want a strict text-first editor can still
+    // disable it from Settings → Writing extras.
+    defaultOn: true,
   },
   radialMenu: {
     key: "radialMenu",
     storageKey: "yarrow.extras.radialMenu",
     event: "yarrow:extras-radialMenu-changed",
     defaultOn: true,
+  },
+  cooking: {
+    key: "cooking",
+    storageKey: "yarrow.extras.cooking",
+    event: "yarrow:extras-cooking-changed",
+    // 2.2.0 round 2: default OFF. Most users aren't here for the
+    // baking flows; flipping this on enables the cook-mode toggle,
+    // inline timer picker, recipe URL clipper, and "add ingredients
+    // to shopping list" surface in one place.
   },
 };
 
@@ -116,6 +133,7 @@ export const useExtraMath = () => useExtra("math");
 export const useExtraSpell = () => useExtra("spell");
 export const useExtraImagePreview = () => useExtra("imagePreview");
 export const useExtraRadialMenu = () => useExtra("radialMenu");
+export const useExtraCooking = () => useExtra("cooking");
 
 /** Read every extra synchronously. Useful outside React for the editor
  *  bootstrap — we need the values at mount time, not via a hook. */
@@ -126,6 +144,7 @@ export function readAllExtras(): Record<ExtraKey, boolean> {
     spell: read("spell"),
     imagePreview: read("imagePreview"),
     radialMenu: read("radialMenu"),
+    cooking: read("cooking"),
   };
 }
 
@@ -165,7 +184,7 @@ export const EXTRAS: ExtraInfo[] = [
     label: "Inline image previews",
     blurb: "render ![](attachments/…) images beneath their markdown line",
     detail:
-      "Small chunk — the cost is opinionated: you'll see the image in the writing pane instead of the raw markdown. Off by default so the editor stays text-first.",
+      "Small chunk — the cost is opinionated: you'll see the image in the writing pane instead of the raw markdown. On by default; turn it off for a strict text-first editor.",
   },
   {
     key: "radialMenu",
@@ -174,5 +193,13 @@ export const EXTRAS: ExtraInfo[] = [
       "open a pie menu on right-click instead of a vertical list — faster once you learn the directions",
     detail:
       "On by default. Turn it off to get the plain linear context menu with the same actions — wikilink, table, new path, scratchpad, copy — just laid out as a standard drop-down.",
+  },
+  {
+    key: "cooking",
+    label: "Cooking additions",
+    blurb:
+      "inline timers, cook mode, recipe URL clipper, and the shopping-list flow",
+    detail:
+      "Off by default — most note-takers aren't here for the baking flows. Turn on to surface a cook-mode toggle on the right rail, the timer picker / clip recipe / send-to-shopping-list buttons in the Inserts menu, and the matching command-palette entries. Existing recipe notes work either way; this only controls whether the chrome is visible.",
   },
 ];

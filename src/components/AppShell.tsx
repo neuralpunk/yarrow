@@ -7,7 +7,7 @@ import { relativeTime, todayIso } from "../lib/format";
 import { prefetchHeavyChunks } from "../lib/prefetch";
 import { getCachedOrReadNote, invalidateAllNotes, invalidateNote } from "../lib/notePrefetch";
 import { SearchIcon, StatusDot, ChevronDownIcon, DeleteIcon, JournalIcon, ActivityIcon } from "../lib/icons";
-import { useShowRawMarkdown, useEditorFont } from "../lib/editorPrefs";
+import { useShowRawMarkdown, useEditorFont, useLivePreview, useCookMode } from "../lib/editorPrefs";
 // Imported for its module-level side effect: applies the saved UI font
 // and UI scale to the document before first paint, so chrome doesn't
 // flash the defaults on cold start.
@@ -24,9 +24,11 @@ import LinearContextMenu from "./Editor/LinearContextMenu";
 import {
   buildRadialInsertItems,
   buildRadialSelectionItems,
+  buildLinearInsertItems,
+  buildLinearSelectionItems,
   type RadialCallbacks,
 } from "./Editor/radialItems";
-import { useExtraRadialMenu } from "../lib/extraPrefs";
+import { useExtraRadialMenu, useExtraCooking } from "../lib/extraPrefs";
 import MainNotePrompt from "./MainNotePrompt";
 import type {
   BranchTopo,
@@ -45,8 +47,11 @@ import JournalCalendar from "./LeftSidebar/JournalCalendar";
 import Toolbar from "./Editor/Toolbar";
 import LinkedNotesList from "./RightSidebar/LinkedNotesList";
 import OpenQuestions from "./RightSidebar/OpenQuestions";
+import Outline from "./RightSidebar/Outline";
 import Transclusions from "./RightSidebar/Transclusions";
 import Modal from "./Modal";
+import TimerPills from "./TimerPills";
+import RecipeClipperModal from "./RecipeClipperModal";
 import QuotaBlockedModal from "./QuotaBlockedModal";
 import ForkMoment from "./ForkMoment";
 import GuidanceHost from "./Guidance/GuidanceHost";
@@ -182,6 +187,14 @@ const NoteEditor       = lazy(() => import("./Editor/NoteEditor"));
 const NoteReader       = lazy(() => import("./Editor/NoteReader"));
 const OnboardingHints  = lazy(() => import("./OnboardingHints"));
 const InlineDiffPane   = lazy(() => import("./InlineDiffPane"));
+// 2.2.0: Still Point press-and-hold modals. Both lazy because most users
+// won't fire either on first launch — the gesture has to be discovered.
+const QuickHandModal       = lazy(() => import("./Editor/center/QuickHandModal"));
+const ConstellationModal   = lazy(() => import("./Editor/center/ConstellationModal"));
+// 2.2.0: Inserts and Format radial-only container modals.
+const InsertsModal         = lazy(() => import("./Editor/center/InsertsModal"));
+const FormatModal          = lazy(() => import("./Editor/center/FormatModal"));
+const TimerPickerModal     = lazy(() => import("./Editor/center/TimerPickerModal"));
 
 /**
  * Tiny Suspense wrapper for lazy-loaded modals. Each overlay gets its own
@@ -229,6 +242,25 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     prewarmLazyChunks();
   }, []);
   const [showRawMarkdown, setShowRawMarkdown] = useShowRawMarkdown();
+  // 2.2.0 — split-pane live preview. Only takes effect in writing mode
+  // (showRawMarkdown=true); in reading mode the existing NoteReader
+  // already fills the pane on its own.
+  const [livePreview, setLivePreview] = useLivePreview();
+  // 2.2.0 — Cook mode (baker-friendly big-text rendered view).
+  const [cookMode, setCookMode] = useCookMode();
+  // 2.2.0 — Still Point press-and-hold modals. Each is independent state
+  // so a user could (in theory) bind both versions to different gestures
+  // without them clobbering one another.
+  const [quickHandOpen, setQuickHandOpen] = useState(false);
+  const [constellationModalOpen, setConstellationModalOpen] = useState(false);
+  // 2.2.0 Inserts & Format modals (opened only via the radial — the
+  // linear context menu inlines them as submenus instead).
+  const [insertsModalOpen, setInsertsModalOpen] = useState(false);
+  const [formatModalOpen, setFormatModalOpen] = useState<{ selection: string } | null>(null);
+  // 2.2.0 Recipe URL clipper modal.
+  const [recipeClipperOpen, setRecipeClipperOpen] = useState(false);
+  // 2.2.0 round 2 — timer picker (preset durations + custom).
+  const [timerPickerOpen, setTimerPickerOpen] = useState(false);
 
   const [config, setConfig] = useState<WorkspaceConfig | null>(null);
   const [mainNotePromptOpen, setMainNotePromptOpen] = useState(false);
@@ -398,7 +430,7 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   const [connectTarget, setConnectTarget] = useState("");
   const [connectType, setConnectType] = useState<LinkType>("supports");
   const [settingsOpen, setSettingsOpen] = useState<
-    { open: boolean; tab?: "appearance" | "writing" | "templates" | "sync" | "storage" | "security" | "workspace" | "shortcuts" | "about" }
+    { open: boolean; tab?: "appearance" | "writing" | "gestures" | "guidance" | "templates" | "sync" | "storage" | "security" | "workspace" | "shortcuts" | "about" }
   >({ open: false });
   const [confirmState, setConfirmState] = useState<{
     title: string;
@@ -484,6 +516,11 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   // Settings → Writing Extras; defaults on, flip off for the old
   // linear drop-down with the same items.
   const [radialMenuOn] = useExtraRadialMenu();
+  // 2.2.0 round 2 — cooking additions extra. When OFF, all the
+  // recipe / timer / shopping-list / cook-mode entry points hide
+  // themselves so users who don't bake aren't seeing the chrome.
+  // Existing in-note timer links keep working regardless.
+  const [cookingOn] = useExtraCooking();
   const [wikilinkPickerOpen, setWikilinkPickerOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [tagGraphOpen, setTagGraphOpen] = useState(false);
@@ -862,53 +899,104 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     }
   }, []);
 
+  // Common iframe-print machinery used by both single-note and
+  // multi-note PDF flows. Returns a promise that resolves when the
+  // print dialog has been shown (or 30 s elapsed) so callers can chain
+  // a toast / cleanup.
+  const printHtml = useCallback((html: string) => {
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    let cleanedUp = false;
+    const cleanup = (delay: number) => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      setTimeout(() => { try { iframe.remove(); } catch {} }, delay);
+    };
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        console.error("print failed", e);
+      }
+      cleanup(1000);
+    };
+    setTimeout(() => cleanup(0), 30000);
+    iframe.srcdoc = html;
+  }, []);
+
   const printActiveNote = useCallback(async (slug: string) => {
-    // Render the note to standalone HTML on the backend (uses pulldown-cmark
-    // with the same options as the static-site export), then drop it into a
-    // hidden iframe and trigger the iframe's print dialog. The user's OS
-    // print panel exposes "Save as PDF" so we don't need a PDF library here.
+    // Render the note to standalone HTML on the backend (same pulldown-
+    // cmark pipeline as the static-site export) and hand it to the
+    // shared printHtml helper. The user's OS print panel exposes
+    // "Save as PDF" so we don't need a PDF library here.
     try {
       const html = await api.renderNoteHtml(slug);
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      document.body.appendChild(iframe);
-      let cleanedUp = false;
-      const cleanup = (delay: number) => {
-        if (cleanedUp) return;
-        cleanedUp = true;
-        // Tear down after a short delay so the print job has a chance to
-        // flush before the document is removed.
-        setTimeout(() => { try { iframe.remove(); } catch {} }, delay);
-      };
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch (e) {
-          console.error("print failed", e);
-        }
-        cleanup(1000);
-      };
-      // Safety-net: if onload never fires (broken HTML, iframe denied
-      // navigation, etc.) the iframe would otherwise leak in the DOM.
-      // The print dialog is modal anyway, so 30 s of slack is plenty.
-      setTimeout(() => cleanup(0), 30000);
-      iframe.srcdoc = html;
+      printHtml(html);
     } catch (e) {
       setToast(t("appshell.toast.printError", { error: String(e) }));
     }
-  }, [t]);
+  }, [printHtml, t]);
+
+  // 2.2.0 — print every note in a path (or a manually-chosen list) as
+  // a single paginated PDF. Same iframe → window.print() trick as
+  // single-note printing; the heavy lifting lives in the Rust
+  // `cmd_render_path_html` / `cmd_render_notes_html` commands.
+  const printActivePath = useCallback(async (pathName: string) => {
+    try {
+      const html = await api.renderPathHtml(pathName);
+      printHtml(html);
+    } catch (e) {
+      setToast(t("appshell.toast.printError", { error: String(e) }));
+    }
+  }, [printHtml, t]);
 
   const handleCreateNote = useCallback(() => {
     setNewNoteTitle("");
     setNewNoteTemplate(null);
     setNewNoteOpen(true);
   }, []);
+
+  // 2.2.0 round 2 — shared "add ingredients to shopping list" action.
+  // Available from the command palette, the linear right-click Inserts
+  // submenu, and the Inserts modal. Without an active note, both
+  // surfaces hide / disable the button so this is only ever called
+  // when activeSlug is set.
+  const handleAddToShoppingList = useCallback(async () => {
+    if (!activeSlug) return;
+    try {
+      const out = await api.addRecipeToShoppingList(activeSlug);
+      if (out.added === 0 && out.skipped_duplicates === 0) {
+        setToast({
+          text: t("appshell.toast.shoppingListEmpty"),
+          tone: "soft",
+        });
+      } else {
+        const dupes = out.skipped_duplicates > 0
+          ? t("appshell.toast.shoppingListDupes", {
+              skipped: String(out.skipped_duplicates),
+            })
+          : "";
+        setToast({
+          text: t("appshell.toast.shoppingListAdded", {
+            added: String(out.added),
+            source: out.source_title,
+            dupes,
+          }),
+          tone: "success",
+        });
+        try { setNotes(await api.listNotes()); } catch {}
+      }
+    } catch (e) {
+      setToast(String(e));
+    }
+  }, [activeSlug, t]);
 
   const handleOpenDaily = useCallback(
     async (dateIso?: string) => {
@@ -1580,12 +1668,10 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
   }, [editorCtxMenu]);
 
   // Centre-button gestures on the radial fire a `yarrow:center-action`
-  // event with a stable id. The five gestures:
-  //   · tap           → "palette"       → open command palette
-  //   · long-press    → "constellation" → open the map rail overlay
-  //   · double-click  → "focus"         → toggle focus/zen mode
-  //   · drag-out      → commits a wedge directly (handled in RadialMenu)
-  //   · scroll wheel  → rotates hover   (handled in RadialMenu)
+  // event with a stable id. Three of the five gestures are user-bound
+  // via Settings → Gestures; the other two (drag-out, scroll wheel)
+  // are structural to the radial and handled inside `RadialMenu`.
+  // Defaults: tap → palette · long-press → quickHand · double-tap → focus.
   useEffect(() => {
     const onAction = (e: Event) => {
       const id = (e as CustomEvent<{ id: string }>).detail?.id;
@@ -1594,17 +1680,105 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         case "palette":
           setPaletteOpen(true);
           break;
+        case "quickHand":
+          setQuickHandOpen(true);
+          break;
+        case "constellationModal":
+          setConstellationModalOpen(true);
+          break;
         case "constellation":
           setRailOverlay("map");
           break;
         case "focus":
           setFocusMode((f) => !f);
           break;
+        case "scratchpad":
+          setScratchpadOpen((o) => !o);
+          break;
+        case "todayJournal":
+          void handleOpenDaily();
+          break;
+        case "newNote":
+          handleCreateNote();
+          break;
+        case "newPath":
+          setNewPathOpen(true);
+          break;
+        case "outline":
+          setRailOverlay("outline");
+          break;
+        case "livePreview":
+          // Live preview only renders in writing mode; flip into writing
+          // first so the toggle does something the user can see.
+          setShowRawMarkdown(true);
+          setLivePreview(!livePreview);
+          break;
+        case "cookMode":
+          setCookMode(!cookMode);
+          break;
+        case "settings":
+          setSettingsOpen({ open: true });
+          break;
       }
     };
     window.addEventListener("yarrow:center-action", onAction as EventListener);
     return () =>
       window.removeEventListener("yarrow:center-action", onAction as EventListener);
+  }, [handleCreateNote, handleOpenDaily, setLivePreview, setShowRawMarkdown, livePreview, setCookMode, cookMode]);
+
+  // 2.2.0 — Cook mode body-class effect. Adds/removes `yarrow-cook-mode`
+  // on <body> so the CSS overrides in index.css apply. Also asks the
+  // browser for a screen wake-lock so the display stays on while the
+  // baker has flour-covered hands; lock is released the moment cook
+  // mode flips off. Wake-lock API is unavailable in some webviews;
+  // failures are silent.
+  useEffect(() => {
+    const body = document.body;
+    if (cookMode) body.classList.add("yarrow-cook-mode");
+    else body.classList.remove("yarrow-cook-mode");
+
+    let lockSentinel: WakeLockSentinel | null = null;
+    if (cookMode && "wakeLock" in navigator) {
+      void navigator.wakeLock.request("screen")
+        .then((sentinel) => { lockSentinel = sentinel; })
+        .catch(() => { /* unsupported */ });
+    }
+    return () => {
+      body.classList.remove("yarrow-cook-mode");
+      if (lockSentinel) {
+        try { void lockSentinel.release(); } catch {}
+      }
+    };
+  }, [cookMode]);
+
+  // 2.2.0 — native macOS menu bar. Menu items emit a Tauri event with
+  // a stable action id; we forward it through `fireCenterAction` so the
+  // existing centre-action handler above does the actual routing. The
+  // listener is mounted on every platform — it's just a no-op on
+  // non-mac since the menu isn't built there. Dynamic-imported so the
+  // future web build doesn't pull in the Tauri event API.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    void import("@tauri-apps/api/event")
+      .then(async ({ listen }) => {
+        const fn = await listen<string>("yarrow:menu-action", (e) => {
+          const id = e.payload;
+          if (typeof id !== "string") return;
+          window.dispatchEvent(
+            new CustomEvent("yarrow:center-action", { detail: { id } }),
+          );
+        });
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        /* Tauri event API not available — non-desktop bundle */
+      });
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
   }, []);
 
   // Note switch resets selection — the new editor instance starts with
@@ -2470,6 +2644,9 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
     // ended up below the visible edge — symptom that bit macOS in
     // every 2.1.x release.
     <div className="flex-1 min-h-0 flex flex-col bg-bg text-char">
+      {/* 2.2.0 Inline timers — corner pill stack lives at the root so
+          it survives focus-mode toggles, modal opens, and note switches. */}
+      <TimerPills />
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {!focusMode && (
           <aside className="w-[268px] shrink-0 bg-s1 border-r border-bd flex flex-col overflow-hidden">
@@ -2745,55 +2922,98 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                 </Suspense>
               ) : (
                 <Suspense fallback={<EditorSkeleton />}>
-                  <NoteEditor
-                    key={activeNote.slug + "@" + currentPath + "#" + restoreNonce}
-                    note={activeNote}
-                    notes={notes}
-                    currentPath={currentPath}
-                    jumpToLine={jumpSignal}
-                    mappingEnabled={mappingEnabled}
-                    onSave={handleSave}
-                    onTagsChange={async (slug, tags) => {
-                      try {
-                        const updated = await api.setTags(slug, tags);
-                        invalidateNote(slug);
-                        if (slug === activeSlug) setActiveNote(updated);
-                        setNotes(await api.listNotes());
-                        try { setGraph(await fetchGraph()); } catch {}
-                      } catch (e) {
-                        setToast(t("appshell.toast.tagsError", { error: String(e) }));
-                      }
-                    }}
-                    tagSuggestions={tagCounts.map((tg) => tg.tag)}
-                    pathColorOverrides={pathColorOverrides}
-                    onAnnotationsChange={async (slug, annotations) => {
-                      try {
-                        const updated = await api.setAnnotations(slug, annotations);
-                        invalidateNote(slug);
-                        if (slug === activeSlug) setActiveNote(updated);
-                      } catch (e) {
-                        setToast(t("appshell.toast.annotationSaveError", { error: String(e) }));
-                      }
-                    }}
-                    onTitleChange={(title) => handleRenameNote(activeNote.slug, title)}
-                    titleRevertNonce={titleRevertNonce}
-                    onDirtyChange={setDirty}
-                    onNavigate={selectSlug}
-                    onBodyChange={setCurrentBody}
-                    onOpenFork={() => setNewPathOpen(true)}
-                    debounceMs={config?.preferences.autocheckpoint_debounce_ms ?? 3000}
-                    askThinkingOnClose={config?.preferences.ask_thinking_on_close ?? true}
-                    showRawMarkdown={showRawMarkdown}
-                    pathNotes={pathNotes}
-                    onBranchFromWikilink={(slug) => {
-                      // Seed the condition with the target note's title so
-                      // the dialog lands with a hint, not an empty field.
-                      const target = notes.find((n) => n.slug === slug);
-                      const hint = target?.title || slug;
-                      setNewPathCondition(`If ${hint.toLowerCase()}…`);
-                      setNewPathOpen(true);
-                    }}
-                  />
+                  <div className={livePreview ? "flex-1 min-h-0 flex" : "flex-1 min-h-0 flex flex-col"}>
+                    {/* 2.2.0 round 2 — `min-h-0` is critical here.
+                        Without it, the wrapper's default `min-height:
+                        auto` lets it grow to fit tall content (a
+                        clipped recipe with 30+ lines). The
+                        `flex-1 overflow-y-auto` div inside NoteEditor
+                        then gets a doc-tall height instead of the
+                        viewport-tall height we want, so the editor
+                        renders below the fold but never enables an
+                        internal scroll. With `min-h-0`, the wrapper
+                        respects its flex bounds and the editor's
+                        scroller engages. Reading mode wasn't affected
+                        because NoteReader has its own `overflow-y-
+                        auto` directly on the wrapper. */}
+                    <div className={livePreview ? "flex-1 min-w-0 min-h-0 flex flex-col border-r border-bd" : "flex-1 min-w-0 min-h-0 flex flex-col"}>
+                      <NoteEditor
+                        key={activeNote.slug + "@" + currentPath + "#" + restoreNonce}
+                        note={activeNote}
+                        notes={notes}
+                        currentPath={currentPath}
+                        jumpToLine={jumpSignal}
+                        mappingEnabled={mappingEnabled}
+                        onSave={handleSave}
+                        onTagsChange={async (slug, tags) => {
+                          try {
+                            const updated = await api.setTags(slug, tags);
+                            invalidateNote(slug);
+                            if (slug === activeSlug) setActiveNote(updated);
+                            setNotes(await api.listNotes());
+                            try { setGraph(await fetchGraph()); } catch {}
+                          } catch (e) {
+                            setToast(t("appshell.toast.tagsError", { error: String(e) }));
+                          }
+                        }}
+                        tagSuggestions={tagCounts.map((tg) => tg.tag)}
+                        pathColorOverrides={pathColorOverrides}
+                        onAnnotationsChange={async (slug, annotations) => {
+                          try {
+                            const updated = await api.setAnnotations(slug, annotations);
+                            invalidateNote(slug);
+                            if (slug === activeSlug) setActiveNote(updated);
+                          } catch (e) {
+                            setToast(t("appshell.toast.annotationSaveError", { error: String(e) }));
+                          }
+                        }}
+                        onTitleChange={(title) => handleRenameNote(activeNote.slug, title)}
+                        titleRevertNonce={titleRevertNonce}
+                        onDirtyChange={setDirty}
+                        onNavigate={selectSlug}
+                        onBodyChange={setCurrentBody}
+                        onOpenFork={() => setNewPathOpen(true)}
+                        debounceMs={config?.preferences.autocheckpoint_debounce_ms ?? 3000}
+                        askThinkingOnClose={config?.preferences.ask_thinking_on_close ?? true}
+                        showRawMarkdown={showRawMarkdown}
+                        pathNotes={pathNotes}
+                        onBranchFromWikilink={(slug) => {
+                          // Seed the condition with the target note's title so
+                          // the dialog lands with a hint, not an empty field.
+                          const target = notes.find((n) => n.slug === slug);
+                          const hint = target?.title || slug;
+                          setNewPathCondition(`If ${hint.toLowerCase()}…`);
+                          setNewPathOpen(true);
+                        }}
+                      />
+                    </div>
+                    {livePreview && (
+                      // 2.2.0 live-preview pane. Same NoteReader as
+                      // reading-only mode, just rendered side-by-side.
+                      // `currentBody` is the live editor body so the
+                      // preview tracks every keystroke (the NoteReader
+                      // debounces its own re-renders internally).
+                      <div className="flex-1 min-w-0 overflow-y-auto bg-s1 yarrow-live-preview">
+                        <NoteReader
+                          key={"live:" + activeNote.slug + "@" + currentPath}
+                          note={activeNote}
+                          notes={notes}
+                          pathNotes={pathNotes}
+                          currentPath={currentPath}
+                          currentBody={currentBody}
+                          mainBody={mainBody}
+                          onNavigate={selectSlug}
+                          onBranchFromWikilink={(slug) => {
+                            const target = notes.find((n) => n.slug === slug);
+                            const hint = target?.title || slug;
+                            setNewPathCondition(`If ${hint.toLowerCase()}…`);
+                            setNewPathOpen(true);
+                          }}
+                          onSwitchToWriting={() => setLivePreview(false)}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </Suspense>
               )
             ) : (
@@ -2984,6 +3204,8 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
                   .map((c) => c.name)
                   .find((n) => n !== stableRootName && n !== currentPath)
               }
+              notes={notes}
+              initialLeftSlug={activeSlug ?? undefined}
             />
           </L>
         )}
@@ -3198,10 +3420,49 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
         </Modal>
       )}
 
+      {railOverlay === "outline" && (
+        <Modal
+          open
+          onClose={() => setRailOverlay(null)}
+          title={t("appshell.outline.title")}
+          width="w-[460px]"
+        >
+          <div className="max-h-[60vh] overflow-y-auto -mx-2 px-2">
+            <Outline
+              body={currentBody}
+              onJump={(line) => {
+                setJumpSignal({ line, nonce: Date.now() });
+                setRailOverlay(null);
+              }}
+            />
+          </div>
+        </Modal>
+      )}
+
+      {/* 2.2.0 Still Point press-and-hold modals — both lazy. */}
+      {quickHandOpen && (
+        <L>
+          <QuickHandModal
+            open
+            onClose={() => setQuickHandOpen(false)}
+            onCustomize={() => setSettingsOpen({ open: true, tab: "gestures" })}
+          />
+        </L>
+      )}
+      {constellationModalOpen && (
+        <L>
+          <ConstellationModal
+            open
+            onClose={() => setConstellationModalOpen(false)}
+          />
+        </L>
+      )}
+
       {editorCtxMenu && (() => {
         // Build callback bag — the radial items file owns labels and
         // icons; AppShell owns the state these callbacks mutate.
         const close = () => setEditorCtxMenu(null);
+        const selectionText = editorCtxMenu.text;
         const callbacks: RadialCallbacks = {
           mappingEnabled,
           openWikilinkPicker: () => {
@@ -3216,17 +3477,13 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             close();
             setCalloutInsertOpen(true);
           },
-          startPathFrom: (seed) => {
-            // Reshape selection into an "If …" condition so the path
-            // dialog isn't blank — the user can accept, edit, or clear.
-            const trimmed = seed.trim().slice(0, 120);
-            const lower = trimmed.toLowerCase();
-            const prefilled = /^(if|what if)\b/.test(lower)
-              ? trimmed
-              : `If ${lower.replace(/\.$/, "")}`;
-            setNewPathCondition(prefilled);
+          openInsertsModal: () => {
             close();
-            setNewPathOpen(true);
+            setInsertsModalOpen(true);
+          },
+          openFormatModal: () => {
+            close();
+            setFormatModalOpen({ selection: selectionText });
           },
           sendSelectionToScratchpad: (text) => {
             handleSendSelectionToScratchpad(text);
@@ -3236,6 +3493,19 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             window.dispatchEvent(
               new CustomEvent("yarrow:editor-insert-raw", {
                 detail: { text, ...opts },
+              }),
+            );
+            close();
+          },
+          wrapSelection: (opening, closing) => {
+            // Wrap the active selection. We use insert-raw because the
+            // editor's selection is still live — replacing it with
+            // `opening + selection + closing` lands the caret after
+            // `closing`, which matches GTK / macOS bold-wrap behaviour.
+            const wrapped = opening + selectionText + closing;
+            window.dispatchEvent(
+              new CustomEvent("yarrow:editor-insert-raw", {
+                detail: { text: wrapped },
               }),
             );
             close();
@@ -3260,11 +3530,56 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
               }
             })();
           },
+          cutSelection: () => {
+            window.dispatchEvent(new CustomEvent("yarrow:editor-cut"));
+            close();
+          },
+          pasteAtCursor: () => {
+            window.dispatchEvent(new CustomEvent("yarrow:editor-paste"));
+            close();
+          },
+          selectAll: () => {
+            window.dispatchEvent(new CustomEvent("yarrow:editor-select-all"));
+            close();
+          },
+          copySelection: (text) => {
+            // Tauri plugin first (system-wide on macOS/Linux), then
+            // navigator.clipboard as a fallback for the future web build.
+            void import("@tauri-apps/plugin-clipboard-manager")
+              .then((mod) => mod.writeText(text))
+              .catch(() => {
+                try { navigator.clipboard?.writeText(text); } catch {}
+              });
+            // Brief affirming toast — the radial dismissing on its own
+            // means the user has no other signal that the copy landed.
+            setToast({
+              text: t("appshell.toast.copied"),
+              tone: "soft",
+            });
+            close();
+          },
+          openTimerPicker: () => {
+            close();
+            setTimerPickerOpen(true);
+          },
+          openRecipeClipper: () => {
+            close();
+            setRecipeClipperOpen(true);
+          },
+          addToShoppingList: () => {
+            close();
+            void handleAddToShoppingList();
+          },
+          cookingEnabled: cookingOn,
         };
         const selection = editorCtxMenu.text.trim();
-        const items = selection
-          ? buildRadialSelectionItems(editorCtxMenu.text, callbacks)
-          : buildRadialInsertItems(callbacks);
+        const items = radialMenuOn
+          ? (selection
+              ? buildRadialSelectionItems(editorCtxMenu.text, callbacks)
+              : buildRadialInsertItems(callbacks))
+          : (selection
+              ? buildLinearSelectionItems(editorCtxMenu.text, callbacks)
+              : buildLinearInsertItems(callbacks));
         const Menu = radialMenuOn ? RadialMenu : LinearContextMenu;
         return (
           <Menu
@@ -3276,6 +3591,100 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
           />
         );
       })()}
+
+      {/* 2.2.0 Inserts & Format radial-only modals. The linear menu uses
+          inline submenus for these, so they only mount when fired from
+          the radial. */}
+      {insertsModalOpen && (
+        <L>
+          <InsertsModal
+            open
+            onClose={() => setInsertsModalOpen(false)}
+            wikilinkDisabled={!mappingEnabled}
+            shoppingDisabled={!activeSlug}
+            cookingEnabled={cookingOn}
+            onInsertWikilink={() => setWikilinkPickerOpen(true)}
+            onInsertTask={() =>
+              window.dispatchEvent(
+                new CustomEvent("yarrow:editor-insert-raw", {
+                  detail: { text: "- [ ] ", atLineStart: true },
+                }),
+              )
+            }
+            onInsertTable={() => setTableInsertOpen(true)}
+            onInsertCallout={() => setCalloutInsertOpen(true)}
+            onInsertTimer={() => setTimerPickerOpen(true)}
+            onClipRecipe={() => setRecipeClipperOpen(true)}
+            onAddToShoppingList={() => void handleAddToShoppingList()}
+          />
+        </L>
+      )}
+
+      {/* 2.2.0 round 2 — Timer picker. Opened from the Inserts modal,
+          the linear right-click Inserts submenu, or any future
+          surface that wants to drop a timer link. */}
+      {timerPickerOpen && (
+        <L>
+          <TimerPickerModal
+            open
+            onClose={() => setTimerPickerOpen(false)}
+            onInsert={(markdown) =>
+              window.dispatchEvent(
+                new CustomEvent("yarrow:editor-insert-raw", {
+                  detail: { text: markdown },
+                }),
+              )
+            }
+          />
+        </L>
+      )}
+      {formatModalOpen && (
+        <L>
+          <FormatModal
+            open
+            onClose={() => setFormatModalOpen(null)}
+            selection={formatModalOpen.selection}
+            insertRaw={(text, opts) =>
+              window.dispatchEvent(
+                new CustomEvent("yarrow:editor-insert-raw", {
+                  detail: { text, ...opts },
+                }),
+              )
+            }
+            wrapSelection={(opening, closing) => {
+              const wrapped = opening + formatModalOpen.selection + closing;
+              window.dispatchEvent(
+                new CustomEvent("yarrow:editor-insert-raw", {
+                  detail: { text: wrapped },
+                }),
+              );
+            }}
+          />
+        </L>
+      )}
+
+      {/* 2.2.0 Recipe URL clipper. Lazy-mounted only when open. */}
+      <RecipeClipperModal
+        open={recipeClipperOpen}
+        onClose={() => setRecipeClipperOpen(false)}
+        onClipped={async (note) => {
+          // 2.2.0 round 2 — invalidate the note cache for the new
+          // slug BEFORE selectSlug. Without this, `selectSlug` could
+          // hit the stale cache entry created by `notes::create`'s
+          // empty-body initial state (the body is filled in a follow-
+          // up `write_with_key_status`), and the editor would mount
+          // pinned to an empty doc — content would render but
+          // scrolling would behave as if the doc were empty.
+          invalidateNote(note.slug);
+          try { setNotes(await api.listNotes()); } catch {}
+          // Seed the cache with the full body the backend just
+          // returned, so the editor mounts with the populated content
+          // immediately and CodeMirror can size the doc correctly on
+          // first measure.
+          setActiveNote(note);
+          selectSlug(note.slug);
+        }}
+      />
 
       <Suspense fallback={null}>
         <WikilinkPicker
@@ -3522,6 +3931,36 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             onOpenActivity={() => setActivityOpen(true)}
             onOpenTagGraph={() => setTagGraphOpen(true)}
             onInsertTable={() => setTableInsertOpen(true)}
+            onInsertBibliography={
+              activeSlug
+                ? async () => {
+                    try {
+                      await api.insertBibliography(activeSlug);
+                      // Pull a fresh copy from disk so the editor picks
+                      // up the new block. `selectSlug` already debounces
+                      // re-loads of the same slug, so this is cheap.
+                      invalidateNote(activeSlug);
+                      selectSlug(activeSlug);
+                    } catch (e) {
+                      setToast(String(e));
+                    }
+                  }
+                : undefined
+            }
+            onOpenOutline={() => setRailOverlay("outline")}
+            livePreviewOn={livePreview}
+            onToggleLivePreview={() => {
+              // Live preview only makes sense in writing mode — flip
+              // to writing if we're in reading mode so the toggle
+              // actually does something the next time the user types.
+              if (!showRawMarkdown) setShowRawMarkdown(true);
+              setLivePreview(!livePreview);
+            }}
+            onPrintCurrentPath={
+              currentPath ? () => printActivePath(currentPath) : undefined
+            }
+            onClipRecipe={cookingOn ? () => setRecipeClipperOpen(true) : undefined}
+            onAddToShoppingList={cookingOn && activeSlug ? handleAddToShoppingList : undefined}
             mappingEnabled={mappingEnabled}
           />
         </L>
@@ -3905,42 +4344,75 @@ export default function AppShell({ workspacePath, onClose, onSwitchWorkspace }: 
             </div>
           </div>
 
-          <div className={`mt-5 grid ${customTemplatesCount > 0 ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
-            <NewNoteRouteTile
-              active={newNoteTemplate === null}
-              onClick={() => setNewNoteTemplate(null)}
-              title={t("appshell.newNote.tileBlankTitle")}
-              sub={t("appshell.newNote.tileBlankSub")}
-              glyph={<BlankGlyph />}
-            />
-            <NewNoteRouteTile
-              active={false}
-              onClick={() => {
-                setNewNoteOpen(false);
-                setKitsPickerOpen(true);
-              }}
-              title={t("appshell.newNote.tileKitsTitle")}
-              sub={t("appshell.newNote.tileKitsSub")}
-              glyph={<KitsRouteGlyph />}
-            />
-            {customTemplatesCount > 0 && (
-              <NewNoteRouteTile
-                active={false}
-                onClick={() => {
-                  setNewNoteOpen(false);
-                  setCustomTemplatesOpen(true);
-                }}
-                title={t("appshell.newNote.tileTemplatesTitle")}
-                sub={t(
-                  customTemplatesCount === 1
-                    ? "appshell.newNote.tileTemplatesSubSingle"
-                    : "appshell.newNote.tileTemplatesSubPlural",
-                  { count: String(customTemplatesCount) },
+          {/* Tile count is dynamic: 2 base (Blank, Kits), +1 if the
+              user has custom templates, +1 if the Cooking additions
+              extra is enabled. The static class names below are kept
+              as full strings so Tailwind picks them up. */}
+          {(() => {
+            const tileCount = 2
+              + (customTemplatesCount > 0 ? 1 : 0)
+              + (cookingOn ? 1 : 0);
+            const gridClass =
+              tileCount >= 4 ? "grid-cols-4" :
+              tileCount === 3 ? "grid-cols-3" :
+              "grid-cols-2";
+            return (
+              <div className={`mt-5 grid ${gridClass} gap-3`}>
+                <NewNoteRouteTile
+                  active={newNoteTemplate === null}
+                  onClick={() => setNewNoteTemplate(null)}
+                  title={t("appshell.newNote.tileBlankTitle")}
+                  sub={t("appshell.newNote.tileBlankSub")}
+                  glyph={<BlankGlyph />}
+                />
+                <NewNoteRouteTile
+                  active={false}
+                  onClick={() => {
+                    setNewNoteOpen(false);
+                    setKitsPickerOpen(true);
+                  }}
+                  title={t("appshell.newNote.tileKitsTitle")}
+                  sub={t("appshell.newNote.tileKitsSub")}
+                  glyph={<KitsRouteGlyph />}
+                />
+                {customTemplatesCount > 0 && (
+                  <NewNoteRouteTile
+                    active={false}
+                    onClick={() => {
+                      setNewNoteOpen(false);
+                      setCustomTemplatesOpen(true);
+                    }}
+                    title={t("appshell.newNote.tileTemplatesTitle")}
+                    sub={t(
+                      customTemplatesCount === 1
+                        ? "appshell.newNote.tileTemplatesSubSingle"
+                        : "appshell.newNote.tileTemplatesSubPlural",
+                      { count: String(customTemplatesCount) },
+                    )}
+                    glyph={<CustomTemplatesRouteGlyph />}
+                  />
                 )}
-                glyph={<CustomTemplatesRouteGlyph />}
-              />
-            )}
-          </div>
+                {/* 2.2.0 round 2 — recipe URL route, gated on the
+                    Cooking additions extra. Skips the title input
+                    altogether: clicking opens the clipper modal,
+                    which fetches the page, extracts schema.org
+                    Recipe metadata, and creates a populated note
+                    on its own. */}
+                {cookingOn && (
+                  <NewNoteRouteTile
+                    active={false}
+                    onClick={() => {
+                      setNewNoteOpen(false);
+                      setRecipeClipperOpen(true);
+                    }}
+                    title={t("appshell.newNote.tileRecipeUrlTitle")}
+                    sub={t("appshell.newNote.tileRecipeUrlSub")}
+                    glyph={<RecipeUrlRouteGlyph />}
+                  />
+                )}
+              </div>
+            );
+          })()}
 
           <div className="mt-5 pt-5 border-t border-bd">
             <label className="text-2xs uppercase tracking-wider text-t3 font-semibold block mb-2">
@@ -4387,6 +4859,20 @@ function BlankGlyph() {
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
       <path d="M5 3h7L17 7v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
       <path d="M12 3v4h5" />
+    </svg>
+  );
+}
+
+// 2.2.0 round 2 — recipe URL tile glyph. A page with a chain link
+// reads as "fetch from a URL" without needing words; quiet enough to
+// fit alongside the other route-tile glyphs.
+function RecipeUrlRouteGlyph() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 3h7L17 7v6" />
+      <path d="M12 3v4h5" />
+      <path d="M9 14a2.5 2.5 0 0 0 3.5 0l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5l-0.6 0.6" />
+      <path d="M13 17a2.5 2.5 0 0 0-3.5 0l-1.8 1.8a2.5 2.5 0 0 0 3.5 3.5l0.6-0.6" />
     </svg>
   );
 }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Yarrow 2.1 — a writing tool that remembers every version</title>
+<title>Yarrow 2.2 — a writing tool that remembers every version</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=GT+Sectra&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,500&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -11,8 +11,8 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="apple-touch-icon" href="app-icon-256.png" />
 <meta name="description" content="Yarrow is a local-first writing tool for non-linear thinking. Plain markdown, every save a checkpoint, every direction a path you can return to. Free and open source." />
-<meta property="og:title" content="Yarrow 2.1 — kits, research workflow, private clinical surface" />
-<meta property="og:description" content="2.1 lands 75 hand-picked kits across nine categories, a research workflow with paper-cards + @cite + BibTeX import, a privacy-first clinical surface with on-device PHI scanning, and optional sidebar folders. Free and open source." />
+<meta property="og:title" content="Yarrow 2.2 — Still Point gestures, Compare-notes mode, opt-in baking workflow" />
+<meta property="og:description" content="2.2 redesigns the radial centre with configurable gestures, adds a Compare-notes view, a live-preview split, an outline panel, an opt-in baking workflow (recipe URL clipper, inline timers, cook mode), and a serious macOS polish pass. Plus 80 kits across ten categories. Free and open source." />
 <meta property="og:image" content="assets/main-reading-dark.png" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://yarrow.software/" />
@@ -939,11 +939,11 @@
   }
 
   /* ===========================================================
-     §2 NEW ARRIVALS — the 2.1 centerpiece. Editorial-newsprint
-     idiom (warm neutrals, classical hierarchy, generous space)
-     with a kit-card grid drawn from the app's actual visual
-     language. Inspired by the Heart University template's
-     restrained newsprint composition.
+     §3 FOUNDATION — the workflow surface 2.1 introduced and 2.2
+     builds on. Editorial-newsprint idiom (warm neutrals,
+     classical hierarchy, generous space) with a kit-card grid
+     drawn from the app's actual visual language. Inspired by the
+     Heart University template's restrained newsprint composition.
      =========================================================== */
 
   .arrivals { padding: 32px 0 80px; }
@@ -1261,9 +1261,9 @@
 </head>
 <body>
 
-<a class="dispatch" href="#new-arrivals">
+<a class="dispatch" href="#whats-new-22">
   <span class="d-tag">Dispatch</span>
-  <span class="d-body"><em>Yarrow&nbsp;2.1</em> lands today — 75 kits, a research workflow, a private clinical surface, optional folders. <strong style="color:var(--accent-deep);">Read on &darr;</strong></span>
+  <span class="d-body"><em>Yarrow&nbsp;2.2</em> lands today — Still Point gestures, Compare-notes mode, live-preview split, an opt-in baking workflow, and a serious macOS polish pass. <strong style="color:var(--accent-deep);">Read on &darr;</strong></span>
   <span class="d-go">Read the issue →</span>
 </a>
 
@@ -1271,7 +1271,7 @@
 
   <header class="mast">
     <div class="mast-left">
-      <div>Vol. 2 · № 1</div>
+      <div>Vol. 2 · № 2</div>
       <div>April 2026 · §</div>
     </div>
     <div class="mast-title">Yar<i>r</i>ow</div>
@@ -1282,10 +1282,10 @@
   </header>
 
   <div class="sub-mast">
-    <div><span class="prominent">The 2.1 issue</span> &nbsp;·&nbsp; kits, workflows, &amp; quieter privacy</div>
+    <div><span class="prominent">The 2.2 issue</span> &nbsp;·&nbsp; gestures, baking, macOS polish</div>
     <nav>
       <a href="#essay">Prospectus</a>
-      <a href="#new-arrivals">New arrivals</a>
+      <a href="#whats-new-22">What's new</a>
       <a href="#features">Dossier</a>
       <a href="#gallery">In situ</a>
       <a href="user-guide.html">User Guide</a>
@@ -1301,18 +1301,18 @@
   <!-- COVER -->
   <section class="cover">
     <div class="cover-left">
-      <div class="kicker">Desktop writing · 2.1 is out</div>
+      <div class="kicker">Desktop writing · 2.2 is out</div>
       <h1 class="cover-head">Notes that <i>branch,</i> evolve, and&nbsp;connect.</h1>
       <div class="byline">
         <em>A local-first writing tool built around the way thinking actually works.</em>
-        Your notes are plain markdown. Every save is a checkpoint. Every direction you explore stays in an archive, not the trash. <strong>2.1</strong> adds 75 hand-picked starting shapes, a research workflow, and a clinical surface that never leaves your machine.
+        Your notes are plain markdown. Every save is a checkpoint. Every direction you explore stays in an archive, not the trash. <strong>2.2</strong> redesigns the radial right-click centre with configurable gestures, lets Compare diff two individual notes, splits the editor into a live preview, and adds an opt-in baking workflow on top of 2.1's foundation of 80 kits across ten categories.
       </div>
       <div class="cta-row">
         <a href="https://github.com/neuralpunk/yarrow/releases/latest" class="btn btn-primary" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download 2.1
+          Download 2.2
         </a>
-        <a href="#new-arrivals" class="btn btn-ghost">What's new →</a>
+        <a href="#whats-new-22" class="btn btn-ghost">What's new →</a>
       </div>
     </div>
     <figure class="cover-plate">
@@ -1375,19 +1375,104 @@
     </div>
   </section>
 
-  <!-- §2 NEW ARRIVALS — the 2.1 centerpiece -->
-  <div class="section-head" id="new-arrivals">
+  <!-- §2 WHAT'S NEW IN 2.2 -->
+  <div class="section-head" id="whats-new-22">
     <div class="sec-num">§2</div>
-    <div class="sec-title">The new arrivals</div>
-    <div class="sec-meta">2.1 in detail</div>
+    <div class="sec-title">What's new in 2.2</div>
+    <div class="sec-meta">latest release</div>
   </div>
 
   <section class="arrivals">
     <div class="arrivals-intro">
-      <div class="kicker"><span class="kicker-rule"></span>Workflow, not just warmth</div>
-      <h2 class="arrivals-head">A larger kit library, two new <i>workflows,</i> and a quieter approach to privacy.</h2>
+      <div class="kicker"><span class="kicker-rule"></span>Released 2026-04-26</div>
+      <h2 class="arrivals-head">A redesigned <i>radial centre,</i> a Compare modal that diffs two notes, and an opt-in workflow built for bakers.</h2>
       <p class="arrivals-lede">
-        The original 2.1 cut shipped fonts, paper, and Calm Palettes. The rolled-up 2.1 also lands a much larger kit system, a research workflow with paper-cards + <code>@cite</code> + BibTeX import, a privacy-first clinical surface with on-device PHI scanning + air-gapped sync, optional sidebar folders, and a substantial pass on data-leak hardening and editor polish. None of it is on by default — you opt in at the moment you want it.
+        2.2 is the biggest interaction-design release since 2.0 — the radial right-click menu got a configurable centre (the <em>Still Point</em>), the right-click action set was reorganised around <strong>Inserts…</strong> and <strong>Format…</strong> modals, and the standard linear right-click menu now mirrors them as proper desktop submenus. Compare can finally diff two individual notes, not just two paths. A new opt-in <strong>Cooking additions</strong> extra unlocks five baking kits, a recipe URL clipper, inline timers, and a cook mode for hands-free reading. None of that is on by default — bakers turn it on, everyone else doesn't see it.
+      </p>
+    </div>
+
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">a.</div>
+        <div class="block-title">Still Point gestures</div>
+        <div class="block-tag">three slots, twelve actions</div>
+      </header>
+      <p class="block-lede">
+        Settings → Gestures binds tap, press-and-hold, and double-tap on the radial's centre dot to any of twelve actions — command palette, focus mode, today's journal, outline, live preview, scratchpad, and more. Defaults: tap → palette · hold → <strong>Quick Hand</strong> (a 3×3 modal of common actions) · double-tap → focus mode. There's also an alternate long-press destination — <strong>Constellation</strong> — that floats eight petals around the click point if you prefer a cursor-near radial to a centred grid.
+      </p>
+    </article>
+
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">b.</div>
+        <div class="block-title">Compare two notes</div>
+        <div class="block-tag">notes mode default · paths mode optional</div>
+      </header>
+      <p class="block-lede">
+        The Compare modal opens in <strong>Notes</strong> mode by default. Pick two notes by title and you get a side-by-side diff in any of the existing views (Summary / Track / Split / Cards / Marginalia). The original Paths mode — diff every note across two paths — is still available behind a toggle in the modal header. Pre-fills the active note as the left side when opened from the toolbar.
+      </p>
+    </article>
+
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">c.</div>
+        <div class="block-title">Live-preview split &amp; outline panel</div>
+        <div class="block-tag">writing surface upgrades</div>
+      </header>
+      <p class="block-lede">
+        Toggle <strong>live preview</strong> from the command palette and the editor splits in two — writing on the left, fully-rendered markdown on the right, updated on every keystroke. The same NoteReader powers full reading mode, so typography stays consistent. The right-rail also gains an <strong>Outline</strong> button that pops a click-to-jump tree of headings + top-level bullets for the active note.
+      </p>
+    </article>
+
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">d.</div>
+        <div class="block-title">Cooking additions</div>
+        <div class="block-tag">opt-in extra · off by default</div>
+      </header>
+      <p class="block-lede">
+        Settings → Writing → Writing extras → <strong>Cooking additions</strong>. Flip it on and the rest of the cooking surface becomes visible: five baking kits (Recipe Card, Bake Log, Holiday Plan, Sourdough Schedule, Family Cookbook), a <strong>recipe URL clipper</strong> that pulls schema.org JSON-LD from major food sites, inline <strong>timers</strong> (<code>[label](timer:25m)</code>) that turn into tappable pills with a corner countdown, <strong>cook mode</strong> (bigger rendered text + screen wake-lock for hands-free reading), and a <strong>smart shopping list</strong> that scans a recipe's <code>## Ingredients</code> section into a workspace shopping note. Off it stays hidden — most users aren't here for baking.
+      </p>
+    </article>
+
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">e.</div>
+        <div class="block-title">macOS polish pass</div>
+        <div class="block-tag">native-feeling on Tahoe / Sequoia / Sonoma</div>
+      </header>
+      <p class="block-lede">
+        Yarrow now mounts a real macOS menu bar — File / Edit / View / Window with the right accelerators, predefined cut/copy/paste/undo handed off to AppKit responders. <code>acceptFirstMouse</code> means the first click on an unfocused window registers in the editor instead of being eaten. Native overlay scrollbars are back (the universal styled-scrollbar rule is gated to non-Mac). <code>prefers-reduced-motion: reduce</code> is universally respected. The recipe URL clipper now uses reqwest, which fixes a "decoding chunks" failure on Cloudflare-fronted sites that ureq couldn't handle.
+      </p>
+    </article>
+
+    <article class="arrivals-block">
+      <header class="block-head">
+        <div class="block-num">f.</div>
+        <div class="block-title">Bibliography &amp; multi-note PDF</div>
+        <div class="block-tag">research workflow extends</div>
+      </header>
+      <p class="block-lede">
+        ⌘K → "Insert / refresh bibliography" walks the active note's wikilinks, finds <code>paper</code>-tagged targets, and writes an APA reference block in place. ⌘K → "Export this path as PDF" prints every note in the current path as a single paginated document with a cover page + TOC. Builds on 2.1's research workflow.
+      </p>
+    </article>
+  </section>
+
+  <!-- §3 FOUNDATION (formerly the 2.1 centerpiece) — kept as historical
+       reference because kits and the research/clinical workflows it
+       introduced are still the bread-and-butter most users reach for. -->
+  <div class="section-head" id="new-arrivals">
+    <div class="sec-num">§3</div>
+    <div class="sec-title">The foundation</div>
+    <div class="sec-meta">kits, research, clinical, folders</div>
+  </div>
+
+  <section class="arrivals">
+    <div class="arrivals-intro">
+      <div class="kicker"><span class="kicker-rule"></span>Brought in by 2.1, still the bread and butter</div>
+      <h2 class="arrivals-head">A library of <i>kits,</i> two specialised <i>workflows,</i> and a quieter approach to privacy.</h2>
+      <p class="arrivals-lede">
+        2.2's interaction-design changes sit on top of the workflow surface 2.1 introduced — the kit library, the research flow with paper-cards + <code>@cite</code> + BibTeX import, the privacy-first clinical surface with on-device PHI scanning + air-gapped sync, and optional sidebar folders. None of it is on by default — you opt in at the moment you want it.
       </p>
     </div>
 
@@ -1582,9 +1667,9 @@
     </article>
   </section>
 
-  <!-- §3 DOSSIER (was §2 in 2.0) -->
+  <!-- §4 DOSSIER -->
   <div class="section-head" id="features">
-    <div class="sec-num">§3</div>
+    <div class="sec-num">§4</div>
     <div class="sec-title">The dossier</div>
     <div class="sec-meta">Everything since the start</div>
   </div>
@@ -1592,7 +1677,7 @@
   <section class="dossier">
     <div>
       <h2 class="dossier-head">Mechanics that have been here since v1 — and the new ones that joined them.</h2>
-      <small>2.1 additions surface a "new" tag · earlier mechanics keep doing what they were quietly doing</small>
+      <small>recent additions surface a "new" tag · earlier mechanics keep doing what they were quietly doing</small>
     </div>
     <div class="dossier-list">
       <div class="dossier-item">
@@ -1703,9 +1788,9 @@
     </div>
   </section>
 
-  <!-- IN SITU -->
+  <!-- §5 IN SITU -->
   <div class="section-head" id="gallery">
-    <div class="sec-num">§4</div>
+    <div class="sec-num">§5</div>
     <div class="sec-title">In situ</div>
     <div class="sec-meta">Three views</div>
   </div>
@@ -1811,7 +1896,7 @@
   </section>
 
   <footer class="foot">
-    <div><em>Yarrow</em> &nbsp;—&nbsp; Vol. 2, № 1 &nbsp;·&nbsp; 2.1 issue &nbsp;·&nbsp; MIT &nbsp;·&nbsp; no telemetry</div>
+    <div><em>Yarrow</em> &nbsp;—&nbsp; Vol. 2, № 2 &nbsp;·&nbsp; 2.2 issue &nbsp;·&nbsp; MIT &nbsp;·&nbsp; no telemetry</div>
     <div>
       <a href="user-guide.html">User Guide</a>
       <a href="https://github.com/neuralpunk/yarrow" rel="noopener">GitHub</a>

@@ -1272,10 +1272,80 @@ export default function NoteEditor({
     };
     window.addEventListener("yarrow:editor-insert-raw", onInsertRaw as EventListener);
 
+    // 2.2.0: clipboard + select-all dispatched from the radial / linear
+    // context menus. We do these inside the editor (rather than via a
+    // generic clipboard helper) so they participate in CodeMirror's
+    // history — Ctrl-Z undoes a cut just like a typed deletion.
+    const onCut = () => {
+      const view = viewRef.current;
+      if (!view) return;
+      const sel = view.state.selection.main;
+      if (sel.from === sel.to) return;
+      const text = view.state.sliceDoc(sel.from, sel.to);
+      // Try the Tauri plugin first (system-wide); fall back to browser API.
+      void import("@tauri-apps/plugin-clipboard-manager")
+        .then((mod) => mod.writeText(text))
+        .catch(() => {
+          try { navigator.clipboard?.writeText(text); } catch {}
+        });
+      view.dispatch({
+        changes: { from: sel.from, to: sel.to, insert: "" },
+        selection: { anchor: sel.from },
+      });
+      view.focus();
+      try { onBodyChangeRef.current?.(view.state.doc.toString()); } catch {}
+    };
+    window.addEventListener("yarrow:editor-cut", onCut);
+
+    const onPaste = async () => {
+      const view = viewRef.current;
+      if (!view) return;
+      let text = "";
+      // 2.2.0: use the Tauri clipboard plugin (Rust-backed) instead of
+      // navigator.clipboard.readText. The webview's clipboard sandbox
+      // only sees what was copied INSIDE Yarrow on Linux/macOS, which
+      // made paste-from-other-apps silently no-op. Falls back to the
+      // browser API if the plugin isn't available (web build).
+      try {
+        const mod = await import("@tauri-apps/plugin-clipboard-manager");
+        text = (await mod.readText()) ?? "";
+      } catch {
+        try {
+          text = await navigator.clipboard.readText();
+        } catch {
+          return;
+        }
+      }
+      if (!text) return;
+      const sel = view.state.selection.main;
+      view.dispatch({
+        changes: { from: sel.from, to: sel.to, insert: text },
+        selection: { anchor: sel.from + text.length },
+        scrollIntoView: true,
+      });
+      view.focus();
+      try { onBodyChangeRef.current?.(view.state.doc.toString()); } catch {}
+    };
+    window.addEventListener("yarrow:editor-paste", onPaste);
+
+    const onSelectAll = () => {
+      const view = viewRef.current;
+      if (!view) return;
+      const len = view.state.doc.length;
+      view.dispatch({
+        selection: { anchor: 0, head: len },
+      });
+      view.focus();
+    };
+    window.addEventListener("yarrow:editor-select-all", onSelectAll);
+
     return () => {
       window.removeEventListener("yarrow:editor-insert", onInsert as EventListener);
       window.removeEventListener("yarrow:editor-replace-range", onReplaceRange as EventListener);
       window.removeEventListener("yarrow:editor-insert-raw", onInsertRaw as EventListener);
+      window.removeEventListener("yarrow:editor-cut", onCut);
+      window.removeEventListener("yarrow:editor-paste", onPaste);
+      window.removeEventListener("yarrow:editor-select-all", onSelectAll);
     };
   }, []);
 

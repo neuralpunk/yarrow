@@ -19,6 +19,32 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────
+   2.2.0 — Reduced motion (a11y, especially common on macOS)
+
+   macOS users have "Reduce motion" in System Settings → Accessibility
+   → Display, and many keep it on. Yarrow's modal slides, radial
+   entry, fade-ins, and theme crossfades all become near-instant when
+   this is set, so the chrome doesn't feel busy or disorienting.
+   Universal — also helps Linux/Windows users with the same pref.
+
+   The `0.01ms` (rather than `0`) is the standard safe value: it lets
+   any animation event listener still receive an `animationend` so
+   downstream cleanup logic doesn't get stranded.
+
+   `scroll-behavior: auto` reverts smooth-scroll back to instant.
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
    Calm Palettes (2.1)
 
    Two themes, one accent each, quiet everywhere else:
@@ -994,6 +1020,111 @@ button, input, select, textarea {
 /* ─────────────────────────────────────────────────────────────
    Reading mode — themed render of pulldown-cmark output
    ───────────────────────────────────────────────────────────── */
+/* 2.2.0 — Cook mode. A body-class flag that bumps rendered text size
+   on every surface that shows the parsed note (reader, live preview,
+   editorial reading). The editor itself is untouched — cook mode is
+   for hands-free reading while a baker is mid-recipe. Wake-lock is
+   handled in JS (see useCookMode hook usage). */
+body.yarrow-cook-mode .yarrow-reading,
+body.yarrow-cook-mode .yarrow-live-preview {
+  font-size: 21px;
+  line-height: 1.78;
+}
+body.yarrow-cook-mode .yarrow-reading h1,
+body.yarrow-cook-mode .yarrow-live-preview h1 { font-size: 1.9em; }
+body.yarrow-cook-mode .yarrow-reading h2,
+body.yarrow-cook-mode .yarrow-live-preview h2 { font-size: 1.45em; }
+body.yarrow-cook-mode .yarrow-reading h3,
+body.yarrow-cook-mode .yarrow-live-preview h3 { font-size: 1.18em; }
+body.yarrow-cook-mode .yarrow-reading ol,
+body.yarrow-cook-mode .yarrow-reading ul,
+body.yarrow-cook-mode .yarrow-live-preview ol,
+body.yarrow-cook-mode .yarrow-live-preview ul {
+  margin: 1.05em 0;
+  padding-left: 1.65em;
+}
+body.yarrow-cook-mode .yarrow-reading li,
+body.yarrow-cook-mode .yarrow-live-preview li {
+  margin-bottom: 0.55em;
+}
+body.yarrow-cook-mode a[href^="timer:"] {
+  /* In cook mode the timer pills should be easier to tap. */
+  font-size: 0.95em;
+  padding: 0.25em 0.95em 0.25em 0.8em;
+}
+
+/* 2.2.0 — Inline timers. Markdown `[label](timer:25m)` becomes a pill
+   that starts a countdown when clicked. Anywhere a rendered note is
+   shown — reader, live preview, cook mode — the pill carries through
+   and remains tappable. */
+.yarrow-reading a[href^="timer:"],
+.yarrow-live-preview a[href^="timer:"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.15em 0.7em 0.15em 0.6em;
+  border-radius: 999px;
+  background: var(--yelp);
+  border: 1px solid var(--yel);
+  color: var(--yeld);
+  text-decoration: none;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.86em;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  vertical-align: 0.05em;
+  transition: background 140ms, color 140ms, transform 80ms;
+}
+.yarrow-reading a[href^="timer:"]::before,
+.yarrow-live-preview a[href^="timer:"]::before {
+  content: "⏲";
+  font-family: var(--ui-font-family, ui-sans-serif, system-ui);
+  font-size: 1em;
+  line-height: 1;
+}
+.yarrow-reading a[href^="timer:"]:hover,
+.yarrow-live-preview a[href^="timer:"]:hover {
+  background: var(--yel);
+  color: var(--on-yel);
+}
+.yarrow-reading a[href^="timer:"]:active,
+.yarrow-live-preview a[href^="timer:"]:active {
+  transform: scale(0.97);
+}
+/* 2.2.0 round 2: a timer link with `data-timer-id` set is currently
+   running (fired from this very anchor). Flip it from the pale-pill
+   palette into the filled-gold palette so the user can see at a
+   glance which timer in the recipe is ticking. The subscription in
+   NoteReader removes the attribute when the timer ends or is
+   dismissed, returning the link to the default style. */
+.yarrow-reading a[href^="timer:"][data-timer-id],
+.yarrow-live-preview a[href^="timer:"][data-timer-id] {
+  background: var(--yel);
+  color: var(--on-yel);
+  border-color: var(--yel);
+  animation: yarrow-timer-link-pulse 2.2s ease-in-out infinite;
+}
+.yarrow-reading a[href^="timer:"][data-timer-id]:hover,
+.yarrow-live-preview a[href^="timer:"][data-timer-id]:hover {
+  /* Keep the running palette on hover too — flipping back to yelp
+     would read as "the timer just ended," which it didn't. */
+  background: var(--yel);
+  color: var(--on-yel);
+}
+@keyframes yarrow-timer-link-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.78; }
+}
+.yarrow-timer-link-fired {
+  animation: yarrow-timer-flash 600ms ease-out;
+}
+@keyframes yarrow-timer-flash {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.10); }
+  100% { transform: scale(1); }
+}
+
 .yarrow-reading {
   /* Reader tracks the same font pref as the editor so switching in
      Settings cascades everywhere. Default is Newsreader via --serif. */
@@ -1239,9 +1370,17 @@ button, input, select, textarea {
   stroke: var(--yeld);
 }
 .radial-wedge.is-disabled path {
-  fill: var(--s1);
-  opacity: 0.4;
+  /* 2.2.0: disabled wedges are now opaque — using `s2` (raised surface)
+     gives a clear "this is here but not active" read without the old
+     translucent see-through that made the radial look broken when more
+     than one item was disabled (e.g. Cut+Copy with no selection). */
+  fill: var(--s2);
+  opacity: 1;
   cursor: not-allowed;
+}
+.radial-wedge.is-disabled .radial-icon {
+  color: var(--t3);
+  opacity: 0.55;
 }
 .radial-label {
   width: 100%;
@@ -1465,15 +1604,20 @@ g:has(> .radial-center:hover) .radial-still-ghost,
    Scrollbars
    ───────────────────────────────────────────────────────────── */
 
-*::-webkit-scrollbar { width: 10px; height: 10px; }
-*::-webkit-scrollbar-thumb {
+/* macOS WKWebView already renders thin auto-hiding overlay scrollbars
+   that match the system. Forcing 10 px chrome scrollbars here would
+   reclaim that space and replace native polish with a styled tube,
+   so we gate the override to non-Mac platforms. The `[data-platform]`
+   attribute is set in `main.tsx` before first paint. */
+html:not([data-platform="mac"]) *::-webkit-scrollbar { width: 10px; height: 10px; }
+html:not([data-platform="mac"]) *::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--t3) 50%, transparent);
   border-radius: 8px;
 }
-*::-webkit-scrollbar-thumb:hover {
+html:not([data-platform="mac"]) *::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--t3) 80%, transparent);
 }
-*::-webkit-scrollbar-track { background: transparent; }
+html:not([data-platform="mac"]) *::-webkit-scrollbar-track { background: transparent; }
 
 /* ─────────────────────────────────────────────────────────────
    Tooltips
@@ -1897,8 +2041,11 @@ button, a {
    ───────────────────────────────────────────────────────────── */
 .yarrow-annotations-layout {
   display: grid;
-  grid-template-columns: 1fr 220px;
-  gap: 24px;
+  /* 2.2.0: widened the gutter from 220 → 280 px so the bumped-up
+     annotation font has room to breathe without aggressive wrapping.
+     Body still gets the lion's share of horizontal space. */
+  grid-template-columns: 1fr 280px;
+  gap: 28px;
 }
 @media (max-width: 960px) {
   .yarrow-annotations-layout {
@@ -1916,11 +2063,15 @@ button, a {
   background: color-mix(in srgb, var(--yelp) 38%, transparent);
   border-left: 2px solid var(--yel);
   border-radius: 0 6px 6px 0;
-  padding: 10px 12px 10px 12px;
-  margin-bottom: 10px;
+  padding: 13px 15px;
+  margin-bottom: 12px;
   font-family: var(--ui-font-family, var(--sans));
-  font-size: 12.5px;
-  line-height: 1.45;
+  /* 2.2.0 round 2: 14.5 → 16.5 px. User feedback said the previous
+     bump still read as too tiny next to 17 px body. The gutter is now
+     280 px wide (was 220) so 16.5 fits comfortably without wrapping
+     mid-word. */
+  font-size: 16.5px;
+  line-height: 1.55;
   color: var(--char);
   position: relative;
   transition: border-color .15s;
@@ -1928,11 +2079,13 @@ button, a {
 .yarrow-annotation:hover { border-left-color: var(--yeld); }
 .yarrow-annotation .meta {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 9.5px;
+  /* 2.2.0 round 2: 9.5 → 11 px. Still distinctly smaller than the
+     body so it reads as metadata, not content — but legible. */
+  font-size: 11px;
   color: var(--t3);
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1961,11 +2114,15 @@ button, a {
 .yarrow-annotation .anchor {
   font-family: 'Fraunces', Georgia, serif;
   font-style: italic;
-  font-size: 11.5px;
+  /* 2.2.0 round 2: 13 → 15 px. The italic anchor is the user's own
+     quote of the body — it should read at near-body size so the eye
+     doesn't have to drop into squint mode to recognise it. */
+  font-size: 15px;
+  line-height: 1.4;
   color: var(--t2);
   border-bottom: 1px dashed var(--bd);
-  padding-bottom: 4px;
-  margin-bottom: 6px;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
   line-clamp: 2;
   -webkit-line-clamp: 2;
   display: -webkit-box;
@@ -1975,7 +2132,9 @@ button, a {
 .yarrow-annotations-add {
   font-family: 'Fraunces', Georgia, serif;
   font-style: italic;
-  font-size: 12px;
+  /* 2.2.0 round 2: 12 → 13.5 px so the "add annotation" placeholder
+     scales with the surrounding annotations. */
+  font-size: 13.5px;
   color: var(--t3);
   background: transparent;
   border: 1px dashed var(--bd);
@@ -2147,15 +2306,15 @@ select:focus-visible {
   scrollbar-width: thin;
   scrollbar-color: var(--bd) transparent;
 }
-*::-webkit-scrollbar { width: 10px; height: 10px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb {
+html:not([data-platform="mac"]) *::-webkit-scrollbar { width: 10px; height: 10px; }
+html:not([data-platform="mac"]) *::-webkit-scrollbar-track { background: transparent; }
+html:not([data-platform="mac"]) *::-webkit-scrollbar-thumb {
   background: var(--bd);
   border-radius: 10px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-*::-webkit-scrollbar-thumb:hover {
+html:not([data-platform="mac"]) *::-webkit-scrollbar-thumb:hover {
   background: var(--t3);
   background-clip: padding-box;
   border: 2px solid transparent;

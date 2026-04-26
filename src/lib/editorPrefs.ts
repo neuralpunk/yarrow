@@ -262,3 +262,23 @@ export const usePathTintedCaret = makeBoolPref(
   "yarrow:pathTintedCaret-changed",
   true,
 );
+
+/** 2.2.0 Live preview: split the editor into a writing pane on the left
+ *  and a rendered-markdown pane on the right. Changes flow live from
+ *  editor → reader; the same NoteReader powers full reading mode, so
+ *  the typography stays consistent. Off by default so the editor stays
+ *  full-bleed for users who don't need it. */
+export const useLivePreview = makeBoolPref(
+  "yarrow.livePreview",
+  "yarrow:livePreview-changed",
+);
+
+/** 2.2.0 Cook mode: bumps the rendered-text size, generous padding,
+ *  optional screen wake-lock. Aimed at hands-free reading while a
+ *  baker is mid-recipe. Body gets a `yarrow-cook-mode` class so any
+ *  rendered surface (reader, live preview pane) inherits the changes
+ *  without per-component plumbing. */
+export const useCookMode = makeBoolPref(
+  "yarrow.cookMode",
+  "yarrow:cookMode-changed",
+);

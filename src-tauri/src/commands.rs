@@ -9,6 +9,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use crate::app_config;
 use crate::attachments;
+use crate::bibliography;
 use crate::crypto::{self, MasterKey};
 use crate::error::{Result, YarrowError};
 use crate::export;
@@ -22,9 +23,11 @@ use crate::obsidian_import;
 use crate::path_collections;
 use crate::path_content;
 use crate::path_meta;
+use crate::recipe_clip;
 use crate::sample_vault;
 use crate::search;
 use crate::search_index;
+use crate::shopping_list;
 use crate::templates;
 use crate::trash;
 use crate::workspace;
@@ -1261,7 +1264,7 @@ pub fn cmd_empty_trash(state: State<AppState>) -> Result<()> {
 #[tauri::command]
 pub fn cmd_render_note_body_html(slug: String, state: State<AppState>) -> Result<String> {
     let root = state.require_root()?;
-    let session = state.session.lock().unwrap();
+    let session = unpoison(state.session.lock());
     let note = notes::read_with_key(&root, &slug, session.master_key.as_ref())?;
     drop(session);
     render_markdown(&note.body)
@@ -1418,7 +1421,7 @@ fn pretty_callout_type(t: &str) -> String {
 pub fn cmd_render_note_html(slug: String, state: State<AppState>) -> Result<String> {
     use pulldown_cmark::{html, Options, Parser};
     let root = state.require_root()?;
-    let session = state.session.lock().unwrap();
+    let session = unpoison(state.session.lock());
     let note = notes::read_with_key(&root, &slug, session.master_key.as_ref())?;
     drop(session);
     let mut options = Options::empty();
@@ -3721,3 +3724,248 @@ fn extract_html_title(html: &str) -> Option<String> {
     let cleaned = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
     if cleaned.is_empty() { None } else { Some(cleaned) }
 }
+
+// ───────── bibliography (2.2.0) ─────────
+
+/// Render a bibliography for `slug` based on its `paper`-tagged
+/// wikilinks. Read-only — returns the formatted block; doesn't touch
+/// the note. Useful for live preview.
+#[tauri::command]
+pub fn cmd_render_bibliography(slug: String, state: State<AppState>) -> Result<String> {
+    let root = state.require_root()?;
+    state.touch_activity();
+    let session = unpoison(state.session.lock());
+    let key = session.master_key.as_ref().cloned();
+    drop(session);
+    let note = notes::read_with_key(&root, &slug, key.as_ref())?;
+    bibliography::render(&root, &note.body)
+}
+
+/// Render the bibliography and upsert the fenced block into the note's
+/// body. Re-runs replace the existing block in place. Returns the new
+/// body so the frontend can hot-swap without an extra read.
+#[tauri::command]
+pub fn cmd_insert_bibliography(slug: String, state: State<AppState>) -> Result<notes::Note> {
+    let root = state.require_root()?;
+    state.touch_activity();
+    let session = unpoison(state.session.lock());
+    let key = session.master_key.as_ref().cloned();
+    drop(session);
+    state.with_repo_locked(|| -> Result<notes::Note> {
+        let existing = notes::read_with_key(&root, &slug, key.as_ref())?;
+        let block = bibliography::render(&root, &existing.body)?;
+        let new_body = bibliography::upsert_block(&existing.body, &block);
+        if new_body == existing.body {
+            return Ok(existing);
+        }
+        let (note, _changed) =
+            notes::write_with_key_status(&root, &slug, &new_body, None, key.as_ref())?;
+        let repo = open_repo(&root)?;
+        let _ = git::checkpoint(&repo, "checkpoint: refreshed bibliography");
+        Ok(note)
+    })
+}
+
+// ───────── multi-note PDF render (2.2.0) ─────────
+
+/// Render every note in `slugs` into a single standalone HTML document
+/// with the same print styling as `cmd_render_note_html`. Each note
+/// becomes its own `<section>` with a `page-break-before` CSS hint, so
+/// the OS print → save-as-PDF flow yields a clean per-note paginated
+/// document. Encrypted notes are skipped silently — they shouldn't end
+/// up in a PDF the user later forgets is unencrypted on disk.
+#[tauri::command]
+pub fn cmd_render_notes_html(slugs: Vec<String>, state: State<AppState>) -> Result<String> {
+    let root = state.require_root()?;
+    let session = unpoison(state.session.lock());
+    let key = session.master_key.as_ref().cloned();
+    drop(session);
+    render_multi_html(&root, &slugs, key.as_ref(), None)
+}
+
+/// Render every note in `path_name` into one document, ordered by the
+/// path's stored member list. Empty when the path doesn't exist.
+#[tauri::command]
+pub fn cmd_render_path_html(path_name: String, state: State<AppState>) -> Result<String> {
+    let root = state.require_root()?;
+    let session = unpoison(state.session.lock());
+    let key = session.master_key.as_ref().cloned();
+    drop(session);
+    let view = path_collections::read_all(&root)?;
+    let slugs: Vec<String> = view
+        .collections
+        .iter()
+        .find(|c| c.name == path_name)
+        .map(|c| c.members.clone())
+        .unwrap_or_default();
+    if slugs.is_empty() {
+        return Err(YarrowError::Invalid(format!(
+            "no notes in path '{}'",
+            path_name
+        )));
+    }
+    render_multi_html(&root, &slugs, key.as_ref(), Some(&path_name))
+}
+
+fn render_multi_html(
+    root: &std::path::Path,
+    slugs: &[String],
+    key: Option<&crypto::MasterKey>,
+    cover_path_name: Option<&str>,
+) -> Result<String> {
+    use pulldown_cmark::{html, Options, Parser};
+
+    let mut sections = String::new();
+    let mut count = 0usize;
+    let mut titles: Vec<String> = Vec::new();
+    for slug in slugs {
+        let note = match notes::read_with_key(root, slug, key) {
+            Ok(n) if !n.encrypted => n,
+            _ => continue,
+        };
+        let mut options = Options::empty();
+        options.insert(Options::ENABLE_STRIKETHROUGH);
+        options.insert(Options::ENABLE_TABLES);
+        options.insert(Options::ENABLE_FOOTNOTES);
+        options.insert(Options::ENABLE_TASKLISTS);
+        let parser = Parser::new_ext(&note.body, options);
+        let mut body = String::new();
+        html::push_html(&mut body, parser);
+        let body = strip_xss_tripwire(&body);
+        let title = if note.frontmatter.title.is_empty() {
+            note.slug.clone()
+        } else {
+            note.frontmatter.title.clone()
+        };
+        titles.push(title.clone());
+        sections.push_str(&format!(
+            "<section class=\"note\"><h1>{title}</h1>{body}</section>",
+            title = html_escape(&title),
+            body = body,
+        ));
+        count += 1;
+    }
+
+    let cover_title = cover_path_name
+        .map(|n| html_escape(n))
+        .unwrap_or_else(|| "Selection".to_string());
+    let toc: String = titles
+        .iter()
+        .map(|t| format!("<li>{}</li>", html_escape(t)))
+        .collect();
+    let cover = format!(
+        "<section class=\"cover\"><h1>{title}</h1>\
+        <p class=\"cover-meta\">{count} notes · {date}</p>\
+        <ol class=\"toc\">{toc}</ol></section>",
+        title = cover_title,
+        count = count,
+        date = chrono::Utc::now().format("%Y-%m-%d"),
+        toc = toc,
+    );
+
+    let doc = format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{title}</title>\
+        <style>{css}{multi}</style></head><body>{cover}{sections}</body></html>",
+        title = cover_title,
+        css = PRINT_CSS,
+        multi = MULTI_PRINT_CSS,
+        cover = cover,
+        sections = sections,
+    );
+    Ok(doc)
+}
+
+const MULTI_PRINT_CSS: &str = r#"
+section.note { page-break-before: always; }
+section.cover { page-break-after: always; padding-top: 120px; text-align: left; }
+section.cover h1 { font-size: 48px; line-height: 1.05; }
+.cover-meta { color: #6b6b6b; font-size: 14px; margin-bottom: 32px; }
+ol.toc { padding-left: 1.4em; line-height: 1.9; font-size: 14px; }
+ol.toc li { margin-bottom: 4px; }
+@media print { section { break-inside: avoid-page; } }
+"#;
+
+// ───────── smart shopping list (2.2.0) ─────────
+
+/// Scan `slug`'s body for an `## Ingredients` section, append each
+/// bullet to the workspace's `Shopping List` note, and return what
+/// happened. Idempotent: re-running the same recipe is a no-op past
+/// the first time (each line is dedup'd by canonical text + source).
+#[tauri::command]
+pub fn cmd_add_recipe_to_shopping_list(
+    slug: String,
+    state: State<AppState>,
+) -> Result<shopping_list::ShoppingListOutcome> {
+    let root = state.require_root()?;
+    state.touch_activity();
+    let session = unpoison(state.session.lock());
+    let key = session.master_key.as_ref().cloned();
+    drop(session);
+    state.with_repo_locked(|| -> Result<shopping_list::ShoppingListOutcome> {
+        let note = notes::read_with_key(&root, &slug, key.as_ref())?;
+        let items = shopping_list::extract_ingredients(&note.body);
+        let title = if note.frontmatter.title.trim().is_empty() {
+            slug.clone()
+        } else {
+            note.frontmatter.title.clone()
+        };
+        let outcome = shopping_list::add_items(&root, &items, &title)?;
+        // Only checkpoint when something actually changed — keeps the
+        // history clean if the user hits the command twice.
+        if outcome.added > 0 {
+            let repo = open_repo(&root)?;
+            let _ = git::checkpoint(
+                &repo,
+                &format!(
+                    "checkpoint: added {} item(s) to shopping list from \"{}\"",
+                    outcome.added, title
+                ),
+            );
+        }
+        Ok(outcome)
+    })
+}
+
+/// Convenience: returns the slug of the shopping-list note so the
+/// frontend can navigate to it after adding items.
+#[tauri::command]
+pub fn cmd_shopping_list_slug() -> String {
+    shopping_list::shopping_list_slug().to_string()
+}
+
+// ───────── recipe URL clipper (2.2.0) ─────────
+
+/// Fetch a URL, extract schema.org `Recipe` JSON-LD, and create a new
+/// note populated from the clip. The returned `Note` is the freshly-
+/// created note so the frontend can navigate to it.
+#[tauri::command]
+pub fn cmd_clip_recipe(url: String, state: State<AppState>) -> Result<notes::Note> {
+    let root = state.require_root()?;
+    state.touch_activity();
+    // Fetch + parse outside the repo lock — the network call shouldn't
+    // block other workspace operations.
+    let data = recipe_clip::clip_from_url(&url)?;
+    let body = recipe_clip::render_markdown(&data);
+    let title = if data.name.trim().is_empty() {
+        "Clipped recipe".to_string()
+    } else {
+        data.name.trim().to_string()
+    };
+    state.with_repo_locked(|| -> Result<notes::Note> {
+        let note = notes::create(&root, &title)?;
+        let session = unpoison(state.session.lock());
+        let key = session.master_key.as_ref().cloned();
+        drop(session);
+        let (saved, _changed) =
+            notes::write_with_key_status(&root, &note.slug, &body, None, key.as_ref())?;
+        let repo = open_repo(&root)?;
+        let _ = git::checkpoint(
+            &repo,
+            &format!("checkpoint: clipped recipe \"{}\"", title),
+        );
+        let _ = graph::build(&root);
+        let _ = path_collections::reconcile_new_note(&root, &saved.slug);
+        Ok(saved)
+    })
+}
+

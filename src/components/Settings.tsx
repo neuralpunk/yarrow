@@ -12,6 +12,7 @@ import {
   useTypewriterMode,
   useEditorialReading,
   usePathTintedCaret,
+  useCookMode,
 } from "../lib/editorPrefs";
 import {
   EXTRAS,
@@ -19,9 +20,18 @@ import {
   useExtraImagePreview,
   useExtraMath,
   useExtraRadialMenu,
+  useExtraCooking,
   useExtraSpell,
   type ExtraKey,
 } from "../lib/extraPrefs";
+import {
+  BINDABLE_ACTIONS,
+  getDefaultBinding,
+  resetGestureBindings,
+  useGestureBinding,
+  type GestureSlot,
+} from "../lib/gesturePrefs";
+import type { CenterActionId } from "./Editor/center/actions";
 import { useUiFont, UI_FONTS, type UiFontId, useUiScale, UI_SCALES, type UiScaleId } from "../lib/uiPrefs";
 import { usePersonality, PERSONALITIES, type PersonalityId } from "../lib/personalityPrefs";
 import { usePaperTexture, PAPER_TEXTURES, type PaperTextureId, usePaperWarmth } from "../lib/paperPrefs";
@@ -36,6 +46,7 @@ import { useGuidance } from "../lib/guidanceStore";
 type Tab =
   | "appearance"
   | "writing"
+  | "gestures"
   | "guidance"
   | "sync"
   | "storage"
@@ -95,6 +106,7 @@ export default function Settings({
   const tabLabels: Record<Tab, string> = {
     appearance: t("settings.tabs.appearance"),
     writing: t("settings.tabs.writing"),
+    gestures: t("settings.tabs.gestures"),
     guidance: t("settings.tabs.guidance"),
     templates: t("settings.tabs.templates"),
     sync: t("settings.tabs.sync"),
@@ -111,7 +123,7 @@ export default function Settings({
       onMouseDown={onClose}
     >
       <div
-        className="w-[760px] max-w-[94vw] h-[520px] max-h-[90vh] bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden flex animate-slideUp relative"
+        className="w-[860px] max-w-[94vw] h-[600px] max-h-[92vh] bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden flex animate-slideUp relative"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <button
@@ -138,19 +150,7 @@ export default function Settings({
             <div className="text-2xs text-t3 mt-1.5 px-1">{t("settings.escToClose")}</div>
           </div>
           <nav className="flex-1 pt-2">
-            {(["appearance", "writing", "guidance", "templates", "sync", "storage", "security", "workspace", "shortcuts", "about"] as Tab[]).map((tabKey) => (
-              <button
-                key={tabKey}
-                onClick={() => { setTab(tabKey); setQuery(""); }}
-                className={`w-full text-left px-4 py-2 text-sm transition ${
-                  !query && tab === tabKey
-                    ? "bg-s3 text-char border-l-2 border-yel pl-[14px]"
-                    : "text-t2 hover:bg-s2 hover:text-char"
-                }`}
-              >
-                {tabLabels[tabKey]}
-              </button>
-            ))}
+            <NavTabs tab={tab} query={query} setTab={setTab} setQuery={setQuery} tabLabels={tabLabels} config={config} />
           </nav>
         </aside>
 
@@ -167,6 +167,7 @@ export default function Settings({
               {tab === "writing" && config && (
                 <WritingPane config={config} onConfigChange={onConfigChange} />
               )}
+              {tab === "gestures" && <GesturesPane />}
               {tab === "guidance" && <GuidancePane />}
               {tab === "sync" && config && (
                 <SyncPane
@@ -185,7 +186,7 @@ export default function Settings({
                 />
               )}
               {tab === "templates" && <TemplatesPane />}
-              {tab === "storage" && <StoragePane />}
+              {tab === "storage" && !!config?.sync?.server?.workspace_id && <StoragePane />}
               {tab === "security" && config && (
                 <SecurityPane config={config} onConfigChange={onConfigChange} />
               )}
@@ -196,6 +197,61 @@ export default function Settings({
         </section>
       </div>
     </div>
+  );
+}
+
+// Nav strip — pulls the radial-menu extra so the Gestures tab only
+// surfaces when the radial is actually enabled, and the workspace's
+// sync server config so the Storage tab is hidden when the user
+// hasn't connected to a Yarrow Sync server yet (storage tooling is
+// only meaningful in that context — local-only workspaces have
+// nothing to clean up server-side).
+function NavTabs({
+  tab,
+  query,
+  setTab,
+  setQuery,
+  tabLabels,
+  config,
+}: {
+  tab: Tab;
+  query: string;
+  setTab: (t: Tab) => void;
+  setQuery: (q: string) => void;
+  tabLabels: Record<Tab, string>;
+  config: WorkspaceConfig | null;
+}) {
+  const [radialOn] = useExtraRadialMenu();
+  const serverConnected = !!config?.sync?.server?.workspace_id;
+  const tabOrder: Tab[] = [
+    "appearance",
+    "writing",
+    ...(radialOn ? (["gestures"] as Tab[]) : []),
+    "guidance",
+    "templates",
+    "sync",
+    ...(serverConnected ? (["storage"] as Tab[]) : []),
+    "security",
+    "workspace",
+    "shortcuts",
+    "about",
+  ];
+  return (
+    <>
+      {tabOrder.map((tabKey) => (
+        <button
+          key={tabKey}
+          onClick={() => { setTab(tabKey); setQuery(""); }}
+          className={`w-full text-left px-4 py-2 text-sm transition ${
+            !query && tab === tabKey
+              ? "bg-s3 text-char border-l-2 border-yel pl-[14px]"
+              : "text-t2 hover:bg-s2 hover:text-char"
+          }`}
+        >
+          {tabLabels[tabKey]}
+        </button>
+      ))}
+    </>
   );
 }
 
@@ -851,6 +907,10 @@ function WritingPane({
 
       <PathTintedCaretRow />
 
+      {/* Cook mode is gated on the Cooking additions extra — when
+          off, the row hides too so the Writing pane stays trim. */}
+      <CookModeRowGated />
+
       <EditorFontRow />
 
 
@@ -902,6 +962,28 @@ function PathTintedCaretRow() {
   );
 }
 
+// 2.2.0 round 2 — Cook mode now has a Settings home so users can flip
+// it without learning the command-palette path. Gated on the Cooking
+// additions extra so non-bakers don't see it.
+function CookModeRowGated() {
+  const [cookingOn] = useExtraCooking();
+  if (!cookingOn) return null;
+  return <CookModeRow />;
+}
+
+function CookModeRow() {
+  const t = useT();
+  const [on, setOn] = useCookMode();
+  return (
+    <Row
+      label={t("settings.writing.cookMode.label")}
+      hint={t("settings.writing.cookMode.hint")}
+    >
+      <Toggle value={on} onChange={setOn} />
+    </Row>
+  );
+}
+
 function ExtrasSection() {
   const t = useT();
   return (
@@ -937,12 +1019,14 @@ function ExtraRow({
   const spell = useExtraSpell();
   const image = useExtraImagePreview();
   const radial = useExtraRadialMenu();
+  const cooking = useExtraCooking();
   const lookup: Record<ExtraKey, [boolean, (v: boolean) => void]> = {
     codeHighlight: code,
     math,
     spell,
     imagePreview: image,
     radialMenu: radial,
+    cooking,
   };
   const [value, setValue] = lookup[extraKey];
   return (
@@ -1079,6 +1163,205 @@ function FontGroup({
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────── gestures ───────────────
+//
+// Three configurable slots on the radial centre (tap, long-press,
+// double-tap), each bound to one named action. Plus a reset-to-
+// defaults button that puts everything back to: tap → palette,
+// long-press → quick hand, double-tap → focus mode.
+//
+// This pane is gated on the radial-menu extra at the nav level (see
+// NavTabs above) — when the radial is off, the tab simply doesn't
+// surface, so we don't need a "you must enable…" empty state here.
+
+function GesturesPane() {
+  const t = useT();
+  const [tapBinding, setTapBinding] = useGestureBinding("tap");
+  const [longPressBinding, setLongPressBinding] = useGestureBinding("longPress");
+  const [doubleTapBinding, setDoubleTapBinding] = useGestureBinding("doubleTap");
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  // Group actions for the dropdown's optgroups so a 12-entry list reads
+  // as a small browseable map rather than a wall.
+  const groupedActions = useMemo(() => {
+    const groups: Record<string, typeof BINDABLE_ACTIONS> = {
+      core: [],
+      navigation: [],
+      writing: [],
+      system: [],
+    };
+    BINDABLE_ACTIONS.forEach((a) => groups[a.group].push(a));
+    return groups;
+  }, []);
+
+  const isAtDefaults =
+    tapBinding === getDefaultBinding("tap") &&
+    longPressBinding === getDefaultBinding("longPress") &&
+    doubleTapBinding === getDefaultBinding("doubleTap");
+
+  const renderSelect = (
+    slot: GestureSlot,
+    value: CenterActionId,
+    onChange: (v: CenterActionId) => void,
+  ) => (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as CenterActionId)}
+      className="w-full bg-bg border border-bd2 rounded-md px-3 py-2 text-sm text-char focus:outline-none focus:border-yel hover:border-yel transition"
+      aria-label={t(`settings.gestures.slot.${slot}.label`)}
+    >
+      <optgroup label={t("settings.gestures.group.core")}>
+        {groupedActions.core.map((a) => (
+          <option key={a.id} value={a.id}>{t(a.i18nLabel)}</option>
+        ))}
+      </optgroup>
+      <optgroup label={t("settings.gestures.group.navigation")}>
+        {groupedActions.navigation.map((a) => (
+          <option key={a.id} value={a.id}>{t(a.i18nLabel)}</option>
+        ))}
+      </optgroup>
+      <optgroup label={t("settings.gestures.group.writing")}>
+        {groupedActions.writing.map((a) => (
+          <option key={a.id} value={a.id}>{t(a.i18nLabel)}</option>
+        ))}
+      </optgroup>
+      <optgroup label={t("settings.gestures.group.system")}>
+        {groupedActions.system.map((a) => (
+          <option key={a.id} value={a.id}>{t(a.i18nLabel)}</option>
+        ))}
+      </optgroup>
+    </select>
+  );
+
+  const blurbForBinding = (id: CenterActionId): string => {
+    const a = BINDABLE_ACTIONS.find((x) => x.id === id);
+    return a ? t(a.i18nBlurb) : "";
+  };
+
+  return (
+    <>
+      <Section
+        title={t("settings.gestures.title")}
+        hint={t("settings.gestures.hint")}
+      >
+        <GestureRow
+          slotName={t("settings.gestures.slot.tap.label")}
+          slotMeta={t("settings.gestures.slot.tap.meta")}
+          select={renderSelect("tap", tapBinding, setTapBinding)}
+          blurb={blurbForBinding(tapBinding)}
+        />
+        <GestureRow
+          slotName={t("settings.gestures.slot.longPress.label")}
+          slotMeta={t("settings.gestures.slot.longPress.meta")}
+          select={renderSelect("longPress", longPressBinding, setLongPressBinding)}
+          blurb={blurbForBinding(longPressBinding)}
+          highlighted
+        />
+        <GestureRow
+          slotName={t("settings.gestures.slot.doubleTap.label")}
+          slotMeta={t("settings.gestures.slot.doubleTap.meta")}
+          select={renderSelect("doubleTap", doubleTapBinding, setDoubleTapBinding)}
+          blurb={blurbForBinding(doubleTapBinding)}
+        />
+      </Section>
+
+      <Section title={t("settings.gestures.structural.title")} hint={t("settings.gestures.structural.hint")}>
+        <div className="bg-s1 border border-bd rounded-md px-4 py-3 text-xs text-t2 leading-relaxed">
+          <div className="flex items-start gap-3 mb-2">
+            <span className="font-mono text-2xs uppercase tracking-wider text-yeld bg-yelp px-2 py-0.5 rounded-full mt-0.5 whitespace-nowrap">{t("settings.gestures.structural.dragOut.tag")}</span>
+            <span>{t("settings.gestures.structural.dragOut.desc")}</span>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="font-mono text-2xs uppercase tracking-wider text-yeld bg-yelp px-2 py-0.5 rounded-full mt-0.5 whitespace-nowrap">{t("settings.gestures.structural.scroll.tag")}</span>
+            <span>{t("settings.gestures.structural.scroll.desc")}</span>
+          </div>
+        </div>
+      </Section>
+
+      <div className="mt-6 pt-5 border-t border-bd flex items-center justify-between gap-4">
+        <p className="text-xs text-t3 leading-relaxed flex-1">
+          {isAtDefaults
+            ? t("settings.gestures.reset.atDefaults")
+            : t("settings.gestures.reset.modified")}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (isAtDefaults) return;
+            setConfirmReset(true);
+          }}
+          disabled={isAtDefaults}
+          className="px-3 py-1.5 text-sm border border-bd2 rounded-md text-char hover:border-yel hover:bg-yelp hover:text-yeld disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+          {t("settings.gestures.reset.btn")}
+        </button>
+      </div>
+
+      <Modal
+        open={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        title={t("settings.gestures.reset.confirmTitle")}
+        width="w-[420px]"
+      >
+        <p className="text-sm text-t2 mb-4 leading-relaxed">
+          {t("settings.gestures.reset.confirmBody")}
+        </p>
+        <div className="bg-bg-soft border border-bd rounded-md px-3 py-2.5 mb-5 text-xs space-y-1 font-mono text-t2">
+          <div><span className="text-t3">tap </span>→ {BINDABLE_ACTIONS.find(a => a.id === getDefaultBinding("tap"))?.id}</div>
+          <div><span className="text-t3">long-press </span>→ {BINDABLE_ACTIONS.find(a => a.id === getDefaultBinding("longPress"))?.id}</div>
+          <div><span className="text-t3">double-tap </span>→ {BINDABLE_ACTIONS.find(a => a.id === getDefaultBinding("doubleTap"))?.id}</div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setConfirmReset(false)}
+            className="px-3 py-1.5 text-sm text-t2 hover:text-char"
+          >
+            {t("settings.gestures.reset.cancel")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              resetGestureBindings();
+              setConfirmReset(false);
+            }}
+            className="btn-yel px-3 py-1.5 text-sm rounded-md"
+          >
+            {t("settings.gestures.reset.confirm")}
+          </button>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+function GestureRow({
+  slotName,
+  slotMeta,
+  select,
+  blurb,
+  highlighted,
+}: {
+  slotName: string;
+  slotMeta: string;
+  select: React.ReactNode;
+  blurb: string;
+  highlighted?: boolean;
+}) {
+  return (
+    <div className={`grid grid-cols-[180px_1fr] gap-4 items-start py-3 ${highlighted ? "" : ""}`}>
+      <div>
+        <div className="font-serif text-base text-char">{slotName}</div>
+        <div className="font-mono text-2xs uppercase tracking-wider text-t3 mt-0.5">{slotMeta}</div>
+      </div>
+      <div>
+        {select}
+        {blurb && <p className="text-xs text-t2 mt-1.5 leading-relaxed">{blurb}</p>}
       </div>
     </div>
   );
@@ -2693,6 +2976,7 @@ function TrimHistoryButtons() {
   const run = async (target: { kind: "age"; days: AgeDays } | { kind: "empty" }) => {
     setBusy(true);
     setMsg(null);
+    let succeeded = false;
     try {
       const report =
         target.kind === "age"
@@ -2714,11 +2998,17 @@ function TrimHistoryButtons() {
           ),
         );
       }
+      succeeded = true;
     } catch (e) {
       setMsg(t("settings.trim.failed", { error: String(e) }));
     } finally {
       setBusy(false);
       setConfirm(null);
+    }
+    // Auto-dismiss success messages so the section returns to a clean state.
+    // Errors persist until the user clicks again so they have time to read.
+    if (succeeded) {
+      window.setTimeout(() => setMsg(null), 6000);
     }
   };
 
@@ -2739,20 +3029,25 @@ function TrimHistoryButtons() {
         <button
           onClick={() => { setPickerDays(180); setPicker(true); }}
           disabled={busy}
-          className="px-3 py-1.5 text-sm text-danger border border-danger/40 bg-danger/5 rounded-md hover:bg-danger/10 disabled:opacity-50"
+          className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
         >
           {t("settings.trim.olderBtn")}
         </button>
         <button
           onClick={() => setConfirm({ kind: "empty" })}
           disabled={busy}
-          className="px-3 py-1.5 text-sm text-danger border border-danger/40 bg-danger/5 rounded-md hover:bg-danger/10 disabled:opacity-50"
+          className="px-3 py-1.5 text-sm bg-danger text-bg rounded-md hover:opacity-90 disabled:opacity-60"
         >
           {t("settings.trim.emptyBtn")}
         </button>
       </div>
       {msg && (
-        <p className="text-2xs text-t2 mt-2 leading-snug">{msg}</p>
+        <div
+          role="status"
+          className="text-sm text-char mt-3 px-3 py-2 bg-yelp/40 border border-yel/40 rounded-md leading-relaxed"
+        >
+          {msg}
+        </div>
       )}
 
       <Modal
@@ -2947,13 +3242,29 @@ function ClearAllCacheButton() {
 
 function ExportButton() {
   const t = useT();
+  // 2.2.0: replaced the bare directory-picker flow with a modal so the
+  // user gets a chance to confirm what they're about to do (and where it's
+  // landing) before any I/O happens. The native folder picker is still
+  // used for the destination — it's just now reached through the modal.
+  const [open, setOpen] = useState(false);
+  const [dest, setDest] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  const pickDest = async () => {
+    const picked = await openDialog({
+      directory: true,
+      multiple: false,
+      title: t("settings.export.dialogTitle"),
+    });
+    if (typeof picked === "string") setDest(picked);
+  };
 
   const runExport = async () => {
+    if (!dest) return;
     setMsg(null);
-    const dest = await openDialog({ directory: true, multiple: false, title: t("settings.export.dialogTitle") });
-    if (!dest || Array.isArray(dest)) return;
+    setError(false);
     setBusy(true);
     try {
       const report = await api.exportStatic(dest);
@@ -2979,25 +3290,111 @@ function ExportButton() {
         dest: report.dest,
       }));
     } catch (e) {
+      setError(true);
       setMsg(t("settings.export.failed", { error: String(e) }));
     } finally {
       setBusy(false);
     }
   };
 
+  const close = () => {
+    if (busy) return;
+    setOpen(false);
+    // Defer state cleanup until the modal has finished its unmount so the
+    // user doesn't see content rearrange itself on the way out.
+    window.setTimeout(() => {
+      setMsg(null);
+      setError(false);
+      setDest(null);
+    }, 200);
+  };
+
   return (
-    <div className="flex items-center gap-2">
+    <>
       <button
-        onClick={runExport}
-        disabled={busy}
-        className="btn-yel px-3 py-1.5 text-sm rounded-md disabled:opacity-60"
+        onClick={() => setOpen(true)}
+        className="btn-yel px-3 py-1.5 text-sm rounded-md"
       >
-        {busy ? t("settings.export.exporting") : t("settings.export.go")}
+        {t("settings.export.go")}
       </button>
-      {msg && (
-        <span className="text-2xs text-t2 flex-1 leading-snug break-all">{msg}</span>
-      )}
-    </div>
+
+      <Modal
+        open={open}
+        onClose={close}
+        title={t("settings.export.modal.title")}
+        width="w-[480px]"
+      >
+        <p className="text-sm text-t2 mb-4 leading-relaxed">
+          {t("settings.export.modal.body")}
+        </p>
+
+        <div className="mb-4">
+          <div className="text-2xs uppercase tracking-wider text-t3 mb-1.5">
+            {t("settings.export.modal.dest.label")}
+          </div>
+          <button
+            type="button"
+            onClick={pickDest}
+            disabled={busy}
+            className={
+              dest
+                ? "w-full text-left px-3 py-2 text-sm rounded-md border border-bd bg-bg text-char hover:border-bd2 transition truncate disabled:opacity-60"
+                : "w-full text-left px-3 py-2 text-sm rounded-md border border-bd2 border-dashed bg-bg text-t2 hover:bg-s2 hover:text-char transition disabled:opacity-60"
+            }
+          >
+            <span className="font-mono break-all">
+              {dest || t("settings.export.modal.dest.choose")}
+            </span>
+          </button>
+          {dest && (
+            <button
+              type="button"
+              onClick={pickDest}
+              disabled={busy}
+              className="text-2xs text-t3 hover:text-char mt-1 disabled:opacity-60"
+            >
+              {t("settings.export.modal.dest.change")}
+            </button>
+          )}
+        </div>
+
+        {msg && (
+          <div
+            role="status"
+            className={
+              error
+                ? "text-xs text-char mb-4 px-3 py-2 bg-danger/10 border border-danger/30 rounded-md leading-relaxed break-all"
+                : "text-xs text-char mb-4 px-3 py-2 bg-yelp/40 border border-yel/40 rounded-md leading-relaxed break-all"
+            }
+          >
+            {msg}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={close}
+            disabled={busy}
+            className="px-3 py-1.5 text-sm text-t2 hover:text-char disabled:opacity-60"
+          >
+            {msg && !error
+              ? t("settings.export.modal.close")
+              : t("settings.export.modal.cancel")}
+          </button>
+          <button
+            onClick={runExport}
+            disabled={busy || !dest}
+            className="btn-yel px-3 py-1.5 text-sm rounded-md disabled:opacity-60"
+          >
+            {busy
+              ? t("settings.export.exporting")
+              : msg && !error
+                ? t("settings.export.modal.again")
+                : t("settings.export.modal.confirm")}
+          </button>
+        </div>
+      </Modal>
+    </>
   );
 }
 

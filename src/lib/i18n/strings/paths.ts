@@ -247,9 +247,27 @@ export const pathsEN = {
   "paths.diff.labelOther": "other",
 
   // ── PathCompare (modern compare modal) ──────────────────────────────
-  "paths.compare.title": "What's different between these two paths",
+  "paths.compare.title": "Compare",
   "paths.compare.subtitle":
     "Pick a path on each side. By default the list shows only notes that were edited on both paths — the show control on the right lets you widen it to include one-sided or identical notes too.",
+  // 2.2.0 — Notes-mode strings.
+  "paths.compare.subtitleNotes":
+    "Pick two notes to see what's different between them. Headings, paragraph reordering, and inline edits all surface in whichever view you prefer.",
+  "paths.compare.modeLabel": "Comparison scope",
+  "paths.compare.modeNotes": "Notes",
+  "paths.compare.modePaths": "Paths",
+  "paths.compare.modeNotesTitle": "Compare two individual notes",
+  "paths.compare.modePathsTitle": "Compare every note across two paths",
+  "paths.compare.notesLeftCaption": "Left note",
+  "paths.compare.notesRightCaption": "Right note",
+  "paths.compare.notesPickPrompt": "Pick a note",
+  "paths.compare.notesPickPromptTitle": "Pick two different notes to compare",
+  "paths.compare.notesSameSelection":
+    "Both sides are the same note — pick a different note on one side.",
+  "paths.compare.notesSummary": "Comparing “{left}” to “{right}”",
+  "paths.compare.notesEmptyWorkspaceTitle": "Not enough notes yet",
+  "paths.compare.notesEmptyWorkspaceBody":
+    "You need at least two notes in this workspace to compare. Create another and pop back here.",
   "paths.compare.show": "show",
   "paths.compare.subtitleEm": "show",
   "paths.compare.closeTitle": "Close",
@@ -688,7 +706,24 @@ export const pathsES: Record<PathsKey, string> = {
   "paths.diff.labelOther": "otra",
 
   // ── PathCompare ────────────────────────────────────────────────────
-  "paths.compare.title": "Qué cambia entre estas dos rutas",
+  "paths.compare.title": "Comparar",
+  "paths.compare.subtitleNotes":
+    "Elige dos notas para ver qué las diferencia. Los cambios en encabezados, el reordenamiento de párrafos y las ediciones en línea aparecen en la vista que prefieras.",
+  "paths.compare.modeLabel": "Alcance de la comparación",
+  "paths.compare.modeNotes": "Notas",
+  "paths.compare.modePaths": "Rutas",
+  "paths.compare.modeNotesTitle": "Comparar dos notas individuales",
+  "paths.compare.modePathsTitle": "Comparar todas las notas entre dos rutas",
+  "paths.compare.notesLeftCaption": "Nota izquierda",
+  "paths.compare.notesRightCaption": "Nota derecha",
+  "paths.compare.notesPickPrompt": "Elige una nota",
+  "paths.compare.notesPickPromptTitle": "Elige dos notas distintas para comparar",
+  "paths.compare.notesSameSelection":
+    "Ambos lados son la misma nota — elige una nota diferente en uno de los lados.",
+  "paths.compare.notesSummary": "Comparando «{left}» con «{right}»",
+  "paths.compare.notesEmptyWorkspaceTitle": "Aún no hay notas suficientes",
+  "paths.compare.notesEmptyWorkspaceBody":
+    "Necesitas al menos dos notas en este espacio para comparar. Crea otra y vuelve aquí.",
   "paths.compare.subtitle":
     "Elige una ruta a cada lado. Por defecto, la lista solo muestra notas editadas en ambas rutas: el control mostrar de la derecha te permite ampliarlo para incluir las notas presentes en un solo lado o las idénticas.",
   "paths.compare.show": "mostrar",
@@ -1133,7 +1168,24 @@ export const pathsSV: Record<PathsKey, string> = {
   "paths.diff.labelOther": "annan",
 
   // ── PathCompare ────────────────────────────────────────────────────
-  "paths.compare.title": "Vad skiljer mellan dessa två stigar",
+  "paths.compare.title": "Jämför",
+  "paths.compare.subtitleNotes":
+    "Välj två anteckningar för att se vad som skiljer dem åt. Rubriker, omflyttade stycken och inline-ändringar dyker upp i den vy du föredrar.",
+  "paths.compare.modeLabel": "Jämförelseomfång",
+  "paths.compare.modeNotes": "Anteckningar",
+  "paths.compare.modePaths": "Stigar",
+  "paths.compare.modeNotesTitle": "Jämför två enskilda anteckningar",
+  "paths.compare.modePathsTitle": "Jämför varje anteckning mellan två stigar",
+  "paths.compare.notesLeftCaption": "Vänster anteckning",
+  "paths.compare.notesRightCaption": "Höger anteckning",
+  "paths.compare.notesPickPrompt": "Välj en anteckning",
+  "paths.compare.notesPickPromptTitle": "Välj två olika anteckningar att jämföra",
+  "paths.compare.notesSameSelection":
+    "Båda sidorna är samma anteckning — välj en annan på en av sidorna.",
+  "paths.compare.notesSummary": "Jämför ”{left}” med ”{right}”",
+  "paths.compare.notesEmptyWorkspaceTitle": "Inte tillräckligt med anteckningar än",
+  "paths.compare.notesEmptyWorkspaceBody":
+    "Du behöver minst två anteckningar i arbetsytan för att jämföra. Skapa en till och kom tillbaka.",
   "paths.compare.subtitle":
     "Välj en stig på varje sida. Som standard visar listan bara anteckningar som redigerats på båda stigarna — visa-kontrollen till höger låter dig vidga den till att inkludera ensidiga eller identiska anteckningar.",
   "paths.compare.show": "visa",

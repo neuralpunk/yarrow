@@ -62,6 +62,32 @@ interface Props {
   onOpenActivity?: () => void;
   onOpenTagGraph?: () => void;
   onInsertTable?: () => void;
+  /** Insert / refresh the auto-generated bibliography in the active
+   *  note. Only meaningful when a note is open and contains wikilinks
+   *  to `paper`-tagged notes. The action is shown unconditionally so
+   *  users learn the feature exists; the underlying command no-ops
+   *  cleanly when there are no citations to render. */
+  onInsertBibliography?: () => void;
+  /** Open the outline view for the active note. */
+  onOpenOutline?: () => void;
+  /** Toggle the side-by-side live-preview pane (writing mode only).
+   *  Current state is passed in so the action label can read "Turn on…"
+   *  or "Turn off…" appropriately. */
+  livePreviewOn?: boolean;
+  onToggleLivePreview?: () => void;
+  /** Print every note in the current path as a single paginated PDF.
+   *  When provided, the action is shown only if there's more than one
+   *  note in the path (single-note PDFs already have their own
+   *  command). */
+  onPrintCurrentPath?: () => void;
+  /** Open the Recipe URL clipper modal — paste a URL, get a populated
+   *  recipe note. The action is shown unconditionally (always available). */
+  onClipRecipe?: () => void;
+  /** Send the active note's `## Ingredients` block to the workspace
+   *  Shopping List. Only meaningful when a note is open and contains
+   *  an Ingredients section, but we surface it any time a note is
+   *  open and let the backend report "0 added · no Ingredients found." */
+  onAddToShoppingList?: () => void;
   onImportObsidian?: () => void;
   onComparePaths?: () => void;
   onOpenDecisionMatrix?: () => void;
@@ -315,6 +341,62 @@ export default function CommandPalette(props: Props) {
             label: t("modals.commandPalette.cmdInsertTable"),
             sublabel: t("modals.commandPalette.cmdInsertTableSub"),
             run: () => { onClose(); props.onInsertTable!(); },
+          }]
+        : []),
+      ...(props.onInsertBibliography
+        ? [{
+            kind: "command" as const,
+            key: "insert-bibliography",
+            label: t("modals.commandPalette.cmdInsertBibliography"),
+            sublabel: t("modals.commandPalette.cmdInsertBibliographySub"),
+            run: () => { onClose(); props.onInsertBibliography!(); },
+          }]
+        : []),
+      ...(props.onOpenOutline
+        ? [{
+            kind: "command" as const,
+            key: "open-outline",
+            label: t("modals.commandPalette.cmdOpenOutline"),
+            sublabel: t("modals.commandPalette.cmdOpenOutlineSub"),
+            run: () => { onClose(); props.onOpenOutline!(); },
+          }]
+        : []),
+      ...(props.onToggleLivePreview
+        ? [{
+            kind: "command" as const,
+            key: "toggle-live-preview",
+            label: props.livePreviewOn
+              ? t("modals.commandPalette.cmdLivePreviewOff")
+              : t("modals.commandPalette.cmdLivePreviewOn"),
+            sublabel: t("modals.commandPalette.cmdLivePreviewSub"),
+            run: () => { onClose(); props.onToggleLivePreview!(); },
+          }]
+        : []),
+      ...(props.onPrintCurrentPath
+        ? [{
+            kind: "command" as const,
+            key: "print-current-path",
+            label: t("modals.commandPalette.cmdPrintPath"),
+            sublabel: t("modals.commandPalette.cmdPrintPathSub"),
+            run: () => { onClose(); props.onPrintCurrentPath!(); },
+          }]
+        : []),
+      ...(props.onClipRecipe
+        ? [{
+            kind: "command" as const,
+            key: "clip-recipe",
+            label: t("modals.commandPalette.cmdClipRecipe"),
+            sublabel: t("modals.commandPalette.cmdClipRecipeSub"),
+            run: () => { onClose(); props.onClipRecipe!(); },
+          }]
+        : []),
+      ...(props.onAddToShoppingList
+        ? [{
+            kind: "command" as const,
+            key: "add-to-shopping-list",
+            label: t("modals.commandPalette.cmdAddToShoppingList"),
+            sublabel: t("modals.commandPalette.cmdAddToShoppingListSub"),
+            run: () => { onClose(); props.onAddToShoppingList!(); },
           }]
         : []),
     ];

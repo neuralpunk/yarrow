@@ -1,5 +1,6 @@
 pub mod app_config;
 pub mod attachments;
+pub mod bibliography;
 pub mod bibtex_import;
 pub mod commands;
 pub mod crypto;
@@ -16,10 +17,12 @@ pub mod obsidian_import;
 pub mod path_collections;
 pub mod path_content;
 pub mod path_meta;
+pub mod recipe_clip;
 pub mod sample_vault;
 pub mod search;
 pub mod search_index;
 pub mod secrets;
+pub mod shopping_list;
 pub mod server;
 pub mod templates;
 pub mod trash;
@@ -93,12 +96,158 @@ fn rescue_offscreen_window(win: &tauri::WebviewWindow) {
     let _ = win.center();
 }
 
+// 2.2.0 — Native macOS menu bar.
+//
+// Mac apps without a system menu read as "wrapped web app." We mount a
+// minimal but proper menu bar — Yarrow / File / Edit / View / Window —
+// that mirrors the existing keyboard shortcuts and routes user-driven
+// items (New Note, Settings…, Toggle Focus, etc.) through the existing
+// `yarrow:center-action` plumbing on the frontend. Predefined items
+// (Cut/Copy/Paste/Undo/etc.) hand off to native NSResponder so they
+// work with system focus regardless of CodeMirror's state.
+//
+// macOS-only. Linux and Windows keep their existing custom-titlebar
+// layout — adding a native menu bar there would compete with our
+// custom chrome (and on Linux GNOME, menu bars are increasingly
+// non-standard anyway).
+#[cfg(target_os = "macos")]
+fn build_native_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{
+        AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem,
+        SubmenuBuilder,
+    };
+
+    let about_meta = AboutMetadataBuilder::new()
+        .name(Some("Yarrow"))
+        .version(Some(env!("CARGO_PKG_VERSION")))
+        .copyright(Some("Yarrow — git-backed note-taking for non-linear thinking"))
+        .build();
+
+    let app_submenu = SubmenuBuilder::new(app, "Yarrow")
+        .item(&PredefinedMenuItem::about(app, Some("About Yarrow"), Some(about_meta))?)
+        .separator()
+        .item(&PredefinedMenuItem::hide(app, None)?)
+        .item(&PredefinedMenuItem::hide_others(app, None)?)
+        .item(&PredefinedMenuItem::show_all(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::quit(app, None)?)
+        .build()?;
+
+    // ── File ──
+    let new_note = MenuItemBuilder::with_id("yarrow:menu:newNote", "New Note")
+        .accelerator("CmdOrCtrl+N")
+        .build(app)?;
+    let new_path = MenuItemBuilder::with_id("yarrow:menu:newPath", "New Direction")
+        .accelerator("CmdOrCtrl+Shift+N")
+        .build(app)?;
+    let today = MenuItemBuilder::with_id("yarrow:menu:todayJournal", "Today's Journal")
+        .accelerator("CmdOrCtrl+T")
+        .build(app)?;
+    let settings = MenuItemBuilder::with_id("yarrow:menu:settings", "Settings…")
+        .accelerator("CmdOrCtrl+,")
+        .build(app)?;
+
+    let file_submenu = SubmenuBuilder::new(app, "File")
+        .item(&new_note)
+        .item(&new_path)
+        .item(&today)
+        .separator()
+        .item(&settings)
+        .separator()
+        .item(&PredefinedMenuItem::close_window(app, None)?)
+        .build()?;
+
+    // ── Edit ── (predefined items hand off to native NSResponder so
+    // they work transparently with whatever has focus — CodeMirror,
+    // Settings inputs, etc. — without our event plumbing.)
+    let edit_submenu = SubmenuBuilder::new(app, "Edit")
+        .item(&PredefinedMenuItem::undo(app, None)?)
+        .item(&PredefinedMenuItem::redo(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::cut(app, None)?)
+        .item(&PredefinedMenuItem::copy(app, None)?)
+        .item(&PredefinedMenuItem::paste(app, None)?)
+        .item(&PredefinedMenuItem::select_all(app, None)?)
+        .build()?;
+
+    // ── View ── (custom items routed through `yarrow:center-action`)
+    let palette = MenuItemBuilder::with_id("yarrow:menu:palette", "Command Palette")
+        .accelerator("CmdOrCtrl+K")
+        .build(app)?;
+    let focus = MenuItemBuilder::with_id("yarrow:menu:focus", "Toggle Focus Mode")
+        .accelerator("CmdOrCtrl+\\")
+        .build(app)?;
+    let live_preview = MenuItemBuilder::with_id("yarrow:menu:livePreview", "Toggle Live Preview")
+        .build(app)?;
+    let outline = MenuItemBuilder::with_id("yarrow:menu:outline", "Outline This Note")
+        .build(app)?;
+    let constellation = MenuItemBuilder::with_id("yarrow:menu:constellation", "Connection Graph")
+        .build(app)?;
+    let scratchpad = MenuItemBuilder::with_id("yarrow:menu:scratchpad", "Toggle Scratchpad")
+        .accelerator("CmdOrCtrl+Shift+S")
+        .build(app)?;
+
+    let view_submenu = SubmenuBuilder::new(app, "View")
+        .item(&palette)
+        .item(&focus)
+        .separator()
+        .item(&live_preview)
+        .item(&outline)
+        .item(&constellation)
+        .separator()
+        .item(&scratchpad)
+        .build()?;
+
+    // ── Window ──
+    let window_submenu = SubmenuBuilder::new(app, "Window")
+        .item(&PredefinedMenuItem::minimize(app, None)?)
+        .item(&PredefinedMenuItem::maximize(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::fullscreen(app, None)?)
+        .build()?;
+
+    MenuBuilder::new(app)
+        .item(&app_submenu)
+        .item(&file_submenu)
+        .item(&edit_submenu)
+        .item(&view_submenu)
+        .item(&window_submenu)
+        .build()
+}
+
+/// Apply the macOS-native menu and route menu events to the frontend.
+/// On non-macOS this is a no-op so Linux/Windows keep their existing
+/// chrome (custom titlebar, no menu strip).
+fn install_native_menu(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Emitter;
+        return builder
+            .menu(|app| build_native_menu(app))
+            .on_menu_event(|app, event| {
+                let id_str: &str = event.id().as_ref();
+                if let Some(action) = id_str.strip_prefix("yarrow:menu:") {
+                    let _ = app.emit("yarrow:menu-action", action.to_string());
+                }
+            });
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = builder;
+        builder
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(commands::AppState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // 2.2.0 — Rust-backed system clipboard read/write so paste sees
+        // text copied from other apps. The webview's `navigator.clipboard`
+        // is sandboxed and only reads its own writes.
+        .plugin(tauri_plugin_clipboard_manager::init())
         // 2.1.4: removed `tauri_plugin_window_state`. The plugin has
         // multiple unfixed macOS bugs (issues #14822, #3289, #1097 in
         // tauri-apps): random resizes to half the min width, broken
@@ -260,7 +409,16 @@ pub fn run() {
             commands::cmd_default_workspaces_root,
             commands::cmd_create_workspace_dir,
             commands::cmd_count_wikilink_references,
-        ])
+            commands::cmd_render_bibliography,
+            commands::cmd_insert_bibliography,
+            commands::cmd_render_notes_html,
+            commands::cmd_render_path_html,
+            commands::cmd_clip_recipe,
+            commands::cmd_add_recipe_to_shopping_list,
+            commands::cmd_shopping_list_slug,
+        ]);
+    // Native menu (macOS only — Linux/Windows pass through unchanged).
+    install_native_menu(builder)
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

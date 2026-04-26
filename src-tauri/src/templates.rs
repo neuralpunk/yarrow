@@ -128,6 +128,9 @@ pub fn default_kit_kind_for(name: &str) -> Option<&'static str> {
         | "weighted-pros-cons" | "eisenhower-matrix" | "five-whys" => Some("decision"),
         // spiritual
         "examen" | "lectio-divina" | "loving-kindness" => Some("spiritual"),
+        // baking (2.2.0)
+        "recipe-card" | "bake-log" | "holiday-baking-plan"
+        | "sourdough-schedule" | "family-cookbook" => Some("baking"),
         _ => None,
     }
 }
@@ -340,6 +343,12 @@ pub fn bundled() -> Vec<(&'static str, &'static str)> {
         ("examen",              KIT_EXAMEN),
         ("lectio-divina",       KIT_LECTIO),
         ("loving-kindness",     KIT_LOVING_KINDNESS),
+        // ── baking kits (2.2.0) ──
+        ("recipe-card",         KIT_RECIPE_CARD),
+        ("bake-log",            KIT_BAKE_LOG),
+        ("holiday-baking-plan", KIT_HOLIDAY_BAKING),
+        ("sourdough-schedule",  KIT_SOURDOUGH),
+        ("family-cookbook",     KIT_FAMILY_COOKBOOK),
     ]
 }
 
@@ -2055,4 +2064,223 @@ May I be safe. May I be peaceful. May I be healthy. May I live with ease.
 ## Notes from this sit
 
 {{cursor}}
+"#;
+
+// ════════════════════════════════════════════════════════════
+// 2.2.0 — Baking kits
+//
+// Five templates aimed at home bakers who want their recipes,
+// schedules, and bake history to live alongside the rest of their
+// notes. They lean on Yarrow's existing primitives:
+//   · Wikilinks for ingredient cross-references ([[Brown Butter]])
+//   · Paths for variations ("with rye flour", "halved")
+//   · Tags (`#cookies`, `#fall`, `#kid-friendly`) for the bouquet
+//   · The new `[[timer:Xm label]]` syntax for hands-free pacing
+// ════════════════════════════════════════════════════════════
+
+const KIT_RECIPE_CARD: &str = r#"<!-- label: Recipe card -->
+<!-- kit: baking -->
+---
+tags: [recipe]
+yield: ""
+prep_time: ""
+bake_time: ""
+oven_temp: ""
+pan: ""
+adapted_from: ""
+---
+
+# {{title}}
+
+> _One-line note about why this recipe matters to you. Where you first
+> tasted it, who taught you, what makes it different from the others._
+
+## Ingredients
+
+- {{cursor}}
+
+## Instructions
+
+1.
+2.
+3.
+
+## Notes
+
+- Use the path system to fork variations: branch this note as
+  "with brown butter," "halved," "scaled to 9×13," etc.
+- Drop `[[timer:25m rest]]` anywhere below to add a tappable timer.
+"#;
+
+const KIT_BAKE_LOG: &str = r#"<!-- label: Bake log -->
+<!-- kit: baking -->
+---
+tags: [bake-log]
+recipe: ""
+date: "{{date}}"
+rating: ""
+---
+
+# {{title}} · {{date_human}}
+
+**Recipe:** [[{{cursor}}]]
+**Variation tried:**
+
+## How it went
+
+-
+
+## What I'd change next time
+
+-
+
+## Photos
+
+_Drag images in to attach. They live alongside the note, never on a
+server (unless you've connected Yarrow Sync)._
+
+## Family rating
+
+- :
+- :
+"#;
+
+const KIT_HOLIDAY_BAKING: &str = r#"<!-- label: Holiday baking plan -->
+<!-- kit: baking -->
+---
+tags: [baking-plan]
+holiday: ""
+event_date: ""
+---
+
+# {{title}}
+
+_For: {{cursor}}_
+_Date: {{date_human}}_
+
+## Recipes I want to make
+
+- [ ] [[ ]] · _why I'm including it_
+- [ ]
+- [ ]
+
+## Ingredients to buy
+
+- [ ]
+
+## Schedule
+
+### 5 days out
+- [ ] Make and freeze cookie doughs
+- [ ] Confirm guest list / dietary needs
+
+### 2 days out
+- [ ] Bake first round (cookies that hold well)
+- [ ] [[timer:8h proof]] sourdough overnight if making bread
+
+### Day before
+- [ ] Final bakes
+- [ ] Plate and cover
+
+### Morning of
+- [ ] Pull frozen items, set on counter
+- [ ] Reheat anything that needs it
+
+## Lessons for next year
+
+-
+"#;
+
+const KIT_SOURDOUGH: &str = r#"<!-- label: Sourdough schedule -->
+<!-- kit: baking -->
+---
+tags: [sourdough]
+loaf_count: ""
+flour_blend: ""
+hydration: ""
+---
+
+# {{title}}
+
+_A staggered schedule for one bake day. Adjust the times to your
+kitchen — colder houses slow everything down._
+
+## Levain build
+
+| When             | Step                                   | Notes |
+| ---------------- | -------------------------------------- | ----- |
+| **T-22h**, 9pm   | Feed levain (1:5:5)                    |       |
+| **T-12h**, 7am   | Levain ready · float test              |       |
+
+## Bulk + shape
+
+| When             | Step                                          |
+| ---------------- | --------------------------------------------- |
+| **T-9h**, 10am   | Autolyse 1h · [[timer:60m autolyse]]          |
+| **T-8h**, 11am   | Mix levain + salt                             |
+| **T-7h**, 12pm   | Stretch & fold #1                             |
+| **T-6h30**, 12:30| Stretch & fold #2                             |
+| **T-6h**, 1pm    | Lamination / coil fold                        |
+| **T-3h**, 4pm    | Pre-shape · bench rest [[timer:30m bench]]    |
+| **T-2h30**, 4:30 | Final shape · cold retard                     |
+
+## Bake
+
+| When        | Step                                               |
+| ----------- | -------------------------------------------------- |
+| **T-1h**    | Preheat oven + Dutch oven · 500 °F               |
+| **T-0**     | Score, load, lid on · [[timer:20m lid on]]       |
+| **+20m**    | Lid off · drop to 460 °F · [[timer:25m crust]]   |
+| **+45m**    | Pull · cool ≥ 1h · [[timer:60m cool]]             |
+
+## What happened today
+
+{{cursor}}
+"#;
+
+const KIT_FAMILY_COOKBOOK: &str = r#"<!-- label: Family cookbook page -->
+<!-- kit: baking -->
+---
+tags: [cookbook]
+---
+
+# {{title}}
+
+_A living index of recipes I keep coming back to. Each link goes to a
+recipe card; click through to see the full thing or fork a variation._
+
+## Cookies & bars
+
+- [[ ]] · _everyone's favourite_
+- [[ ]]
+- [[ ]]
+
+## Cakes & cupcakes
+
+- [[ ]]
+- [[ ]]
+
+## Breads & rolls
+
+- [[ ]]
+- [[ ]]
+
+## Pies & tarts
+
+- [[ ]]
+- [[ ]]
+
+## Quick bakes
+
+- [[ ]]
+
+## Holidays / occasions
+
+- **Christmas:** [[ ]]
+- **Birthdays:** [[ ]]
+- **Friday breakfast:** [[ ]]
+
+## To try
+
+- [ ] {{cursor}}
 "#;

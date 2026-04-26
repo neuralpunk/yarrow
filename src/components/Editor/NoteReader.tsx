@@ -10,6 +10,7 @@ import WikilinkPreview, {
 } from "../WikilinkPreview";
 import { decorateChangedBlocks, synthesizeDiffMarkdown } from "../../lib/readerDiff";
 import { isExternalHref, openExternal } from "../../lib/openExternal";
+import { isTimerHref, parseTimerHref, startTimer, subscribeTimers } from "../../lib/timers";
 import { useT } from "../../lib/i18n";
 
 interface Props {
@@ -60,6 +61,33 @@ export default function NoteReader({
   const previewTimer = useRef<number | null>(null);
   const previewHideTimer = useRef<number | null>(null);
   const previewTargetRef = useRef<HTMLElement | null>(null);
+
+  // 2.2.0 — keep the in-note timer link's "running" styling in sync
+  // with the actual timer registry. When the user clicks `[label](
+  // timer:Xm)` we tag the anchor with `data-timer-id="<id>"` and the
+  // CSS `a[href^="timer:"][data-timer-id]` rule flips it into the
+  // running palette. This subscription removes the attribute the
+  // moment the timer ends or is dismissed, so the link reverts.
+  useEffect(() => {
+    const root = renderedRef.current;
+    if (!root) return;
+    const unsubscribe = subscribeTimers((running) => {
+      const liveIds = new Set(running.filter((t) => !t.fired).map((t) => t.id));
+      // Walk every flagged anchor and clear those whose timer is no
+      // longer running. Cheap: there are usually <10 timer links in a
+      // note and this only fires when the timer set changes.
+      const flagged = root.querySelectorAll<HTMLAnchorElement>(
+        'a[href^="timer:"][data-timer-id]',
+      );
+      flagged.forEach((a) => {
+        const id = a.dataset.timerId;
+        if (!id || !liveIds.has(id)) {
+          delete a.dataset.timerId;
+        }
+      });
+    });
+    return unsubscribe;
+  }, [html]);
 
   useEffect(() => {
     let alive = true;
@@ -163,6 +191,27 @@ export default function NoteReader({
     if (href.startsWith("yarrow:")) {
       e.preventDefault();
       onNavigate(decodeURIComponent(href.slice("yarrow:".length)));
+      return;
+    }
+    // 2.2.0 — `[label](timer:25m)` markdown links become inline timers.
+    // Click → start a countdown in the corner pill; the link gets
+    // tagged with the timer's id so its style flips to "running" and
+    // the timer-state subscription below reverts it when the timer
+    // ends or is dismissed.
+    if (isTimerHref(href)) {
+      e.preventDefault();
+      const ms = parseTimerHref(href);
+      if (ms != null && ms > 0) {
+        const label = (target.textContent || "timer").trim();
+        const timer = startTimer(ms, label);
+        target.dataset.timerId = timer.id;
+        // Brief tactile feedback flash on click — independent of the
+        // running-state styling below.
+        target.classList.add("yarrow-timer-link-fired");
+        window.setTimeout(() => {
+          try { target.classList.remove("yarrow-timer-link-fired"); } catch {}
+        }, 600);
+      }
       return;
     }
     if (isExternalHref(href)) {

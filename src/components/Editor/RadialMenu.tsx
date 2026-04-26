@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fireCenterAction } from "./center/actions";
+import { readGestureBinding } from "../../lib/gesturePrefs";
 import { useT } from "../../lib/i18n";
 
 // ────────────── Radial menu ──────────────
@@ -19,7 +20,14 @@ export interface RadialMenuItem {
   sublabel?: string;
   icon: React.ReactNode;
   disabled?: boolean;
-  onSelect: () => void;
+  /** Action to run when the item is clicked. For radial items this is
+   *  always defined; for the linear menu, items with a `submenu` may
+   *  omit it (clicking the parent toggles the submenu instead). */
+  onSelect?: () => void;
+  /** When set, the linear context menu shows a `▸` and slides this list
+   *  out to the right on hover. The radial menu ignores `submenu` —
+   *  parent items in the radial open a modal via `onSelect`. */
+  submenu?: RadialMenuItem[];
 }
 
 interface Props {
@@ -132,7 +140,7 @@ export default function RadialMenu({ open, x, y, items, onClose }: Props) {
       if (e.key === "Enter" && hoverIdx != null) {
         e.preventDefault();
         const it = items[hoverIdx];
-        if (it && !it.disabled) it.onSelect();
+        if (it && !it.disabled) it.onSelect?.();
         return;
       }
       if (e.key === "Tab") {
@@ -178,7 +186,7 @@ export default function RadialMenu({ open, x, y, items, onClose }: Props) {
       if (hi != null) {
         const it = itemsRef.current[hi];
         if (it && !it.disabled) {
-          it.onSelect();
+          it.onSelect?.();
           return;
         }
       }
@@ -190,7 +198,7 @@ export default function RadialMenu({ open, x, y, items, onClose }: Props) {
         window.clearTimeout(singleClickTimer.current);
         singleClickTimer.current = null;
         lastClickAtRef.current = 0;
-        fireCenterAction("focus");
+        fireCenterAction(readGestureBinding("doubleTap"));
         onClose();
         return;
       }
@@ -199,7 +207,7 @@ export default function RadialMenu({ open, x, y, items, onClose }: Props) {
       singleClickTimer.current = window.setTimeout(() => {
         singleClickTimer.current = null;
         lastClickAtRef.current = 0;
-        fireCenterAction("palette");
+        fireCenterAction(readGestureBinding("tap"));
         onClose();
       }, DOUBLE_CLICK_MS);
     };
@@ -359,7 +367,7 @@ export default function RadialMenu({ open, x, y, items, onClose }: Props) {
                   setHoverIdx((i) => (i === w.idx ? null : i));
                 }}
                 onClick={() => {
-                  if (!dis) w.item.onSelect();
+                  if (!dis) w.item.onSelect?.();
                 }}
               >
                 <path d={w.d} />
@@ -415,7 +423,7 @@ export default function RadialMenu({ open, x, y, items, onClose }: Props) {
                     singleClickTimer.current = null;
                     lastClickAtRef.current = 0;
                   }
-                  fireCenterAction("constellation");
+                  fireCenterAction(readGestureBinding("longPress"));
                   onClose();
                 }, LONG_PRESS_MS);
               }}

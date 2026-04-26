@@ -13,6 +13,7 @@ export const settingsEN = {
   // ── tabs ──
   "settings.tabs.appearance": "Appearance",
   "settings.tabs.writing": "Writing",
+  "settings.tabs.gestures": "Gestures",
   "settings.tabs.guidance": "Guidance",
   "settings.tabs.templates": "Templates",
   "settings.tabs.sync": "Sync",
@@ -132,6 +133,9 @@ export const settingsEN = {
   "settings.writing.pathCaret.label": "Path-tinted caret",
   "settings.writing.pathCaret.hint":
     "The caret takes the colour of the path you're writing on, so you always know which draft you're editing. Turn off for high-contrast defaults.",
+  "settings.writing.cookMode.label": "Cook mode",
+  "settings.writing.cookMode.hint":
+    "Bumps rendered-note text to a bigger size and asks the OS to keep the screen awake — for hands-free reading while you bake or cook. Affects reader and live-preview surfaces only; the editor itself stays at its normal size.",
   "settings.writing.rawMarkdown.label": "Show raw markdown syntax",
   "settings.writing.rawMarkdown.hint":
     "Show ## headings, **bold**, and [[ ]] around links while you write. When off, tokens collapse on lines you're not editing.",
@@ -455,7 +459,7 @@ export const settingsEN = {
 
   // export button
   "settings.export.dialogTitle": "Choose a folder for the export",
-  "settings.export.go": "Choose folder & export",
+  "settings.export.go": "Export as static site…",
   "settings.export.exporting": "exporting…",
   "settings.export.report.note": "note",
   "settings.export.report.notes": "notes",
@@ -466,6 +470,18 @@ export const settingsEN = {
     "Exported {notes} {noteWord}{attachBit}{skipBit} → {dest}",
   "settings.export.failed": "Export failed: {error}",
   "settings.export.attachBit": " + {count} {word}",
+
+  // export modal (2.2.0)
+  "settings.export.modal.title": "Export as static site",
+  "settings.export.modal.body":
+    "Yarrow will write a publishable copy of this workspace as static HTML — one page per note, with links between them preserved. Encrypted notes and anything you've kept private are skipped automatically.",
+  "settings.export.modal.dest.label": "Destination folder",
+  "settings.export.modal.dest.choose": "Choose a folder…",
+  "settings.export.modal.dest.change": "Change folder",
+  "settings.export.modal.cancel": "Cancel",
+  "settings.export.modal.close": "Close",
+  "settings.export.modal.confirm": "Export",
+  "settings.export.modal.again": "Export again",
 
   // trim history buttons / modals
   "settings.trim.olderBtn": "Forget old checkpoints…",
@@ -644,6 +660,67 @@ export const settingsEN = {
     'Every save is a checkpoint. Every "new direction" is a path you can switch back to. Nothing you write is ever lost.',
   "settings.about.versionLine":
     "version {version} · local-first · plain markdown",
+
+  // ── gestures (2.2.0) ──
+  "settings.gestures.title": "The Still Point",
+  "settings.gestures.hint":
+    "The centre dot of the radial menu listens for three configurable gestures. Each one fires a single named action — pick yours below. Drag-out and scroll-wheel are structural to the radial and aren't bindable.",
+  "settings.gestures.slot.tap.label": "Single tap",
+  "settings.gestures.slot.tap.meta": "tap",
+  "settings.gestures.slot.longPress.label": "Press & hold",
+  "settings.gestures.slot.longPress.meta": "long-press · 380 ms",
+  "settings.gestures.slot.doubleTap.label": "Double tap",
+  "settings.gestures.slot.doubleTap.meta": "double-tap · 280 ms",
+  "settings.gestures.group.core": "Core",
+  "settings.gestures.group.navigation": "Navigation",
+  "settings.gestures.group.writing": "Writing",
+  "settings.gestures.group.system": "System",
+
+  "settings.gestures.action.palette.label": "Open the command palette",
+  "settings.gestures.action.palette.blurb": "search notes, run commands, jump anywhere — same as ⌘K.",
+  "settings.gestures.action.quickHand.label": "Open the Quick Hand",
+  "settings.gestures.action.quickHand.blurb": "a small modal with nine on-theme buttons for the things you reach for most.",
+  "settings.gestures.action.constellationModal.label": "Open the Constellation",
+  "settings.gestures.action.constellationModal.blurb": "eight buttons orbit the click point in a pie of small actions.",
+  "settings.gestures.action.constellation.label": "Open the connection graph",
+  "settings.gestures.action.constellation.blurb": "the right-rail map view — links between this note and its neighbours.",
+  "settings.gestures.action.outline.label": "Show this note's outline",
+  "settings.gestures.action.outline.blurb": "headings and top-level bullets as a click-to-jump tree.",
+  "settings.gestures.action.todayJournal.label": "Open today's journal",
+  "settings.gestures.action.todayJournal.blurb": "creates the daily note from your template if it doesn't exist yet — same as ⌘T.",
+  "settings.gestures.action.newNote.label": "Create a new note",
+  "settings.gestures.action.newNote.blurb": "drop into the new-note dialog — same as ⌘N.",
+  "settings.gestures.action.newPath.label": "Explore a new direction",
+  "settings.gestures.action.newPath.blurb": "fork a path from where you are — same as ⌘⇧N.",
+  "settings.gestures.action.livePreview.label": "Toggle live preview",
+  "settings.gestures.action.livePreview.blurb": "split the writing pane and render the right side live as you type.",
+  "settings.gestures.action.cookMode.label": "Toggle cook mode",
+  "settings.gestures.action.cookMode.blurb": "big-text reading view with screen wake-lock — for hands-free recipes.",
+  "settings.gestures.action.focus.label": "Toggle focus mode",
+  "settings.gestures.action.focus.blurb": "hide the chrome — only the note remains. Same as ⌘\\.",
+  "settings.gestures.action.scratchpad.label": "Toggle the scratchpad",
+  "settings.gestures.action.scratchpad.blurb": "a docked notepad that saves everything but never commits to git.",
+  "settings.gestures.action.settings.label": "Open Settings",
+  "settings.gestures.action.settings.blurb": "lands on this very pane — useful as a paranoid fallback while you're tuning.",
+
+  "settings.gestures.structural.title": "Structural gestures",
+  "settings.gestures.structural.hint":
+    "Two more gestures live on the centre disc but aren't bindable — they're how the radial works as a radial.",
+  "settings.gestures.structural.dragOut.tag": "drag-out",
+  "settings.gestures.structural.dragOut.desc":
+    "Press in the centre and flick the pointer toward any wedge — the wedge fires without a separate click.",
+  "settings.gestures.structural.scroll.tag": "scroll wheel",
+  "settings.gestures.structural.scroll.desc":
+    "Spin the wheel while the menu is open to step the wedge highlight without moving the pointer.",
+
+  "settings.gestures.reset.atDefaults": "Bindings are at their recommended defaults.",
+  "settings.gestures.reset.modified": "Bindings have been changed from the recommended defaults.",
+  "settings.gestures.reset.btn": "Reset to defaults",
+  "settings.gestures.reset.confirmTitle": "Restore recommended gestures?",
+  "settings.gestures.reset.confirmBody":
+    "All three gesture bindings will go back to what Yarrow ships with. This affects only the centre dot — it doesn't touch any of your other settings.",
+  "settings.gestures.reset.cancel": "Cancel",
+  "settings.gestures.reset.confirm": "Reset",
 } as const;
 
 export type SettingsKey = keyof typeof settingsEN;
@@ -659,6 +736,7 @@ export const settingsES: Record<SettingsKey, string> = {
   // ── tabs ──
   "settings.tabs.appearance": "Apariencia",
   "settings.tabs.writing": "Escritura",
+  "settings.tabs.gestures": "Gestos",
   "settings.tabs.guidance": "Guía",
   "settings.tabs.templates": "Plantillas",
   "settings.tabs.sync": "Sincronización",
@@ -804,6 +882,9 @@ export const settingsES: Record<SettingsKey, string> = {
   "settings.writing.pathCaret.label": "Cursor con tinte de la ruta",
   "settings.writing.pathCaret.hint":
     "El cursor toma el color de la ruta en la que escribes, así siempre sabes qué borrador estás editando. Desactívalo para un contraste alto por defecto.",
+  "settings.writing.cookMode.label": "Modo cocina",
+  "settings.writing.cookMode.hint":
+    "Aumenta el tamaño del texto renderizado y pide al sistema que mantenga la pantalla encendida — para leer recetas con las manos llenas. Afecta solo al lector y a la vista previa en vivo; el editor mantiene su tamaño habitual.",
   "settings.writing.rawMarkdown.label":
     "Mostrar sintaxis markdown sin procesar",
   "settings.writing.rawMarkdown.hint":
@@ -1166,7 +1247,7 @@ export const settingsES: Record<SettingsKey, string> = {
 
   "settings.export.dialogTitle":
     "Elige una carpeta para la exportación",
-  "settings.export.go": "Elegir carpeta y exportar",
+  "settings.export.go": "Exportar como sitio estático…",
   "settings.export.exporting": "exportando…",
   "settings.export.report.note": "nota",
   "settings.export.report.notes": "notas",
@@ -1179,6 +1260,17 @@ export const settingsES: Record<SettingsKey, string> = {
   "settings.export.failed":
     "Error al exportar: {error}",
   "settings.export.attachBit": " + {count} {word}",
+
+  "settings.export.modal.title": "Exportar como sitio estático",
+  "settings.export.modal.body":
+    "Yarrow escribirá una copia publicable de este espacio de trabajo como HTML estático — una página por nota, conservando los enlaces entre ellas. Las notas cifradas y todo lo que hayas mantenido privado se omiten automáticamente.",
+  "settings.export.modal.dest.label": "Carpeta de destino",
+  "settings.export.modal.dest.choose": "Elegir una carpeta…",
+  "settings.export.modal.dest.change": "Cambiar carpeta",
+  "settings.export.modal.cancel": "Cancelar",
+  "settings.export.modal.close": "Cerrar",
+  "settings.export.modal.confirm": "Exportar",
+  "settings.export.modal.again": "Exportar de nuevo",
 
   "settings.trim.olderBtn":
     "Olvidar puntos de control antiguos…",
@@ -1373,6 +1465,67 @@ export const settingsES: Record<SettingsKey, string> = {
     'Cada guardado es un punto de control. Cada «nueva dirección» es una ruta a la que puedes volver. Nada de lo que escribas se pierde.',
   "settings.about.versionLine":
     "versión {version} · primero local · markdown plano",
+
+  // ── gestures (2.2.0) ──
+  "settings.gestures.title": "El Punto Quieto",
+  "settings.gestures.hint":
+    "El punto central del menú radial escucha tres gestos configurables. Cada uno dispara una acción nombrada — elige las tuyas abajo. Arrastrar-fuera y rueda de scroll son estructurales y no son configurables.",
+  "settings.gestures.slot.tap.label": "Toque simple",
+  "settings.gestures.slot.tap.meta": "tap",
+  "settings.gestures.slot.longPress.label": "Mantener pulsado",
+  "settings.gestures.slot.longPress.meta": "pulsación larga · 380 ms",
+  "settings.gestures.slot.doubleTap.label": "Doble toque",
+  "settings.gestures.slot.doubleTap.meta": "doble toque · 280 ms",
+  "settings.gestures.group.core": "Esenciales",
+  "settings.gestures.group.navigation": "Navegación",
+  "settings.gestures.group.writing": "Escritura",
+  "settings.gestures.group.system": "Sistema",
+
+  "settings.gestures.action.palette.label": "Abrir la paleta de comandos",
+  "settings.gestures.action.palette.blurb": "buscar notas, ejecutar comandos, saltar a cualquier sitio — igual que ⌘K.",
+  "settings.gestures.action.quickHand.label": "Abrir la Mano Rápida",
+  "settings.gestures.action.quickHand.blurb": "un pequeño modal con nueve botones para las cosas que más usas.",
+  "settings.gestures.action.constellationModal.label": "Abrir la Constelación",
+  "settings.gestures.action.constellationModal.blurb": "ocho botones orbitan el punto del clic en un pequeño abanico de acciones.",
+  "settings.gestures.action.constellation.label": "Abrir el grafo de conexiones",
+  "settings.gestures.action.constellation.blurb": "el panel-mapa de la barra derecha — vínculos entre esta nota y sus vecinas.",
+  "settings.gestures.action.outline.label": "Mostrar el esquema",
+  "settings.gestures.action.outline.blurb": "encabezados y viñetas de primer nivel como árbol clicable.",
+  "settings.gestures.action.todayJournal.label": "Abrir el diario de hoy",
+  "settings.gestures.action.todayJournal.blurb": "crea la nota diaria desde tu plantilla si no existe — igual que ⌘T.",
+  "settings.gestures.action.newNote.label": "Crear una nota nueva",
+  "settings.gestures.action.newNote.blurb": "abre el diálogo de nueva nota — igual que ⌘N.",
+  "settings.gestures.action.newPath.label": "Explorar una dirección nueva",
+  "settings.gestures.action.newPath.blurb": "bifurca una ruta desde donde estás — igual que ⌘⇧N.",
+  "settings.gestures.action.livePreview.label": "Alternar vista previa en vivo",
+  "settings.gestures.action.livePreview.blurb": "divide el panel de escritura y renderiza el lado derecho mientras escribes.",
+  "settings.gestures.action.cookMode.label": "Alternar modo cocina",
+  "settings.gestures.action.cookMode.blurb": "vista de lectura con texto grande y pantalla siempre encendida — para recetas con las manos llenas.",
+  "settings.gestures.action.focus.label": "Alternar modo enfoque",
+  "settings.gestures.action.focus.blurb": "oculta los marcos — solo queda la nota. Igual que ⌘\\.",
+  "settings.gestures.action.scratchpad.label": "Alternar el borrador",
+  "settings.gestures.action.scratchpad.blurb": "un bloc anclado que guarda todo pero nunca compromete a git.",
+  "settings.gestures.action.settings.label": "Abrir ajustes",
+  "settings.gestures.action.settings.blurb": "te trae a este mismo panel — útil como atajo paranoico mientras configuras.",
+
+  "settings.gestures.structural.title": "Gestos estructurales",
+  "settings.gestures.structural.hint":
+    "Dos gestos más viven en el disco central pero no son configurables — son cómo el radial funciona como radial.",
+  "settings.gestures.structural.dragOut.tag": "arrastrar-fuera",
+  "settings.gestures.structural.dragOut.desc":
+    "Pulsa en el centro y flecha el puntero hacia cualquier sector — se dispara sin un clic separado.",
+  "settings.gestures.structural.scroll.tag": "rueda",
+  "settings.gestures.structural.scroll.desc":
+    "Gira la rueda con el menú abierto para mover el resaltado sin mover el puntero.",
+
+  "settings.gestures.reset.atDefaults": "Las asignaciones están en los valores recomendados.",
+  "settings.gestures.reset.modified": "Las asignaciones difieren de los valores recomendados.",
+  "settings.gestures.reset.btn": "Restablecer",
+  "settings.gestures.reset.confirmTitle": "¿Restaurar gestos recomendados?",
+  "settings.gestures.reset.confirmBody":
+    "Las tres asignaciones volverán a lo que Yarrow trae por defecto. Esto solo afecta al punto central — no toca ningún otro ajuste.",
+  "settings.gestures.reset.cancel": "Cancelar",
+  "settings.gestures.reset.confirm": "Restablecer",
 };
 
 export const settingsSV: Record<SettingsKey, string> = {
@@ -1386,6 +1539,7 @@ export const settingsSV: Record<SettingsKey, string> = {
   // ── tabs ──
   "settings.tabs.appearance": "Utseende",
   "settings.tabs.writing": "Skrivande",
+  "settings.tabs.gestures": "Gester",
   "settings.tabs.guidance": "Vägledning",
   "settings.tabs.templates": "Mallar",
   "settings.tabs.sync": "Synkronisering",
@@ -1539,6 +1693,9 @@ export const settingsSV: Record<SettingsKey, string> = {
     "Stigfärgad markör",
   "settings.writing.pathCaret.hint":
     "Markören får färgen av den stig du skriver på, så du alltid vet vilket utkast du redigerar. Stäng av för standardkontrast.",
+  "settings.writing.cookMode.label": "Matlagningsläge",
+  "settings.writing.cookMode.hint":
+    "Förstorar renderad text och ber systemet hålla skärmen vaken — för att läsa recept med fulla händer. Påverkar bara läsaren och direktförhandsvisningen; editorn behåller sin vanliga storlek.",
   "settings.writing.rawMarkdown.label":
     "Visa rå markdown-syntax",
   "settings.writing.rawMarkdown.hint":
@@ -1915,7 +2072,7 @@ export const settingsSV: Record<SettingsKey, string> = {
   "settings.export.dialogTitle":
     "Välj en mapp för exporten",
   "settings.export.go":
-    "Välj mapp och exportera",
+    "Exportera som statisk webbplats…",
   "settings.export.exporting": "exporterar…",
   "settings.export.report.note": "anteckning",
   "settings.export.report.notes": "anteckningar",
@@ -1928,6 +2085,17 @@ export const settingsSV: Record<SettingsKey, string> = {
   "settings.export.failed":
     "Exporten misslyckades: {error}",
   "settings.export.attachBit": " + {count} {word}",
+
+  "settings.export.modal.title": "Exportera som statisk webbplats",
+  "settings.export.modal.body":
+    "Yarrow skriver en publicerbar kopia av detta arbetsområde som statisk HTML — en sida per anteckning, med länkar mellan dem bevarade. Krypterade anteckningar och allt du har hållit privat hoppas över automatiskt.",
+  "settings.export.modal.dest.label": "Målmapp",
+  "settings.export.modal.dest.choose": "Välj en mapp…",
+  "settings.export.modal.dest.change": "Byt mapp",
+  "settings.export.modal.cancel": "Avbryt",
+  "settings.export.modal.close": "Stäng",
+  "settings.export.modal.confirm": "Exportera",
+  "settings.export.modal.again": "Exportera igen",
 
   "settings.trim.olderBtn":
     "Glöm gamla kontrollpunkter…",
@@ -2130,4 +2298,65 @@ export const settingsSV: Record<SettingsKey, string> = {
     'Varje sparande är en kontrollpunkt. Varje "ny riktning" är en stig du kan byta tillbaka till. Inget du skriver går förlorat.',
   "settings.about.versionLine":
     "version {version} · lokalt först · vanlig markdown",
+
+  // ── gestures (2.2.0) ──
+  "settings.gestures.title": "Den Stilla Punkten",
+  "settings.gestures.hint":
+    "Centrumpricken i radialmenyn lyssnar på tre konfigurerbara gester. Var och en utlöser en namngiven åtgärd — välj dina nedan. Drag-ut och scrollhjul är strukturella och går inte att binda.",
+  "settings.gestures.slot.tap.label": "Enkeltryck",
+  "settings.gestures.slot.tap.meta": "tryck",
+  "settings.gestures.slot.longPress.label": "Tryck & håll",
+  "settings.gestures.slot.longPress.meta": "långt tryck · 380 ms",
+  "settings.gestures.slot.doubleTap.label": "Dubbeltryck",
+  "settings.gestures.slot.doubleTap.meta": "dubbeltryck · 280 ms",
+  "settings.gestures.group.core": "Kärna",
+  "settings.gestures.group.navigation": "Navigation",
+  "settings.gestures.group.writing": "Skrivande",
+  "settings.gestures.group.system": "System",
+
+  "settings.gestures.action.palette.label": "Öppna kommandopaletten",
+  "settings.gestures.action.palette.blurb": "sök anteckningar, kör kommandon, hoppa var som helst — samma som ⌘K.",
+  "settings.gestures.action.quickHand.label": "Öppna Snabbhanden",
+  "settings.gestures.action.quickHand.blurb": "en liten modal med nio knappar för det du oftast sträcker dig efter.",
+  "settings.gestures.action.constellationModal.label": "Öppna Konstellationen",
+  "settings.gestures.action.constellationModal.blurb": "åtta knappar kretsar runt klickpunkten i en liten paj av åtgärder.",
+  "settings.gestures.action.constellation.label": "Öppna kopplingsgrafen",
+  "settings.gestures.action.constellation.blurb": "kart-vyn i höger sidopanel — länkar mellan denna anteckning och dess grannar.",
+  "settings.gestures.action.outline.label": "Visa översikt",
+  "settings.gestures.action.outline.blurb": "rubriker och toppnivåpunkter som ett klickbart träd.",
+  "settings.gestures.action.todayJournal.label": "Öppna dagens journal",
+  "settings.gestures.action.todayJournal.blurb": "skapar dagsanteckningen från din mall om den inte finns — samma som ⌘T.",
+  "settings.gestures.action.newNote.label": "Skapa ny anteckning",
+  "settings.gestures.action.newNote.blurb": "öppnar dialogen för ny anteckning — samma som ⌘N.",
+  "settings.gestures.action.newPath.label": "Utforska en ny riktning",
+  "settings.gestures.action.newPath.blurb": "förgrena en stig från där du är — samma som ⌘⇧N.",
+  "settings.gestures.action.livePreview.label": "Växla direktförhandsvisning",
+  "settings.gestures.action.livePreview.blurb": "delar skrivpanelen och renderar höger sida medan du skriver.",
+  "settings.gestures.action.cookMode.label": "Växla matlagningsläge",
+  "settings.gestures.action.cookMode.blurb": "läsvy med stor text och vaken skärm — för recept med fulla händer.",
+  "settings.gestures.action.focus.label": "Växla fokusläge",
+  "settings.gestures.action.focus.blurb": "döljer ramen — bara anteckningen kvarstår. Samma som ⌘\\.",
+  "settings.gestures.action.scratchpad.label": "Växla skissblock",
+  "settings.gestures.action.scratchpad.blurb": "ett dockat block som sparar allt men aldrig commitar till git.",
+  "settings.gestures.action.settings.label": "Öppna inställningar",
+  "settings.gestures.action.settings.blurb": "landar i denna panel — användbar som paranoid genväg medan du finjusterar.",
+
+  "settings.gestures.structural.title": "Strukturella gester",
+  "settings.gestures.structural.hint":
+    "Två gester till bor på centrumdisken men är inte bindbara — de är hur radialen fungerar som radial.",
+  "settings.gestures.structural.dragOut.tag": "drag-ut",
+  "settings.gestures.structural.dragOut.desc":
+    "Tryck i mitten och dra pekaren mot valfri kil — kilen utlöses utan separat klick.",
+  "settings.gestures.structural.scroll.tag": "scrollhjul",
+  "settings.gestures.structural.scroll.desc":
+    "Snurra hjulet med menyn öppen för att stega markeringen utan att flytta pekaren.",
+
+  "settings.gestures.reset.atDefaults": "Bindningarna är på de rekommenderade standardvärdena.",
+  "settings.gestures.reset.modified": "Bindningarna har ändrats från standard.",
+  "settings.gestures.reset.btn": "Återställ till standard",
+  "settings.gestures.reset.confirmTitle": "Återställ rekommenderade gester?",
+  "settings.gestures.reset.confirmBody":
+    "Alla tre bindningarna återställs till det Yarrow levereras med. Det här påverkar bara centrumpricken — inga andra inställningar berörs.",
+  "settings.gestures.reset.cancel": "Avbryt",
+  "settings.gestures.reset.confirm": "Återställ",
 };

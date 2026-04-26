@@ -6,6 +6,54 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.2.0] — 2026-04-26
+
+A big-feature release: a redesigned radial centre with configurable Still-Point gestures, a Compare modal that can diff two notes (not just two paths), baking-focused workflows behind an opt-in extra, and a serious macOS polish pass.
+
+### Added
+
+- **Still Point gestures.** Settings → Gestures binds tap / press-and-hold / double-tap to any of 12 actions. Defaults: palette · Quick Hand · focus mode.
+- **Quick Hand modal** (3×3 grid) and **Constellation modal** (8 orbiting petals) — long-press destinations from the radial centre.
+- **Inserts… and Format… modals** on the radial. Linear right-click menu mirrors them as proper submenus.
+- **Cut / Copy / Paste / Select All** in both menus. Paste now uses the system clipboard via `tauri-plugin-clipboard-manager`.
+- **Compare modal — Notes mode.** Diff two individual notes by title; the original Paths mode is still there behind a toggle.
+- **Live-preview split-pane** in writing mode.
+- **Outline panel** in the right rail (heading + bullet tree, click-to-jump).
+- **APA bibliography auto-generator** from `paper`-tagged wikilinks.
+- **Multi-note PDF export** — every note in a path as a single paginated PDF.
+- **Export confirmation modal** for static-site export.
+- **Cooking additions extra** (off by default). When on, surfaces: five baking kits (Recipe Card, Bake Log, Holiday Plan, Sourdough Schedule, Family Cookbook), inline `[label](timer:25m)` timers with corner-pill UI, Cook mode (big text + screen wake-lock), Recipe URL clipper (schema.org JSON-LD), Smart shopping list (v1), a right-rail cook-mode toggle, and a "Note from recipe URL" tile in the New Note modal.
+- **Bake/cook times in clipped recipes auto-link** as timer pills (`Let it rest 25 minutes` → `[25 minutes](timer:25m)`). Compound durations collapse: `1 hour 30 minutes` → 90 min.
+- **Native macOS menu bar** — File / Edit / View / Window with proper accelerators and predefined cut/copy/paste/undo items handed off to AppKit responders.
+- **`acceptFirstMouse: true`** on macOS — first click on an unfocused window registers in the editor.
+- **`prefers-reduced-motion: reduce`** universally respected — animations become instant.
+- **macOS-aware scrollbars** — the universal `::-webkit-scrollbar` style is gated to non-Mac, so macOS keeps its native overlay scrollbars.
+
+### Changed
+
+- Settings modal bumped to **860 × 600** to accommodate Gestures + the new Cooking row.
+- Storage tab in Settings is hidden unless connected to a Yarrow Sync server.
+- Annotation gutter widened to 280 px and font-sized up so margin notes are legible alongside the body.
+
+### Fixed
+
+- **Drag-drop image attachments work.** Set `dragDropEnabled: false` so HTML5 drop reaches the editor instead of being intercepted by Tauri.
+- **Disabled radial wedges are opaque.** The previous translucent fill made the radial look broken when more than one item was disabled.
+- **Paste from system clipboard works.** Routes through `tauri-plugin-clipboard-manager` (webview's `navigator.clipboard.readText` is sandboxed and only sees Yarrow's own copies).
+- **Copy gives a toast and dismisses the radial.** No more silent commits.
+- **Recipe URL clipper "Error while decoding chunks" fixed.** Switched ureq → reqwest for that one fetch path; ureq's chunked-decoder failed on certain CDN-fronted sites (Pioneer Woman among them) regardless of compression-feature flags. Reqwest handles every variant cleanly.
+- **Writing-mode scroll past inserted recipe content.** The live-preview wrapper was missing `min-h-0`, so its default `min-height: auto` let it grow past flex bounds and the editor's `overflow-y-auto` never engaged.
+- **Recipe clipper now finds Recipes published with URL-prefixed `@type`** (`https://schema.org/Recipe` and `schema:Recipe` in addition to bare `"Recipe"`). The previous matcher only handled the bare form, which made several sites with otherwise valid schema.org JSON-LD return "no recipe metadata found".
+- **Microdata fallback in the recipe clipper.** When schema.org JSON-LD turns up nothing, we now scan the HTML for `<div itemscope itemtype="…/Recipe">` markup and pull `itemprop` values into the recipe note. Covers older WordPress recipe sites (e.g. Inspired Taste).
+- **Friendly Cloudflare error.** When a site is behind Cloudflare's bot-protection challenge, the clipper now detects it specifically (instead of "bot wall or geo block") and gives an actionable explanation rather than a confusing 403.
+- **Mutex poisoning resilience.** Eight `state.session.lock().unwrap()` sites in `commands.rs` were replaced with the existing `unpoison()` helper. A single panicking command no longer cascades into every subsequent IPC call also panicking.
+- **Outline panel debounced.** The line-by-line regex parse used to run on every keystroke; now debounced to 220 ms so large notes (5000+ lines) don't lag the editor.
+- **PathCompare accessibility + cancellation.** Modal now has `role="dialog"` + `aria-modal` + `aria-labelledby` so screen readers identify it correctly. Notes-mode body fetches are cancelled cleanly on slug-flip / mode-toggle / close — eliminates React's "state update on unmounted component" warning.
+
+### Removed
+
+- Workspace tasks panel, persistent reminders + system tray icon, ICS calendar feeds, in-app PDF reader. Backend modules (`tasks.rs`, `reminders.rs`, `calendar.rs`), Tauri features (`tray-icon`, `tauri-plugin-notification`), and capability permissions trimmed in the same pass to keep scope tight.
+
 ## [2.1.7] — 2026-04-25
 
 macOS bottom-cutoff — final layer + Settings icon repositioned. After 2.1.6 made the editor's "This note connects to" footer visible on macOS Tahoe (a meaningful step), the status bar at the very bottom was still hidden. Web research surfaced two compounding upstream Tauri bugs that explain the residual ~28 px overflow:

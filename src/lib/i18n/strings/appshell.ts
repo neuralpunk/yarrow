@@ -56,6 +56,12 @@ export const appshellEN = {
 
   // Print / locked / clipboard / dictionary toasts and errors
   "appshell.toast.printError": "Couldn't prepare print preview: {error}",
+  "appshell.toast.copied": "Copied to clipboard",
+  "appshell.toast.shoppingListAdded":
+    "Added {added} ingredient(s) from {source} to Shopping List{dupes}",
+  "appshell.toast.shoppingListDupes": " · skipped {skipped} duplicate(s)",
+  "appshell.toast.shoppingListEmpty":
+    "No ingredients found — add a `## Ingredients` section with bullets first.",
   "appshell.toast.encryptedSession":
     "Session locked — encrypted notes need your password.",
   "appshell.toast.lockedAfterIdle": "Locked after idle — unlock to keep going.",
@@ -131,6 +137,9 @@ export const appshellEN = {
 
   // Links from this note rail
   "appshell.links.title": "Links from this note",
+
+  // Outline rail (2.2.0)
+  "appshell.outline.title": "Outline",
 
   // Locked note hero
   "appshell.locked.title": "This note is locked",
@@ -253,6 +262,9 @@ export const appshellEN = {
   "appshell.newNote.tileTemplatesTitle": "Your templates",
   "appshell.newNote.tileTemplatesSubSingle": "{count} you've authored.",
   "appshell.newNote.tileTemplatesSubPlural": "{count} you've authored.",
+  "appshell.newNote.tileRecipeUrlTitle": "From recipe URL",
+  "appshell.newNote.tileRecipeUrlSub":
+    "Paste a recipe link — Yarrow fills the note in.",
   "appshell.newNote.titleLabel": "Title · lands on {path}",
   "appshell.newNote.titlePlaceholder": "e.g. notes on attention",
   "appshell.newNote.cancel": "cancel",
@@ -331,6 +343,12 @@ export const appshellES: Record<AppshellKey, string> = {
   // Print / locked / clipboard / dictionary toasts and errors
   "appshell.toast.printError":
     "No se pudo preparar la vista previa de impresión: {error}",
+  "appshell.toast.copied": "Copiado al portapapeles",
+  "appshell.toast.shoppingListAdded":
+    "Añadido(s) {added} ingrediente(s) de {source} a la Lista de la compra{dupes}",
+  "appshell.toast.shoppingListDupes": " · {skipped} duplicado(s) omitido(s)",
+  "appshell.toast.shoppingListEmpty":
+    "No se encontraron ingredientes — añade una sección `## Ingredients` con viñetas primero.",
   "appshell.toast.encryptedSession":
     "Sesión bloqueada — las notas cifradas necesitan tu contraseña.",
   "appshell.toast.lockedAfterIdle":
@@ -416,6 +434,8 @@ export const appshellES: Record<AppshellKey, string> = {
 
   // Links from this note rail
   "appshell.links.title": "Enlaces desde esta nota",
+
+  "appshell.outline.title": "Esquema",
 
   // Locked note hero
   "appshell.locked.title": "Esta nota está bloqueada",
@@ -540,6 +560,9 @@ export const appshellES: Record<AppshellKey, string> = {
   "appshell.newNote.tileTemplatesTitle": "Tus plantillas",
   "appshell.newNote.tileTemplatesSubSingle": "{count} que tú creaste.",
   "appshell.newNote.tileTemplatesSubPlural": "{count} que tú creaste.",
+  "appshell.newNote.tileRecipeUrlTitle": "Desde URL de receta",
+  "appshell.newNote.tileRecipeUrlSub":
+    "Pega un enlace de receta — Yarrow rellena la nota.",
   "appshell.newNote.titleLabel": "Título · va a {path}",
   "appshell.newNote.titlePlaceholder": "p. ej. notas sobre la atención",
   "appshell.newNote.cancel": "cancelar",
@@ -616,6 +639,12 @@ export const appshellSV: Record<AppshellKey, string> = {
   // Print / locked / clipboard / dictionary toasts and errors
   "appshell.toast.printError":
     "Det gick inte att förbereda förhandsvisningen för utskrift: {error}",
+  "appshell.toast.copied": "Kopierat till urklipp",
+  "appshell.toast.shoppingListAdded":
+    "Lade till {added} ingrediens(er) från {source} i Inköpslistan{dupes}",
+  "appshell.toast.shoppingListDupes": " · hoppade över {skipped} duplikat",
+  "appshell.toast.shoppingListEmpty":
+    "Inga ingredienser hittades — lägg till en `## Ingredients`-sektion med punktlista först.",
   "appshell.toast.encryptedSession":
     "Sessionen är låst — krypterade anteckningar behöver ditt lösenord.",
   "appshell.toast.lockedAfterIdle":
@@ -709,6 +738,8 @@ export const appshellSV: Record<AppshellKey, string> = {
 
   // Links from this note rail
   "appshell.links.title": "Länkar från den här anteckningen",
+
+  "appshell.outline.title": "Översikt",
 
   // Locked note hero
   "appshell.locked.title": "Den här anteckningen är låst",
@@ -831,6 +862,9 @@ export const appshellSV: Record<AppshellKey, string> = {
   "appshell.newNote.tileTemplatesTitle": "Dina mallar",
   "appshell.newNote.tileTemplatesSubSingle": "{count} du har skapat.",
   "appshell.newNote.tileTemplatesSubPlural": "{count} du har skapat.",
+  "appshell.newNote.tileRecipeUrlTitle": "Från recept-URL",
+  "appshell.newNote.tileRecipeUrlSub":
+    "Klistra in en receptlänk — Yarrow fyller i anteckningen.",
   "appshell.newNote.titleLabel": "Titel · landar på {path}",
   "appshell.newNote.titlePlaceholder": "t.ex. anteckningar om uppmärksamhet",
   "appshell.newNote.cancel": "avbryt",

@@ -6,11 +6,17 @@ import {
   ScratchpadIcon,
   SettingsIcon,
 } from "../lib/icons";
-import { useShowRawMarkdown } from "../lib/editorPrefs";
+import { useShowRawMarkdown, useCookMode } from "../lib/editorPrefs";
+import { useExtraCooking } from "../lib/extraPrefs";
 import { SK } from "../lib/platform";
 import { useT } from "../lib/i18n";
 
-export type RailOverlay = "map" | "links" | "history" | "paths";
+export type RailOverlay =
+  | "map"
+  | "links"
+  | "history"
+  | "paths"
+  | "outline";
 
 interface Props {
   activeOverlay: RailOverlay | null;
@@ -45,6 +51,10 @@ function RightRailInner({
 }: Props) {
   const t = useT();
   const [showRaw, setShowRaw] = useShowRawMarkdown();
+  // 2.2.0 round 2 — cook-mode toggle. Visible only when the user has
+  // turned on the Cooking additions extra in Settings → Writing.
+  const [cookingOn] = useExtraCooking();
+  const [cookMode, setCookMode] = useCookMode();
   const writing = showRaw; // raw markdown visible = writing mode
   const flip = () => {
     const next = !writing;
@@ -82,6 +92,13 @@ function RightRailInner({
         </>
       )}
       <RailButton
+        active={activeOverlay === "outline"}
+        onClick={() => onOpen("outline")}
+        label={t("sidebar.rail.outline")}
+      >
+        <OutlineIcon />
+      </RailButton>
+      <RailButton
         active={activeOverlay === "history"}
         onClick={() => onOpen("history")}
         label={t("sidebar.rail.history")}
@@ -117,6 +134,20 @@ function RightRailInner({
       >
         <ScratchpadIcon size={14} />
       </RailButton>
+
+      {/* 2.2.0 round 2 — cook-mode quick toggle. Only surfaces when
+          the Cooking additions extra is on. Active state mirrors the
+          actual cookMode pref so the rail stays in sync with toggles
+          fired from Settings or the command palette. */}
+      {cookingOn && (
+        <RailButton
+          active={cookMode}
+          onClick={() => setCookMode(!cookMode)}
+          label={t("sidebar.rail.cookMode")}
+        >
+          <CookModeIcon />
+        </RailButton>
+      )}
 
       {/* Settings used to live at the very bottom of the rail
           (pushed there by `<div className="flex-1" />`). On platforms
@@ -189,6 +220,38 @@ function MapIcon() {
       <circle cx="11" cy="3" r="1.6" />
       <circle cx="7" cy="11" r="1.6" />
       <path d="M4.2 4.1L5.8 9.7M8.2 9.7L9.8 4.1M4.6 3h4.8" />
+    </svg>
+  );
+}
+
+// Outline icon — three stepped bars suggesting a heading hierarchy.
+function OutlineIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <line x1="2" y1="3.5"  x2="12" y2="3.5" />
+      <line x1="4" y1="7"    x2="11" y2="7" />
+      <line x1="6" y1="10.5" x2="10" y2="10.5" />
+    </svg>
+  );
+}
+
+// Cook-mode icon — a small simmering pot. Round body with a handle on
+// each side and three steam wisps rising from the lid. Reads as
+// "cooking" without competing with the editorial line of the other
+// rail icons.
+function CookModeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      {/* steam wisps */}
+      <path d="M5 1.5 q-0.6 0.8 0 1.6" />
+      <path d="M7 1.2 q-0.6 0.9 0 1.9" />
+      <path d="M9 1.5 q-0.6 0.8 0 1.6" />
+      {/* lid */}
+      <path d="M3 5 h8" />
+      {/* pot body + handles */}
+      <path d="M3.5 5 v3.5 a1.6 1.6 0 0 0 1.6 1.6 h3.8 a1.6 1.6 0 0 0 1.6 -1.6 V5" />
+      <path d="M2 6 h1.5" />
+      <path d="M10.5 6 H12" />
     </svg>
   );
 }

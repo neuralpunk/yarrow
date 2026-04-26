@@ -236,9 +236,15 @@ export const sidebarEN = {
   "sidebar.rail.links": "Links",
   "sidebar.rail.history": "History",
   "sidebar.rail.paths": "Paths",
+  "sidebar.rail.outline": "Outline — headings in this note",
   "sidebar.rail.kits": "Kits — journal, research, clinical",
   "sidebar.rail.scratchpad": "Scratchpad · {shortcut}",
+  "sidebar.rail.cookMode": "Cook mode — bigger text, screen stays awake",
   "sidebar.rail.settings": "Settings",
+
+  // Outline panel
+  "rightsidebar.outline.empty": "No headings yet — add a `# Title` to see this note's structure here.",
+  "rightsidebar.outline.untitled": "(untitled)",
 } as const;
 
 export type SidebarKey = keyof typeof sidebarEN;
@@ -477,8 +483,12 @@ export const sidebarES: Record<SidebarKey, string> = {
   "sidebar.rail.links": "Enlaces",
   "sidebar.rail.history": "Historial",
   "sidebar.rail.paths": "Rutas",
+  "sidebar.rail.outline": "Esquema — encabezados de esta nota",
+  "rightsidebar.outline.empty": "Aún no hay encabezados — añade un `# Título` para ver la estructura de esta nota aquí.",
+  "rightsidebar.outline.untitled": "(sin título)",
   "sidebar.rail.kits": "Kits — diario, investigación, clínico",
   "sidebar.rail.scratchpad": "Borrador · {shortcut}",
+  "sidebar.rail.cookMode": "Modo cocina — texto grande, pantalla siempre encendida",
   "sidebar.rail.settings": "Ajustes",
 };
 
@@ -716,7 +726,11 @@ export const sidebarSV: Record<SidebarKey, string> = {
   "sidebar.rail.links": "Länkar",
   "sidebar.rail.history": "Historik",
   "sidebar.rail.paths": "Stigar",
+  "sidebar.rail.outline": "Översikt — rubriker i denna anteckning",
+  "rightsidebar.outline.empty": "Inga rubriker än — lägg till `# Titel` för att se anteckningens struktur här.",
+  "rightsidebar.outline.untitled": "(utan titel)",
   "sidebar.rail.kits": "Kits — journal, forskning, kliniskt",
   "sidebar.rail.scratchpad": "Klotterblad · {shortcut}",
+  "sidebar.rail.cookMode": "Matlagningsläge — större text, skärmen håller sig vaken",
   "sidebar.rail.settings": "Inställningar",
 };

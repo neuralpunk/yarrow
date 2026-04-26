@@ -298,6 +298,29 @@ export const api = {
   pruneEmptyCheckpoints: () =>
     invoke<{ removed: number; kept: number }>("cmd_prune_empty_checkpoints"),
 
+  // bibliography (2.2.0)
+  renderBibliography: (slug: string) =>
+    invoke<string>("cmd_render_bibliography", { slug }),
+  insertBibliography: (slug: string) =>
+    invoke<Note>("cmd_insert_bibliography", { slug }),
+
+  // multi-note PDF render (2.2.0)
+  renderNotesHtml: (slugs: string[]) =>
+    invoke<string>("cmd_render_notes_html", { slugs }),
+  renderPathHtml: (pathName: string) =>
+    invoke<string>("cmd_render_path_html", { pathName }),
+
+  // recipe URL clipper (2.2.0)
+  clipRecipe: (url: string) => invoke<Note>("cmd_clip_recipe", { url }),
+
+  // smart shopping list (2.2.0)
+  addRecipeToShoppingList: (slug: string) =>
+    invoke<{ added: number; skipped_duplicates: number; source_title: string }>(
+      "cmd_add_recipe_to_shopping_list",
+      { slug },
+    ),
+  shoppingListSlug: () => invoke<string>("cmd_shopping_list_slug"),
+
   // sync
   sync: () => invoke<SyncOutcome>("cmd_sync"),
   discardUnsyncedChanges: (confirm: boolean) =>

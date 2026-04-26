@@ -1,6 +1,6 @@
 [package]
 name = "yarrow"
-version = "2.1.7"
+version = "2.2.0"
 description = "Yarrow — git-backed note-taking for non-linear thinking"
 authors = ["Yarrow"]
 edition = "2021"
@@ -16,6 +16,11 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+# 2.2.0: Tauri's webview clipboard is sandboxed — `navigator.clipboard
+# .readText()` only sees what was copied INSIDE the app on Linux/macOS.
+# This plugin gives us a Rust-backed read/write that bypasses the
+# webview restriction so paste from other apps works correctly.
+tauri-plugin-clipboard-manager = "2"
 # `tauri-plugin-window-state` removed in 2.1.4 — see lib.rs comment.
 # Multiple unfixed macOS bugs upstream made it the root cause of the
 # 2.1.x scroll/visibility regression on macOS Tahoe.
@@ -39,6 +44,15 @@ zeroize = { version = "1", features = ["zeroize_derive"] }
 rand = "0.8"
 bip39 = "2"
 ureq = { version = "2", features = ["tls"] }
+# 2.2.0 round 2 deep-fix: ureq's chunked-decoder (used by the recipe
+# URL clipper) intermittently fails on Cloudflare-fronted sites with
+# "Error while decoding chunks" even with gzip/brotli features
+# enabled — it's a known interaction with how some CDNs frame their
+# chunks. Reqwest's blocking client handles every major site cleanly
+# and pulls compression in via its own features. We keep ureq for
+# the rest of the codebase (sync, server connect, URL title fetch
+# in commands.rs) — only the recipe clipper switches.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "gzip", "brotli", "rustls-tls"] }
 # Async WebSocket client for `/ws` push notifications from yarrow-server.
 # `rustls-tls-native-roots` reuses the host trust store so self-signed
 # localhost certs work the same way they do in the existing `server.rs`
