@@ -3,6 +3,10 @@ import ReactDOM from "react-dom/client";
 import "katex/dist/katex.min.css";
 import "./index.css";
 import App from "./App";
+import {
+  getMacViewportFudge,
+  VP_FUDGE_CHANGED_EVENT,
+} from "./lib/macViewportFudge";
 
 // 2.2.0 macOS bottom-cutoff: belt-and-braces viewport sync.
 // History — 2.1.5 → 2.1.7 chased this through `titleBarStyle` Overlay /
@@ -64,12 +68,37 @@ import App from "./App";
   }
 })();
 
+// macOS Tahoe + Tauri 2 + WKWebView consistently over-reports the
+// visible viewport height by a sizeable margin — far more than the
+// 28 px title-bar deficit alone would explain. The combined error
+// is the sum of: title bar (~28 px), the system status strip
+// allocation that WKWebView reserves but doesn't subtract from
+// `visualViewport.height`, and (with `decorations: true` and the
+// transparent traffic-light overlay) a window-server fudge that
+// reserves a few extra rows for the OS to paint into. Empirically
+// the deficit is ~100-260 px on Tahoe and varies across macOS
+// versions, so the actual value lives in `lib/macViewportFudge.ts`
+// and is exposed as a five-rung preset slider in Settings →
+// Appearance (Mac only) so users who hit the cutoff bug can self-
+// fix without waiting for a release. See that module for the full
+// rationale and the storage / event protocol.
+
 function readViewportHeight(): number {
   const vv = window.visualViewport;
-  if (vv && vv.height > 0) return vv.height;
-  const ce = document.documentElement.clientHeight;
-  if (ce > 0) return ce;
-  return window.innerHeight;
+  let h = 0;
+  if (vv && vv.height > 0) h = vv.height;
+  else if (document.documentElement.clientHeight > 0)
+    h = document.documentElement.clientHeight;
+  else h = window.innerHeight;
+
+  if (document.documentElement.dataset.platform === "mac") {
+    h -= getMacViewportFudge();
+  }
+  // Sanity floor — no matter what the OS or override claims, never
+  // collapse the layout to less than 200 px. The min window height
+  // is 560 px in tauri.conf.json, so this floor only kicks in if a
+  // hostile localStorage override would otherwise hide the chrome.
+  return Math.max(h, 200);
 }
 
 function syncViewportHeight() {
@@ -93,6 +122,10 @@ window.addEventListener("orientationchange", scheduleSync);
 window.addEventListener("focus", scheduleSync);
 document.addEventListener("visibilitychange", scheduleSync);
 window.visualViewport?.addEventListener("resize", scheduleSync);
+// Settings → Appearance → "macOS bottom-edge correction" dispatches
+// this when the user picks a different preset. Resync immediately so
+// the layout reflows on the spot — no reload required.
+window.addEventListener(VP_FUDGE_CHANGED_EVENT, scheduleSync);
 
 // Catch-all: any layout-affecting change to <html> height retriggers
 // the sync. Cheap because the callback only writes a CSS variable.

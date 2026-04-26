@@ -38,7 +38,11 @@ import { usePaperTexture, PAPER_TEXTURES, type PaperTextureId, usePaperWarmth } 
 import { useLanguage, LANGUAGE_ORDER, type LanguageCode } from "../lib/language";
 import { useT } from "../lib/i18n";
 import { SunIcon, MoonIcon, AutoThemeIcon } from "../lib/icons";
-import { SK } from "../lib/platform";
+import { IS_MAC, SK } from "../lib/platform";
+import {
+  MAC_FUDGE_PRESETS,
+  useMacFudgePreset,
+} from "../lib/macViewportFudge";
 import { APP_VERSION } from "../lib/version";
 import Modal from "./Modal";
 import { useGuidance } from "../lib/guidanceStore";
@@ -517,7 +521,66 @@ function AppearancePane() {
       <PaperAndWarmthRow />
       <UiScaleRow />
       <UiFontPicker />
+      {IS_MAC && <MacBottomEdgeRow />}
     </Section>
+  );
+}
+
+/// macOS-only knob that controls how many pixels Yarrow shaves off
+/// the reported viewport height before laying out the chrome. Lives
+/// at the bottom of the Appearance pane because it's an escape
+/// hatch for a rare bug — most users will never see it (it's gated
+/// on `IS_MAC` so Linux/Windows installs don't render this row at
+/// all). See `lib/macViewportFudge.ts` for the storage / event
+/// protocol; the picker dispatches a custom event that `main.tsx`
+/// listens for, so the layout reflows live without a reload.
+function MacBottomEdgeRow() {
+  const t = useT();
+  const [active, setActive] = useMacFudgePreset();
+  return (
+    <div className="pt-4 mt-2 border-t border-bd">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-sm text-char">
+          {t("settings.appearance.macFudge.title")}
+        </div>
+        <div className="text-2xs text-t3 font-mono">
+          {t("settings.appearance.macFudge.aside")}
+        </div>
+      </div>
+      <div className="text-2xs text-t3 mb-3 leading-relaxed">
+        {t("settings.appearance.macFudge.hint")}
+      </div>
+      {active === "custom" && (
+        <div className="text-2xs text-t2 mb-3 italic">
+          {t("settings.appearance.macFudge.custom")}
+        </div>
+      )}
+      <div className="grid grid-cols-5 gap-2">
+        {MAC_FUDGE_PRESETS.map((p) => {
+          const isActive = p.id === active;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setActive(p.id)}
+              aria-pressed={isActive}
+              className={`tile-press rounded-md border px-2 py-2 text-left transition ${
+                isActive
+                  ? "border-yel bg-yelp"
+                  : "border-bd bg-bg hover:bg-s2/60 hover:border-bd2"
+              }`}
+            >
+              <div className="text-xs text-char leading-tight">
+                {t(p.labelKey)}
+              </div>
+              <div className="text-2xs text-t3 leading-tight mt-0.5">
+                {t(p.sublabelKey)}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

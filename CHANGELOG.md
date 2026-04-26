@@ -6,6 +6,23 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [2.2.1] — 2026-04-26
+
+A targeted follow-up to 2.2.0 to address a stubborn macOS bottom-edge cutoff that survived the four-version chase from 2.1.4 through 2.1.7. Empirically the WKWebView-reported viewport height runs ~100–260 px past the actual visible content area on macOS Tahoe, and the deficit varies across macOS versions and display arrangements — so this release adds (a) a much more generous default correction and (b) a user-facing tuner for cases where the default isn't right.
+
+### Added
+
+- **macOS bottom-edge correction** — Settings → Appearance, Mac only. Five named presets (None / Small / Medium / Large / X-Large mapping to 0 / 80 / 150 / 220 / 300 px). Picking a preset reflows the layout immediately — no reload. Only renders for users on macOS; Linux and Windows installs don't see this row.
+
+### Changed
+
+- **Default viewport correction on macOS bumped from 0 to 150 px** so the left-rail Activity / Trash and the global status bar (word count, sync state) now sit fully within the visible content area on a fresh install.
+- The viewport-height read in `main.tsx` now subtracts the saved correction on macOS only (gated by `data-platform="mac"`), with a hard floor of 200 px so a hostile or accidental override can't hide the chrome.
+
+### Internal
+
+- New `src/lib/macViewportFudge.ts` is the single source of truth for the correction value, the preset ladder, and the live-update event protocol. `main.tsx` and Settings.tsx both import from it; the picker dispatches a `yarrow:vp-fudge-changed` window event that `main.tsx`'s resync listener picks up.
+
 ## [2.2.0] — 2026-04-26
 
 A big-feature release: a redesigned radial centre with configurable Still-Point gestures, a Compare modal that can diff two notes (not just two paths), baking-focused workflows behind an opt-in extra, and a serious macOS polish pass.
