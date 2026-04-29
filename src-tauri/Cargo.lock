@@ -6799,7 +6799,7 @@ dependencies = [
 
 [[package]]
 name = "yarrow"
-version = "2.2.1"
+version = "3.0.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -6838,6 +6838,7 @@ dependencies = [
  "ureq",
  "url",
  "walkdir",
+ "window-vibrancy",
  "x25519-dalek",
  "zeroize",
 ]

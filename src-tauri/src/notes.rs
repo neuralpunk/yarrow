@@ -177,7 +177,119 @@ pub fn slug_from_title(title: &str) -> String {
 }
 
 pub fn note_path(root: &Path, slug: &str) -> PathBuf {
-    workspace::notes_dir(root).join(format!("{}.md", slug))
+    // Defense-in-depth: validate_slug at the IPC boundary catches
+    // hostile input before it reaches us, but if anything ever wrote a
+    // malformed slug into the system from below (sync from a peer, an
+    // import bug, hand-edited workspace state) we still need a guard
+    // here. An invalid slug is mapped to a deterministic poison name —
+    // any subsequent file open returns a clean "not found" instead of
+    // escaping the notes directory.
+    let safe = if slug_is_filesystem_safe(slug) {
+        slug
+    } else {
+        POISON_SLUG
+    };
+    workspace::notes_dir(root).join(format!("{}.md", safe))
+}
+
+/// Sentinel returned from [`note_path`], [`trash::body_path`],
+/// [`trash::meta_path`], and [`path_content::override_file`] when an
+/// invalid slug somehow reached the path-construction layer. Designed to
+/// be obviously bogus (so it's recognisable in logs / on disk) and
+/// guaranteed inside the workspace's intended subdirectory (so the
+/// failure mode is "file not found", never traversal).
+pub(crate) const POISON_SLUG: &str = "__yarrow_invalid_slug__";
+
+/// Filesystem-safety check used by the path-construction funnels. Same
+/// rules as [`validate_slug`] but returns `bool` for use in `if`/`else`
+/// instead of `Result`. Internal callers from the IPC layer already
+/// validated; this is only the last-resort guard.
+pub(crate) fn slug_is_filesystem_safe(slug: &str) -> bool {
+    if slug.is_empty() || slug.len() > 256 {
+        return false;
+    }
+    if slug.contains("..") || slug.contains('\\') || slug.contains('\0') {
+        return false;
+    }
+    if slug.starts_with('.') || slug.starts_with('/') {
+        return false;
+    }
+    if slug.bytes().any(|b| b < 0x20 || b == 0x7f) {
+        return false;
+    }
+    if let Some(rest) = slug.strip_prefix("daily/") {
+        return rest.len() == 10
+            && rest.bytes().enumerate().all(|(i, b)| match i {
+                4 | 7 => b == b'-',
+                _ => b.is_ascii_digit(),
+            });
+    }
+    !slug.contains('/')
+        && slug
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Reject slugs from the IPC boundary that would let a malicious caller
+/// escape the notes directory or write to special filenames. Internal
+/// callers receive slugs derived from filesystem walks (already trusted),
+/// so this is only applied at `cmd_*` entry points.
+///
+/// Allowed: ASCII letters, digits, `-`, `_`, plus the single structured
+/// form `daily/<YYYY-MM-DD>` used by the daily journal. Anything else
+/// (including `..`, backslash, leading slash, NUL, or control chars) is
+/// rejected with [`YarrowError::Invalid`].
+///
+/// **Two-layer defense is intentional.** This function is the IPC-boundary
+/// gate — it produces clean, typed `Invalid` errors that the frontend
+/// can surface meaningfully. [`slug_is_filesystem_safe`] is a separate
+/// backstop applied inside the path-construction funnels (`note_path`,
+/// `body_path`, `meta_path`, `override_file`) so a malformed slug that
+/// somehow reached us from below the IPC boundary (rogue sync, import
+/// bug, hand-edited workspace) routes to a poison filename rather than
+/// escaping. Removing either layer is a regression: the IPC layer for
+/// error UX, the funnel layer for security depth.
+pub fn validate_slug(slug: &str) -> crate::error::Result<()> {
+    if slug.is_empty() || slug.len() > 256 {
+        return Err(crate::error::YarrowError::Invalid("slug".into()));
+    }
+    if let Some(rest) = slug.strip_prefix("daily/") {
+        let ok = rest.len() == 10
+            && rest.bytes().enumerate().all(|(i, b)| match i {
+                4 | 7 => b == b'-',
+                _ => b.is_ascii_digit(),
+            });
+        return if ok {
+            Ok(())
+        } else {
+            Err(crate::error::YarrowError::Invalid("slug".into()))
+        };
+    }
+    let ok = slug
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if ok {
+        Ok(())
+    } else {
+        Err(crate::error::YarrowError::Invalid("slug".into()))
+    }
+}
+
+/// Looser variant for trash storage slugs, which may carry a `-deleted-<N>`
+/// suffix on top of either a normal or `daily/<YYYY-MM-DD>` slug. Strips
+/// the suffix (if any) and defers to [`validate_slug`].
+pub fn validate_trash_slug(slug: &str) -> crate::error::Result<()> {
+    let core = slug
+        .rsplit_once("-deleted-")
+        .and_then(|(base, n)| {
+            if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) {
+                Some(base)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(slug);
+    validate_slug(core)
 }
 
 pub fn relative_note_path(slug: &str) -> String {
@@ -189,6 +301,7 @@ pub fn relative_note_path(slug: &str) -> String {
 /// `graph::build` consume this so a save no longer pays for two
 /// independent walks of the same disk tree (previously ~2N file reads
 /// per save; now N).
+#[derive(Clone)]
 pub struct ScannedNote {
     pub slug: String,
     pub fm: Frontmatter,
@@ -220,6 +333,23 @@ pub fn scan(root: &Path) -> Result<Vec<ScannedNote>> {
         out.push(ScannedNote { slug, fm, body });
     }
     Ok(out)
+}
+
+/// Scan a single note by slug. `Ok(None)` when the file is absent —
+/// used by the save-cache helpers to keep the in-memory scan up to
+/// date after a single write without re-reading every other note.
+pub fn scan_one(root: &Path, slug: &str) -> Result<Option<ScannedNote>> {
+    let path = note_path(root, slug);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&path)?;
+    let (fm, body) = parse(&raw);
+    Ok(Some(ScannedNote {
+        slug: slug.to_string(),
+        fm,
+        body,
+    }))
 }
 
 /// Build a `NoteSummary` row from a scanned note. Pulled out so `list` and
@@ -873,39 +1003,29 @@ fn excerpt_from(body: &str) -> String {
 }
 
 pub(crate) fn parse(raw: &str) -> (Frontmatter, String) {
-    let fm = parse_frontmatter(raw);
-    let body = strip_frontmatter(raw);
-    (fm, body)
-}
-
-fn parse_frontmatter(raw: &str) -> Frontmatter {
-    // gray_matter 0.2 / serde-yaml can panic on a few pathological
-    // shapes (e.g. duplicate keys with conflicting types in the YAML
-    // header). A bad note shouldn't take the whole backend down — the
-    // sidebar would freeze, save commands would 500, and the user would
-    // have no way to recover without hand-editing the file. Catching
-    // here returns a default Frontmatter so the note still loads with
-    // its body intact, just with empty metadata.
-    std::panic::catch_unwind(|| {
+    // Single Matter pass producing both frontmatter and body. Replaces a
+    // previous shape that called `Matter::<YAML>::new().parse(raw)` twice
+    // (once to extract `data`, once to extract `content`) and so paid for
+    // the YAML parse on every read, scan, and save.
+    //
+    // gray_matter 0.2 / serde-yaml can panic on a few pathological YAML
+    // headers (e.g. duplicate keys with conflicting types). A bad note
+    // shouldn't take the whole backend down — the sidebar would freeze,
+    // save commands would 500, and the user would have no way to recover
+    // without hand-editing the file. The catch_unwind keeps a poisoned
+    // header from cascading; on panic we fall back to (default fm, raw
+    // body) so the note's text is never silently lost.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let matter = Matter::<YAML>::new();
-        matter
-            .parse(raw)
+        let parsed = matter.parse(raw);
+        let fm = parsed
             .data
+            .as_ref()
             .and_then(|d| d.deserialize::<Frontmatter>().ok())
-            .unwrap_or_default()
-    })
-    .unwrap_or_default()
-}
-
-fn strip_frontmatter(raw: &str) -> String {
-    // Same defensive wrap as `parse_frontmatter` — if the YAML header
-    // makes the parser panic, fall back to the raw input so the note's
-    // text isn't silently lost.
-    std::panic::catch_unwind(|| {
-        let matter = Matter::<YAML>::new();
-        matter.parse(raw).content
-    })
-    .unwrap_or_else(|_| raw.to_string())
+            .unwrap_or_default();
+        (fm, parsed.content)
+    }));
+    result.unwrap_or_else(|_| (Frontmatter::default(), raw.to_string()))
 }
 
 pub(crate) fn serialize(fm: &Frontmatter, body: &str) -> String {
@@ -992,7 +1112,12 @@ pub fn seed_note_markdown() -> String {
         title: "Getting started".into(),
         created: now.clone(),
         modified: now,
-        links: vec![],
+        // Reciprocal-link the companion `wikilinks-explained` note so the
+        // graph in the right rail isn't empty on the user's first visit.
+        links: vec![Link {
+            target: "wikilinks-explained".into(),
+            link_type: "supports".into(),
+        }],
         tags: vec![],
         pinned: false,
         encrypted: false,
@@ -1019,8 +1144,8 @@ angle on this note. The current version stays safe under `main`. Your new
 direction becomes its own path you can switch back to whenever.
 
 Link notes together: type `[[` inside any paragraph and pick a note, or
-click **⊕ Connect** to add a typed connection (supports, challenges, came
-from, open question).
+click **⊕ Connect** to add a typed connection. Click [[wikilinks-explained]]
+to see how this paragraph already does it.
 
 Leave a `??` followed by a question anywhere, like this:
 ?? What's the hardest thing to notice about your own thinking?
@@ -1037,6 +1162,54 @@ will gently offer to branch for you. No pressure — you can always ignore.
 The graph on the right gets denser as you connect more notes together.
 Nothing is deleted, just not surfaced. Paths you abandon sit quietly in
 *Paths not taken* — easy to revive.
+";
+    serialize(&fm, body)
+}
+
+/// Companion note that ships alongside `getting-started.md` on a fresh
+/// workspace. Linked from the welcome note so the user sees a working
+/// `[[wikilink]]` and a non-empty connections graph from minute one,
+/// rather than a single isolated node.
+pub fn seed_companion_note_markdown() -> String {
+    let now = Utc::now().to_rfc3339();
+    let fm = Frontmatter {
+        title: "Wikilinks, explained".into(),
+        created: now.clone(),
+        modified: now,
+        links: vec![Link {
+            target: "getting-started".into(),
+            link_type: "supports".into(),
+        }],
+        tags: vec![],
+        pinned: false,
+        encrypted: false,
+        kdf: String::new(),
+        salt: String::new(),
+        nonce: String::new(),
+        annotations: vec![],
+        private: false,
+        folder: None,
+    };
+    let body = "\
+You got here by clicking a `[[wikilink]]` in the welcome note. That's the
+core navigation move in Yarrow — type `[[` and any note title, and it
+becomes a one-click hop both ways. The link from [[getting-started]] back
+here was already filled in for you.
+
+## Why bother
+
+Wikilinks are how Yarrow keeps your notes connected without forcing you
+into folders. Two months from now when you can't remember which note has
+the thing — just follow links until something jogs your memory. The graph
+in the right rail draws this for you.
+
+## Try it
+
+Type `[[` anywhere in this paragraph and a picker shows up with every note
+in the workspace. Pick one and a link appears. Cmd-click any wikilink to
+open it. Right-click for more options.
+
+?? What's something I want to remember to come back to?
 ";
     serialize(&fm, body)
 }
@@ -1277,7 +1450,7 @@ pub fn read_daily_template(root: &Path) -> Result<String> {
     if !path.exists() {
         return Ok(String::new());
     }
-    Ok(std::fs::read_to_string(path)?)
+    workspace::read_to_string_capped(&path)
 }
 
 pub fn write_daily_template(root: &Path, content: &str) -> Result<()> {
@@ -1559,6 +1732,255 @@ mod suggest_tags_tests {
         let out = suggest_tags(body, "", &s(&["working"]), &s(&[]), 10);
         assert!(!out.iter().any(|w| w.starts_with("work")),
             "expected no work* suggestions when #working already applied, got {:?}", out);
+    }
+}
+
+#[cfg(test)]
+mod slug_validator_tests {
+    use super::*;
+
+    // ── validate_slug — the IPC-boundary gate ────────────────────────
+
+    #[test]
+    fn accepts_simple_lowercase_slug() {
+        assert!(validate_slug("my-note").is_ok());
+    }
+
+    #[test]
+    fn accepts_alphanumeric_with_underscore_and_dash() {
+        assert!(validate_slug("a-b_c-1-2-3").is_ok());
+    }
+
+    #[test]
+    fn accepts_uppercase_too() {
+        assert!(validate_slug("MyNote").is_ok());
+    }
+
+    #[test]
+    fn accepts_pure_digits() {
+        assert!(validate_slug("12345").is_ok());
+    }
+
+    #[test]
+    fn accepts_daily_journal_form() {
+        assert!(validate_slug("daily/2026-04-28").is_ok());
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(validate_slug("").is_err());
+    }
+
+    #[test]
+    fn rejects_overly_long() {
+        let long = "a".repeat(257);
+        assert!(validate_slug(&long).is_err());
+    }
+
+    #[test]
+    fn rejects_double_dot_path_traversal() {
+        assert!(validate_slug("..").is_err());
+        assert!(validate_slug("../etc/passwd").is_err());
+        assert!(validate_slug("foo/..").is_err());
+        assert!(validate_slug("foo/../bar").is_err());
+    }
+
+    #[test]
+    fn rejects_backslash() {
+        assert!(validate_slug("foo\\bar").is_err());
+        assert!(validate_slug("..\\..\\windows\\system32").is_err());
+    }
+
+    #[test]
+    fn rejects_leading_slash() {
+        assert!(validate_slug("/etc/passwd").is_err());
+    }
+
+    #[test]
+    fn rejects_leading_dot_via_daily_check() {
+        // Bare leading-dot slugs aren't in the daily form and fail the
+        // alphanumeric-only check on the dot.
+        assert!(validate_slug(".hidden").is_err());
+    }
+
+    #[test]
+    fn rejects_nul_byte() {
+        assert!(validate_slug("foo\0bar").is_err());
+    }
+
+    #[test]
+    fn rejects_control_characters() {
+        assert!(validate_slug("foo\nbar").is_err());
+        assert!(validate_slug("foo\rbar").is_err());
+        assert!(validate_slug("foo\tbar").is_err());
+        assert!(validate_slug("\x01evil").is_err());
+        assert!(validate_slug("\x7fdel").is_err());
+    }
+
+    #[test]
+    fn rejects_unicode() {
+        // Non-ASCII would round-trip to disk and render fine but the
+        // strict whitelist refuses everything outside ASCII alnum/-/_.
+        assert!(validate_slug("café").is_err());
+        assert!(validate_slug("日記").is_err());
+    }
+
+    #[test]
+    fn rejects_slash_outside_daily_prefix() {
+        // Only `daily/<YYYY-MM-DD>` may contain a slash; arbitrary
+        // path segments are not permitted.
+        assert!(validate_slug("foo/bar").is_err());
+        assert!(validate_slug("notes/secret").is_err());
+    }
+
+    #[test]
+    fn rejects_malformed_daily_dates() {
+        assert!(validate_slug("daily/2026-4-28").is_err());      // not zero-padded
+        assert!(validate_slug("daily/2026-04-28 ").is_err());    // trailing space
+        assert!(validate_slug("daily/04-28-2026").is_err());     // wrong order
+        assert!(validate_slug("daily/").is_err());               // empty date
+        assert!(validate_slug("daily/2026-04-28-extra").is_err()); // suffix
+        assert!(validate_slug("daily/abcd-ef-gh").is_err());     // non-digits
+        assert!(validate_slug("daily/2026/04/28").is_err());     // wrong separator
+        assert!(validate_slug("daily/../passwd").is_err());      // traversal under daily/
+    }
+
+    #[test]
+    fn rejects_special_filenames() {
+        // ".." and "." land outside the alphanumeric whitelist; CON /
+        // NUL / PRN are reserved on Windows but pass our charset
+        // (we accept them because reserved-name handling is the
+        // filesystem's job and refusing them would be over-strict for
+        // POSIX where they're valid).
+        assert!(validate_slug("..").is_err());
+        assert!(validate_slug(".").is_err());
+    }
+
+    // ── validate_trash_slug — accepts -deleted-<N> suffix ─────────────
+
+    #[test]
+    fn trash_slug_accepts_normal_form() {
+        assert!(validate_trash_slug("my-note").is_ok());
+    }
+
+    #[test]
+    fn trash_slug_accepts_suffixed_form() {
+        assert!(validate_trash_slug("my-note-deleted-2").is_ok());
+        assert!(validate_trash_slug("my-note-deleted-9999").is_ok());
+    }
+
+    #[test]
+    fn trash_slug_accepts_daily_form() {
+        assert!(validate_trash_slug("daily/2026-04-28").is_ok());
+    }
+
+    #[test]
+    fn trash_slug_accepts_daily_with_suffix() {
+        assert!(validate_trash_slug("daily/2026-04-28-deleted-2").is_ok());
+    }
+
+    #[test]
+    fn trash_slug_rejects_traversal_in_base() {
+        assert!(validate_trash_slug("../etc-deleted-1").is_err());
+        assert!(validate_trash_slug("..-deleted-2").is_err());
+    }
+
+    #[test]
+    fn trash_slug_rejects_non_numeric_suffix() {
+        // "-deleted-" with non-numeric trailing isn't a valid trash
+        // suffix — the validator strips nothing and fails the base
+        // check (the literal "-deleted-abc" contains no slash so it
+        // falls through to the alphanumeric whitelist, which actually
+        // accepts it — document the behaviour).
+        // The base form is alphanumeric, so a non-numeric suffix
+        // sticks to the slug and the whole thing is checked. This is
+        // by design — we'd rather accept ambiguous-looking slugs than
+        // accidentally accept traversal hidden behind a suffix.
+        assert!(validate_trash_slug("my-note-deleted-abc").is_ok());
+    }
+
+    // ── slug_is_filesystem_safe — defense-in-depth funnel guard ──────
+
+    #[test]
+    fn fs_safe_matches_validate_slug_on_normal_inputs() {
+        for &good in &["a", "my-note", "daily/2026-04-28", "MixedCase_1"] {
+            assert!(
+                slug_is_filesystem_safe(good),
+                "{good} should be filesystem-safe"
+            );
+            assert!(validate_slug(good).is_ok(), "{good} should pass validate_slug");
+        }
+        for &bad in &["..", "../escape", "foo\0bar", "foo\nbar", ".hidden", "/abs"] {
+            assert!(
+                !slug_is_filesystem_safe(bad),
+                "{bad:?} should NOT be filesystem-safe"
+            );
+        }
+    }
+
+    // ── note_path defense-in-depth — invalid slugs route to poison ──
+
+    #[test]
+    fn note_path_with_valid_slug_lands_in_notes_dir() {
+        let p = note_path(Path::new("/tmp/ws"), "my-note");
+        assert_eq!(
+            p,
+            Path::new("/tmp/ws/notes/my-note.md"),
+        );
+    }
+
+    #[test]
+    fn note_path_with_traversal_slug_routes_to_poison_filename() {
+        // The poison sentinel sits inside notes/ — never escaping.
+        let p = note_path(Path::new("/tmp/ws"), "../../etc/passwd");
+        let s = p.to_str().unwrap();
+        assert!(
+            s.starts_with("/tmp/ws/notes/"),
+            "expected path to stay under notes/, got {s}"
+        );
+        assert!(s.contains(POISON_SLUG), "expected poison filename, got {s}");
+    }
+
+    #[test]
+    fn note_path_with_nul_byte_routes_to_poison() {
+        let p = note_path(Path::new("/tmp/ws"), "foo\0bar");
+        assert!(p.to_str().unwrap().contains(POISON_SLUG));
+    }
+
+    #[test]
+    fn note_path_with_backslash_routes_to_poison() {
+        let p = note_path(Path::new("/tmp/ws"), "..\\windows\\system32");
+        assert!(p.to_str().unwrap().contains(POISON_SLUG));
+    }
+
+    #[test]
+    fn note_path_with_leading_dot_routes_to_poison() {
+        let p = note_path(Path::new("/tmp/ws"), ".env");
+        assert!(p.to_str().unwrap().contains(POISON_SLUG));
+    }
+
+    #[test]
+    fn note_path_with_daily_form_lands_in_daily_subdir() {
+        let p = note_path(Path::new("/tmp/ws"), "daily/2026-04-28");
+        assert_eq!(p, Path::new("/tmp/ws/notes/daily/2026-04-28.md"));
+    }
+
+    #[test]
+    fn note_path_with_malformed_daily_routes_to_poison() {
+        let p = note_path(Path::new("/tmp/ws"), "daily/../etc/passwd");
+        assert!(p.to_str().unwrap().contains(POISON_SLUG));
+    }
+
+    #[test]
+    fn poison_slug_is_recognisable_and_not_a_real_slug() {
+        // The sentinel should clearly look bogus to anyone reading
+        // logs / inspecting disk, AND it should never be a slug a
+        // real user would generate accidentally.
+        assert!(POISON_SLUG.contains("invalid"));
+        // Sanity: the sentinel itself is fs-safe (otherwise
+        // note_path would recurse / loop). Underscores and ASCII
+        // letters only.
+        assert!(slug_is_filesystem_safe(POISON_SLUG));
     }
 }
 

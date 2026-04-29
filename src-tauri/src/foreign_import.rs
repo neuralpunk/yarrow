@@ -17,6 +17,7 @@ use crate::error::{Result, YarrowError};
 use crate::notes::{self, Frontmatter};
 use crate::obsidian_import::{
     collect_frontmatter_tags, pick_title, scan_inline_tags, split_frontmatter, ImportReport,
+    ProgressFn,
 };
 use crate::workspace;
 
@@ -27,6 +28,14 @@ use crate::workspace;
 /// whatever the author wrote as the note's first `# H1` line, or falls
 /// back to the file stem.
 pub fn import_bear(workspace_root: &Path, source: &Path) -> Result<ImportReport> {
+    import_bear_with_progress(workspace_root, source, None)
+}
+
+pub fn import_bear_with_progress(
+    workspace_root: &Path,
+    source: &Path,
+    progress: Option<ProgressFn>,
+) -> Result<ImportReport> {
     if !source.is_dir() {
         return Err(YarrowError::Invalid(
             "Pick the folder that contains your Bear export.".into(),
@@ -34,33 +43,43 @@ pub fn import_bear(workspace_root: &Path, source: &Path) -> Result<ImportReport>
     }
     let notes_dir = workspace::notes_dir(workspace_root);
     std::fs::create_dir_all(&notes_dir)?;
+
+    let candidates: Vec<PathBuf> = WalkDir::new(source)
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            !(name.starts_with('.') && e.depth() > 0)
+        })
+        .filter_map(|r| r.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| {
+            let ext = e.path().extension().and_then(|s| s.to_str()).unwrap_or("");
+            ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown")
+        })
+        .map(|e| e.path().to_path_buf())
+        .collect();
+
+    let total = candidates.len();
     let mut imported = 0usize;
     let mut skipped = 0usize;
     let mut renamed: Vec<(String, String)> = Vec::new();
 
-    for entry in WalkDir::new(source).into_iter().filter_entry(|e| {
-        let name = e.file_name().to_string_lossy();
-        !(name.starts_with('.') && e.depth() > 0)
-    }) {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => {
-                skipped += 1;
-                continue;
-            }
-        };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let path = entry.path();
-        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-        if !ext.eq_ignore_ascii_case("md") && !ext.eq_ignore_ascii_case("markdown") {
-            continue;
+    for (i, path) in candidates.iter().enumerate() {
+        if let Some(report) = progress {
+            let label = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            report(i, total, &label);
         }
         match import_bear_one(&notes_dir, source, path, &mut renamed) {
             Ok(_) => imported += 1,
             Err(_) => skipped += 1,
         }
+    }
+    if let Some(report) = progress {
+        report(total, total, "");
     }
     Ok(ImportReport {
         imported,
@@ -103,6 +122,14 @@ fn import_bear_one(
 /// to hyphens so they slug cleanly. Logseq's block-bullet source format
 /// is left as-is; Yarrow's editor renders bulleted lists fine.
 pub fn import_logseq(workspace_root: &Path, source: &Path) -> Result<ImportReport> {
+    import_logseq_with_progress(workspace_root, source, None)
+}
+
+pub fn import_logseq_with_progress(
+    workspace_root: &Path,
+    source: &Path,
+    progress: Option<ProgressFn>,
+) -> Result<ImportReport> {
     if !source.is_dir() {
         return Err(YarrowError::Invalid(
             "Pick the folder that contains your Logseq graph (the one with pages/ and journals/).".into(),
@@ -110,47 +137,65 @@ pub fn import_logseq(workspace_root: &Path, source: &Path) -> Result<ImportRepor
     }
     let notes_dir = workspace::notes_dir(workspace_root);
     std::fs::create_dir_all(&notes_dir)?;
-    let mut imported = 0usize;
-    let mut skipped = 0usize;
-    let mut renamed: Vec<(String, String)> = Vec::new();
 
     // Only walk the two directories Logseq uses for notes. Everything else
     // (logseq/, assets/, draws/, version-control side-files) is irrelevant
-    // to the vault.
+    // to the vault. Each candidate carries a flag for whether it came from
+    // journals/ so the per-file logic can normalize `YYYY_MM_DD` filenames.
+    let mut candidates: Vec<(PathBuf, bool)> = Vec::new();
     for sub in ["pages", "journals"] {
         let sub_root = source.join(sub);
         if !sub_root.is_dir() {
             continue;
         }
-        for entry in WalkDir::new(&sub_root).into_iter().filter_entry(|e| {
-            let name = e.file_name().to_string_lossy();
-            !(name.starts_with('.') && e.depth() > 0)
-        }) {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => {
-                    skipped += 1;
-                    continue;
-                }
-            };
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let path = entry.path();
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            if !ext.eq_ignore_ascii_case("md") {
-                continue;
-            }
-            match import_logseq_one(&notes_dir, source, path, sub == "journals", &mut renamed) {
-                Ok(_) => imported += 1,
-                Err(_) => skipped += 1,
-            }
+        let is_journal = sub == "journals";
+        for entry in WalkDir::new(&sub_root)
+            .into_iter()
+            .filter_entry(|e| {
+                let name = e.file_name().to_string_lossy();
+                !(name.starts_with('.') && e.depth() > 0)
+            })
+            .filter_map(|r| r.ok())
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.eq_ignore_ascii_case("md"))
+                    .unwrap_or(false)
+            })
+        {
+            candidates.push((entry.path().to_path_buf(), is_journal));
         }
     }
-    if imported + skipped == 0 {
+
+    if candidates.is_empty() {
         return Err(YarrowError::Invalid(
             "Couldn't find any pages/ or journals/ .md files under that folder.".into(),
         ));
+    }
+
+    let total = candidates.len();
+    let mut imported = 0usize;
+    let mut skipped = 0usize;
+    let mut renamed: Vec<(String, String)> = Vec::new();
+
+    for (i, (path, is_journal)) in candidates.iter().enumerate() {
+        if let Some(report) = progress {
+            let label = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            report(i, total, &label);
+        }
+        match import_logseq_one(&notes_dir, source, path, *is_journal, &mut renamed) {
+            Ok(_) => imported += 1,
+            Err(_) => skipped += 1,
+        }
+    }
+    if let Some(report) = progress {
+        report(total, total, "");
     }
     Ok(ImportReport {
         imported,
@@ -194,6 +239,14 @@ fn import_logseq_one(
 /// subfolders with the same naming. We walk everything, strip the ID
 /// suffix for the title, and ignore CSVs (database dumps) with a skip.
 pub fn import_notion(workspace_root: &Path, source: &Path) -> Result<ImportReport> {
+    import_notion_with_progress(workspace_root, source, None)
+}
+
+pub fn import_notion_with_progress(
+    workspace_root: &Path,
+    source: &Path,
+    progress: Option<ProgressFn>,
+) -> Result<ImportReport> {
     if !source.is_dir() {
         return Err(YarrowError::Invalid(
             "Pick the extracted Notion export folder (the one Notion zipped up).".into(),
@@ -201,35 +254,48 @@ pub fn import_notion(workspace_root: &Path, source: &Path) -> Result<ImportRepor
     }
     let notes_dir = workspace::notes_dir(workspace_root);
     std::fs::create_dir_all(&notes_dir)?;
+
+    // Notion export has no hidden-config folder convention, but respect
+    // common dotfile hygiene anyway (macOS's `.DS_Store`, etc.).
+    let candidates: Vec<PathBuf> = WalkDir::new(source)
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            !(name.starts_with('.') && e.depth() > 0)
+        })
+        .filter_map(|r| r.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.eq_ignore_ascii_case("md"))
+                .unwrap_or(false)
+        })
+        .map(|e| e.path().to_path_buf())
+        .collect();
+
+    let total = candidates.len();
     let mut imported = 0usize;
     let mut skipped = 0usize;
     let mut renamed: Vec<(String, String)> = Vec::new();
 
-    // Notion export has no hidden-config folder convention, but respect
-    // common dotfile hygiene anyway (macOS's `.DS_Store`, etc.).
-    for entry in WalkDir::new(source).into_iter().filter_entry(|e| {
-        let name = e.file_name().to_string_lossy();
-        !(name.starts_with('.') && e.depth() > 0)
-    }) {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => {
-                skipped += 1;
-                continue;
-            }
-        };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let path = entry.path();
-        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-        if !ext.eq_ignore_ascii_case("md") {
-            continue;
+    for (i, path) in candidates.iter().enumerate() {
+        if let Some(report) = progress {
+            let label = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            report(i, total, &label);
         }
         match import_notion_one(&notes_dir, source, path, &mut renamed) {
             Ok(_) => imported += 1,
             Err(_) => skipped += 1,
         }
+    }
+    if let Some(report) = progress {
+        report(total, total, "");
     }
     Ok(ImportReport {
         imported,

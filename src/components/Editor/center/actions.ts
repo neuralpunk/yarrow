@@ -28,7 +28,7 @@ export type CenterActionId =
   | "todayJournal"        // open today's daily journal
   | "newNote"             // create new note
   | "newPath"             // explore a new direction (path)
-  | "outline"             // open the outline rail overlay
+  | "outline-solid"             // open the outline rail overlay
   | "livePreview"         // toggle the side-by-side rendered pane
   | "cookMode"            // toggle big-text reading mode for hands-free recipe reading
   | "settings";           // open Settings

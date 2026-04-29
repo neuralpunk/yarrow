@@ -11,6 +11,7 @@ use crate::app_config;
 use crate::attachments;
 use crate::bibliography;
 use crate::crypto::{self, MasterKey};
+use crate::drafts;
 use crate::error::{Result, YarrowError};
 use crate::export;
 use crate::find_replace;
@@ -76,6 +77,16 @@ pub struct AppState {
     /// write+checkpoint+rebuild cycle.
     pub repo_lock: Mutex<()>,
     pub session: Mutex<Session>,
+    /// Cached `notes::scan()` result for the active workspace. The save-
+    /// pipeline previously re-read every note file on every checkpoint —
+    /// at 1k notes that's ~1k disk reads + 1k YAML parses per debounced
+    /// save, which dominated the typing-pause stall. With the cache the
+    /// save path only re-reads the one slug that changed and patches it
+    /// into the cached vec in-place, so the per-save cost is constant
+    /// regardless of workspace size. Invalidated on workspace switch and
+    /// on every command that mutates files outside the per-note save
+    /// path (sync, merge, restore, import, rename, delete).
+    pub scan_cache: Mutex<Option<(PathBuf, Vec<notes::ScannedNote>)>>,
     /// Background WebSocket listener for `/ws` push notifications from the
     /// currently-connected yarrow-server. One task per active workspace-
     /// with-server-config; swapped in/out from `cmd_open_workspace`,
@@ -107,6 +118,68 @@ impl AppState {
         // New workspace = new session. Drop any prior key so a previously-
         // unlocked workspace doesn't bleed into the next.
         self.lock_session();
+        // …and dump the cached scan — the next save will rebuild it for
+        // the new workspace.
+        self.scan_cache_invalidate();
+    }
+
+    /// Drop the cached scan. Call from any command that mutates files
+    /// outside the save pipeline (sync pull, merge, restore, import,
+    /// rename, delete). Cheap — the next save path repopulates it.
+    pub fn scan_cache_invalidate(&self) {
+        *unpoison(self.scan_cache.lock()) = None;
+    }
+
+    /// Hand the save pipeline a fresh `Vec<ScannedNote>` reflecting disk
+    /// state. The caller passes the slug that just changed; the helper
+    /// re-reads that one file, patches it into the cached scan (or
+    /// builds the cache on first call), and returns a clone of the
+    /// updated vec for graph + summary derivation. `None` for `slug`
+    /// just primes/refreshes the cache without applying a delta.
+    pub fn scan_cache_apply_save(
+        &self,
+        root: &std::path::Path,
+        slug: Option<&str>,
+    ) -> Result<Vec<notes::ScannedNote>> {
+        self.scan_cache_with(root, slug, |scanned| scanned.to_vec())
+    }
+
+    /// Like [`scan_cache_apply_save`] but hands the cached `&[ScannedNote]`
+    /// to a callback under the lock, returning whatever the callback
+    /// produces. Lets callers compute summaries / graphs / membership
+    /// maps without first cloning every note's body — which on a vault
+    /// with megabytes of prose was the dominant cost of every save.
+    pub fn scan_cache_with<R>(
+        &self,
+        root: &std::path::Path,
+        slug: Option<&str>,
+        f: impl FnOnce(&[notes::ScannedNote]) -> R,
+    ) -> Result<R> {
+        let mut cache = unpoison(self.scan_cache.lock());
+        // Build the cache on first call, or rebuild it when the active
+        // workspace path changed without a `set_root` going through
+        // (defensive — every code path that sets root also invalidates).
+        let needs_build = match cache.as_ref() {
+            Some((cached_root, _)) if cached_root == root => false,
+            _ => true,
+        };
+        if needs_build {
+            *cache = Some((root.to_path_buf(), notes::scan(root)?));
+        }
+        let cached = cache.as_mut().expect("cache populated above");
+        if let Some(slug) = slug {
+            match notes::scan_one(root, slug)? {
+                Some(entry) => {
+                    if let Some(pos) = cached.1.iter().position(|s| s.slug == slug) {
+                        cached.1[pos] = entry;
+                    } else {
+                        cached.1.push(entry);
+                    }
+                }
+                None => cached.1.retain(|s| s.slug != slug),
+            }
+        }
+        Ok(f(&cached.1))
     }
 
     fn with_repo_locked<F, R>(&self, f: F) -> R
@@ -120,6 +193,13 @@ impl AppState {
     /// Look at the session, enforcing idle timeout. Returns a cloned key if
     /// still unlocked; `None` if locked or timed out. A timeout triggers a
     /// zeroize in-place.
+    ///
+    /// **Side-effect:** on a successful return this resets `last_activity`
+    /// to now — the call counts as activity. Use [`peek_key`] for
+    /// queries that should NOT extend the session (e.g. the periodic
+    /// heartbeat from `cmd_activity_ping` — without the peek variant
+    /// the heartbeat itself keeps the workspace forever-unlocked while
+    /// the app is open).
     pub fn current_key(&self, idle_secs: u32) -> Option<MasterKey> {
         let mut s = unpoison(self.session.lock());
         s.master_key.as_ref()?;
@@ -131,6 +211,21 @@ impl AppState {
         let key = s.master_key.as_ref().cloned();
         s.last_activity = Instant::now();
         key
+    }
+
+    /// Like [`current_key`] but does NOT touch `last_activity`. Used by
+    /// the background heartbeat so polling for liveness doesn't extend
+    /// the session. Still triggers the timeout-zeroize on expiry — the
+    /// heartbeat is the natural place for the lazy clear to fire.
+    pub fn peek_key(&self, idle_secs: u32) -> Option<MasterKey> {
+        let mut s = unpoison(self.session.lock());
+        s.master_key.as_ref()?;
+        if idle_secs > 0 && s.last_activity.elapsed().as_secs() > idle_secs as u64 {
+            s.master_key = None;
+            s.history_cache.clear();
+            return None;
+        }
+        s.master_key.as_ref().cloned()
     }
 
     pub fn touch_activity(&self) {
@@ -317,6 +412,116 @@ pub fn cmd_init_workspace(
     Ok(cfg)
 }
 
+/// 3.0 — clone an existing Yarrow workspace from a remote git URL into
+/// `<parent>/<name>`. Mirrors `cmd_init_workspace` for the wizard's
+/// "I already have one" path. The destination must not exist; if it
+/// does, we error out so we never write into a folder the user might
+/// already be using for something else.
+///
+/// Post-clone the cloned tree is validated by `git::is_yarrow_workspace`
+/// — it must contain `.yarrow/config.toml`, the canonical workspace
+/// marker. This is the gate the user asked for: it stops people from
+/// accidentally cloning random repos and ending up with a broken
+/// "workspace" full of unrelated code or third-party docs. On a
+/// validation failure (or any clone error) we wipe the cloned dir so
+/// no half-state lingers on disk.
+#[tauri::command]
+pub fn cmd_clone_workspace(
+    parent: String,
+    name: String,
+    url: String,
+    state: State<AppState>,
+    app: AppHandle,
+) -> Result<workspace::WorkspaceConfig> {
+    // Reuse the same name-sanitization rules as `cmd_create_workspace_dir`.
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(YarrowError::Invalid("workspace name is required".into()));
+    }
+    if trimmed == "." || trimmed == ".." {
+        return Err(YarrowError::Invalid(
+            "workspace name can't be \".\" or \"..\" — pick a real name".into(),
+        ));
+    }
+    if trimmed.chars().any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')) {
+        return Err(YarrowError::Invalid(
+            "workspace name can't contain slashes or special filesystem characters".into(),
+        ));
+    }
+    if trimmed.contains('\0') {
+        return Err(YarrowError::Invalid(
+            "workspace name can't contain a NUL byte".into(),
+        ));
+    }
+    let url_trimmed = url.trim();
+    if url_trimmed.is_empty() {
+        return Err(YarrowError::Invalid("a git URL is required".into()));
+    }
+    // Scheme allowlist — protect users from being tricked into cloning
+    // through `file://` (which would let a crafted URL hand back any
+    // local path's contents) or unencrypted `http://` / `git://` /
+    // `ftp://` (downgrade attacks). Permit only the forms we actually
+    // support: HTTPS for hosted repos, SSH (`ssh://` URL or the
+    // shorthand `git@host:path`) for keypair auth.
+    let lower = url_trimmed.to_ascii_lowercase();
+    let scheme_ok = lower.starts_with("https://")
+        || lower.starts_with("ssh://")
+        || (url_trimmed.contains('@') && url_trimmed.contains(':') && !lower.contains("://"));
+    if !scheme_ok {
+        return Err(YarrowError::Invalid(
+            "Yarrow only clones from https:// or ssh:// URLs (or the git@host:path shorthand). \
+             Other schemes — including file://, http://, git://, ftp:// — aren't allowed."
+                .into(),
+        ));
+    }
+
+    let parent_path = std::path::PathBuf::from(&parent);
+    if !parent_path.is_dir() {
+        return Err(YarrowError::Invalid(format!(
+            "“{}” doesn't look like a real folder — pick a different location",
+            parent_path.display(),
+        )));
+    }
+    let target = parent_path.join(trimmed);
+    if target.exists() {
+        return Err(YarrowError::Invalid(format!(
+            "“{}” already exists — pick a different name or remove it first",
+            target.display(),
+        )));
+    }
+
+    // Clone. Any failure (network, auth, bad URL) leaves no folder behind
+    // because libgit2 only creates the dest on success path setup, but
+    // some failure modes do leave a partial dir, so we sweep on error.
+    let cloned = git::clone_workspace(url_trimmed, &target);
+    if let Err(e) = cloned {
+        let _ = std::fs::remove_dir_all(&target);
+        return Err(e);
+    }
+    drop(cloned); // we don't need the Repository handle directly
+
+    // Gate: the cloned tree must look like a real Yarrow workspace.
+    // Reject anything else and clean up so we never leave a non-yarrow
+    // checkout sitting under the user's workspaces root.
+    if !git::is_yarrow_workspace(&target) {
+        let _ = std::fs::remove_dir_all(&target);
+        return Err(YarrowError::Invalid(
+            "that repository doesn't look like a Yarrow workspace (no .yarrow/config.toml). \
+             Make sure you cloned the right URL — only repositories created by Yarrow can be opened here."
+                .into(),
+        ));
+    }
+
+    // Open it the same way `cmd_open_workspace` does so the rest of
+    // the app (recents list, sync listener, AppState root) sees it as
+    // a normal opened workspace.
+    let cfg = workspace::open(&target)?;
+    let _ = app_config::remember(&target, &cfg.workspace.name);
+    state.set_root(target.clone());
+    sync_ws_listener(&app, &state, &target);
+    Ok(cfg)
+}
+
 #[tauri::command]
 pub fn cmd_set_workspace_mode(
     mode: String,
@@ -334,6 +539,9 @@ pub fn cmd_set_main_note(
     slug: Option<String>,
     state: State<AppState>,
 ) -> Result<workspace::WorkspaceConfig> {
+    if let Some(s) = slug.as_deref() {
+        notes::validate_slug(s)?;
+    }
     let root = state.require_root()?;
     let mut cfg = workspace::read_config(&root)?;
     cfg.mapping.main_note = slug;
@@ -363,9 +571,42 @@ pub fn cmd_list_recent_workspaces() -> Result<Vec<app_config::RecentWorkspace>> 
     Ok(app_config::list_recent())
 }
 
+/// Welcome-screen stats: notes-this-month, day-streak, words-this-month,
+/// plus the most-recently-modified note across every recent workspace
+/// for the "Continue" line. Computed fresh on every IntroPage mount so
+/// the user sees current numbers (the per-launch snapshot model the
+/// welcome-screen-enhancement spec calls for; see `welcome.rs`).
+#[tauri::command]
+pub fn cmd_welcome_stats() -> Result<crate::welcome::WelcomeStats> {
+    Ok(crate::welcome::compute())
+}
+
 #[tauri::command]
 pub fn cmd_forget_recent_workspace(path: String) -> Result<()> {
     app_config::forget(std::path::Path::new(&path))
+}
+
+/// Rename a recent (non-active) workspace from the IntroPage context
+/// menu. Updates both the workspace's `config.toml` (so the next open
+/// reflects the new name) and the global `app.toml` recent entry (so
+/// the IntroPage list updates without a reload).
+#[tauri::command]
+pub fn cmd_rename_recent_workspace(path: String, name: String) -> Result<()> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(YarrowError::Invalid("Workspace name can't be blank.".into()));
+    }
+    let root = std::path::Path::new(&path);
+    if !root.is_dir() {
+        return Err(YarrowError::Invalid(
+            "That folder no longer exists. Remove it from the list and add it again.".into(),
+        ));
+    }
+    let mut cfg = workspace::read_config(root)?;
+    cfg.workspace.name = trimmed.to_string();
+    workspace::write_config(root, &cfg)?;
+    app_config::update_name(root, trimmed)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -697,6 +938,7 @@ pub fn cmd_list_notes(state: State<AppState>) -> Result<Vec<notes::NoteSummary>>
 
 #[tauri::command]
 pub fn cmd_read_note(slug: String, state: State<AppState>) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let key = maybe_key(&state, &root);
     notes::read_with_key(&root, &slug, key.as_ref())
@@ -709,6 +951,7 @@ pub fn cmd_save_note(
     thinking_note: Option<String>,
     state: State<AppState>,
 ) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     // Figure out whether this note is encrypted before locking the repo so
     // we can surface a clean "locked" error without touching git state.
@@ -744,9 +987,51 @@ pub fn cmd_save_note(
             message.push_str("\n\n");
             message.push_str(t.trim());
         }
-        git::checkpoint(&repo, &message)?;
+        // Route note saves through the 15-min amend window so a real
+        // writing session produces 5–20 checkpoints per note, not 400.
+        // The slug is the affinity key — only saves of the SAME note
+        // amend the previous checkpoint.
+        git::checkpoint_or_amend(&repo, &message, &note.slug)?;
+        // Refresh the cached scan for this slug so the (now-rebuilt)
+        // graph and any subsequent save see the same on-disk state we
+        // just wrote.
+        let _ = state.scan_cache_apply_save(&root, Some(&note.slug));
         let _ = graph::build(&root);
         Ok(note)
+    })
+}
+
+/// Disk-only save. Writes the markdown body to the .md file with no
+/// git checkpoint and no graph rebuild. The frontend fires this on a
+/// short timer (~300 ms after the last keystroke) so the file on disk
+/// is always within a few hundred ms of what the user is seeing in the
+/// editor — even when the user-configurable git-checkpoint debounce
+/// is set to several minutes. Pairs with `cmd_save_note` / `cmd_save_note_full`,
+/// which still own the slow checkpoint+graph path on the longer timer.
+#[tauri::command]
+pub fn cmd_quicksave_note(
+    slug: String,
+    body: String,
+    state: State<AppState>,
+) -> Result<()> {
+    notes::validate_slug(&slug)?;
+    let root = state.require_root()?;
+    let existing = notes::read_with_key(&root, &slug, None).ok();
+    let is_encrypted = existing.as_ref().map(|n| n.encrypted).unwrap_or(false);
+    let key = if is_encrypted {
+        Some(require_key(&state, &root)?)
+    } else {
+        state.touch_activity();
+        None
+    };
+    state.with_repo_locked(|| -> Result<()> {
+        notes::write_with_key_status(&root, &slug, &body, None, key.as_ref())?;
+        // Keep the scan cache fresh for the slug we just wrote so the
+        // next checkpoint-debounced `cmd_save_note_full` doesn't have
+        // to fall back to a full directory rescan. The file was just
+        // written so it's still in OS cache; this re-read is ~50µs.
+        let _ = state.scan_cache_apply_save(&root, Some(&slug));
+        Ok(())
     })
 }
 
@@ -772,6 +1057,7 @@ pub fn cmd_save_note_full(
     thinking_note: Option<String>,
     state: State<AppState>,
 ) -> Result<SaveOutcome> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let existing = notes::read_with_key(&root, &slug, None).ok();
     let is_encrypted = existing.as_ref().map(|n| n.encrypted).unwrap_or(false);
@@ -782,12 +1068,47 @@ pub fn cmd_save_note_full(
         None
     };
     state.with_repo_locked(|| -> Result<SaveOutcome> {
-        let (note, changed) =
+        // The frontend has two save layers wired into NoteEditor:
+        //   - `cmd_quicksave_note` fires on a short ~300 ms debounce
+        //     and writes the file to disk (no commit) so we don't lose
+        //     keystrokes if the app crashes.
+        //   - `cmd_save_note_full` (this command) fires on the user's
+        //     configurable checkpoint debounce (default 8 s) and is
+        //     supposed to wrap the typing burst into one git commit.
+        //
+        // Earlier versions short-circuited on `write_with_key_status`
+        // returning `changed = false`, which is a "did we have to
+        // touch the disk?" flag — but quicksave has already touched
+        // it, so by the time this command runs that flag is always
+        // false even when there's a real uncommitted change vs HEAD.
+        // The result was that history checkpoints stopped showing up
+        // for the very thing they're meant to capture. The correct
+        // signal is "did we create a new commit?", which we now read
+        // from the OID returned by checkpoint_or_amend.
+        let (note, _file_changed) =
             notes::write_with_key_status(&root, &slug, &body, None, key.as_ref())?;
-        if !changed {
-            // No checkpoint, no scan, no graph rebuild. The frontend gates
-            // its setState calls on `changed` so a no-op save costs roughly
-            // one disk-stat per second of typing — basically free.
+        let repo = open_repo(&root)?;
+        let prev_oid = repo
+            .head()
+            .ok()
+            .and_then(|h| h.peel_to_commit().ok())
+            .map(|c| c.id());
+        let title = if note.frontmatter.title.is_empty() {
+            note.slug.clone()
+        } else {
+            note.frontmatter.title.clone()
+        };
+        let mut message = format!("checkpoint: {}", title);
+        if let Some(t) = thinking_note.as_ref().filter(|s| !s.trim().is_empty()) {
+            message.push_str("\n\n");
+            message.push_str(t.trim());
+        }
+        let new_oid = git::checkpoint_or_amend(&repo, &message, &note.slug)?;
+        let made_new_commit = Some(new_oid) != prev_oid;
+        if !made_new_commit {
+            // Working tree already matches HEAD (nothing to record).
+            // Skip the scan + graph rebuild — they'd produce the same
+            // summaries the frontend already has.
             return Ok(SaveOutcome {
                 note,
                 notes: Vec::new(),
@@ -801,27 +1122,13 @@ pub fn cmd_save_note_full(
                 changed: false,
             });
         }
-        let repo = open_repo(&root)?;
-        let title = if note.frontmatter.title.is_empty() {
-            note.slug.clone()
-        } else {
-            note.frontmatter.title.clone()
-        };
-        let mut message = format!("checkpoint: {}", title);
-        if let Some(t) = thinking_note.as_ref().filter(|s| !s.trim().is_empty()) {
-            message.push_str("\n\n");
-            message.push_str(t.trim());
-        }
-        git::checkpoint(&repo, &message)?;
         // ONE scan of the notes dir powers all three derived views: the
         // sidebar's `notes` list, the connection `graph`, and the orphan
-        // list. Cuts the per-save file-read count roughly in half on big
-        // workspaces.
-        let scanned = notes::scan(&root)?;
-        let mut summaries: Vec<notes::NoteSummary> =
-            scanned.iter().map(notes::summary_from).collect();
-        summaries.sort_by(|a, b| b.modified.cmp(&a.modified));
-
+        // list. The first save in a workspace builds the cache; every
+        // subsequent save only re-reads the one slug that changed and
+        // patches it into the cached vec — turning what was an O(N)
+        // disk walk per save into O(1) regardless of workspace size.
+        //
         // Mode-aware tail: graph + orphan computation is invisible to a
         // basic-notes user (the Map / Paths surfaces don't render). Skip
         // it entirely in that mode — saves a full link walk on every
@@ -833,31 +1140,49 @@ pub fn cmd_save_note_full(
             .map(|c| c.mapping.mode == "mapped")
             .unwrap_or(true); // unknown config → treat as mapped, safest default
 
-        let (g, orphans) = if is_mapped {
-            // Auto-path reconciliation: if this save changed tags
-            // (common) and any path has `auto_membership_tag` set,
-            // sync membership before we hand fresh summaries back to
-            // the frontend.
-            let mut by_slug: std::collections::HashMap<String, Vec<String>> =
-                std::collections::HashMap::new();
-            for s in &summaries {
-                by_slug.insert(s.slug.clone(), s.tags.clone());
-            }
+        // Compute summaries + graph against the cached scan WITHOUT
+        // cloning every body — the callback runs under the scan_cache
+        // lock, but every consumer downstream (frontend serialization,
+        // graph build, auto-path reconcile) only needs slug/frontmatter
+        // metadata or in-place body reads. Cloning the whole vec used
+        // to dominate save latency on a vault with megabytes of prose.
+        let (mut summaries, by_slug, g, orphans) = state.scan_cache_with(
+            &root,
+            Some(&note.slug),
+            |scanned| {
+                let summaries: Vec<notes::NoteSummary> =
+                    scanned.iter().map(notes::summary_from).collect();
+                if is_mapped {
+                    let by_slug: std::collections::HashMap<String, Vec<String>> = summaries
+                        .iter()
+                        .map(|s| (s.slug.clone(), s.tags.clone()))
+                        .collect();
+                    let g = graph::build_from_scan(&root, scanned);
+                    let orphans = graph::orphan_slugs(&g);
+                    (summaries, by_slug, g, orphans)
+                } else {
+                    (
+                        summaries,
+                        std::collections::HashMap::new(),
+                        graph::Graph {
+                            notes: Vec::new(),
+                            links: Vec::new(),
+                            last_built: String::new(),
+                            tags: Vec::new(),
+                        },
+                        Vec::new(),
+                    )
+                }
+            },
+        )?;
+        summaries.sort_by(|a, b| b.modified.cmp(&a.modified));
+
+        // Auto-path reconciliation runs OUTSIDE the scan_cache lock —
+        // it writes to path_collections.toml so we don't want to hold
+        // the scan mutex while doing disk I/O on a separate file.
+        if is_mapped {
             let _ = path_collections::reconcile_auto_membership(&root, &by_slug);
-            let g = graph::build_from_scan(&root, &scanned);
-            let orphans = graph::orphan_slugs(&g);
-            (g, orphans)
-        } else {
-            (
-                graph::Graph {
-                    notes: Vec::new(),
-                    links: Vec::new(),
-                    last_built: String::new(),
-                    tags: Vec::new(),
-                },
-                Vec::new(),
-            )
-        };
+        }
 
         Ok(SaveOutcome {
             note,
@@ -879,6 +1204,7 @@ pub fn cmd_read_note_on_path(
     path_name: Option<String>,
     state: State<AppState>,
 ) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let key = maybe_key(&state, &root);
     // Resolve which path (if any) should look at overrides.
@@ -924,6 +1250,7 @@ pub fn cmd_save_note_on_path(
     thinking_note: Option<String>,
     state: State<AppState>,
 ) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let view = path_collections::read_all(&root).ok();
     let is_override = match (path_name.as_deref(), view.as_ref()) {
@@ -974,10 +1301,120 @@ pub fn cmd_clear_path_override(
     slug: String,
     state: State<AppState>,
 ) -> Result<()> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     path_content::delete_override(&root, &path_name, &slug)
 }
 
+// ───────── borrow (Phase C — the spec's centerpiece operation) ─────────
+//
+// Borrow replaces whole-tree merge. Two forms:
+//
+//   * `cmd_borrow_note`  — overwrite dest with source's whole body.
+//                          The exact UX of "actually I want this version
+//                          of this note from solo-version on main."
+//
+//   * `cmd_borrow_text`  — splice a byte range from source into dest.
+//                          Lets the frontend express "replace paragraph
+//                          N" or "insert at cursor" with one primitive.
+//
+// Both routes write through the existing override infrastructure when
+// the destination is a non-root path (so the source path is untouched
+// and the destination's version diverges) and through the canonical
+// save path when the destination IS the root (just a normal edit).
+//
+// Read-side semantics: an empty `source_path` means "the canonical
+// trunk note." Same for `dest_path`. We resolve the source body once,
+// then dispatch the write through the same code paths the editor uses
+// so all existing concerns — checkpointing, encryption, override
+// frontmatter seeding — Just Work without duplicating logic.
+
+fn read_path_body(
+    workspace: &std::path::Path,
+    slug: &str,
+    path_name: &str,
+) -> Result<String> {
+    let view = path_collections::read_all(workspace).ok();
+    let on_root = match (path_name, view.as_ref()) {
+        (n, Some(v)) => n.is_empty() || n == v.root,
+        _ => path_name.is_empty(),
+    };
+    if !on_root {
+        if let Ok(Some(raw)) = path_content::read_override(workspace, path_name, slug) {
+            let (_fm, body) = notes::parse(&raw);
+            return Ok(body);
+        }
+    }
+    // Fall through: read the canonical body. Encryption isn't crossed
+    // here — overlays carry plaintext only and a borrow that crosses an
+    // encrypted boundary would surface as a locked-note error from the
+    // canonical read. That's the right failure mode.
+    let n = notes::read_with_key(workspace, slug, None)?;
+    Ok(n.body)
+}
+
+#[tauri::command]
+pub fn cmd_borrow_note(
+    slug: String,
+    source_path: String,
+    dest_path: String,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
+    let root = state.require_root()?;
+    let body = read_path_body(&root, &slug, &source_path)?;
+    // Reuse the existing path-aware save so checkpointing /
+    // overlay-frontmatter-seeding behave the same as a regular edit on
+    // dest_path. An empty dest is treated as main by that command.
+    let dest_arg = if dest_path.is_empty() { None } else { Some(dest_path) };
+    cmd_save_note_on_path(slug, body, dest_arg, None, state)
+}
+
+#[tauri::command]
+pub fn cmd_borrow_text(
+    slug: String,
+    source_path: String,
+    dest_path: String,
+    source_start: usize,
+    source_end: usize,
+    dest_start: usize,
+    dest_end: usize,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
+    let root = state.require_root()?;
+    let source_body = read_path_body(&root, &slug, &source_path)?;
+    let mut dest_body = read_path_body(&root, &slug, &dest_path)?;
+    // Clamp ranges to the actual byte lengths so a stale frontend
+    // selection doesn't panic the backend.
+    let s_lo = source_start.min(source_body.len());
+    let s_hi = source_end.min(source_body.len()).max(s_lo);
+    let d_lo = dest_start.min(dest_body.len());
+    let d_hi = dest_end.min(dest_body.len()).max(d_lo);
+    // Snap to char boundaries so we never split a multibyte UTF-8
+    // sequence. `floor_char_boundary` is unstable, so we DIY it.
+    fn snap_down(s: &str, mut i: usize) -> usize {
+        while i > 0 && !s.is_char_boundary(i) {
+            i -= 1;
+        }
+        i
+    }
+    fn snap_up(s: &str, mut i: usize) -> usize {
+        while i < s.len() && !s.is_char_boundary(i) {
+            i += 1;
+        }
+        i
+    }
+    let s_lo = snap_down(&source_body, s_lo);
+    let s_hi = snap_up(&source_body, s_hi);
+    let d_lo = snap_down(&dest_body, d_lo);
+    let d_hi = snap_up(&dest_body, d_hi);
+    let slice = &source_body[s_lo..s_hi];
+    dest_body.replace_range(d_lo..d_hi, slice);
+
+    let dest_arg = if dest_path.is_empty() { None } else { Some(dest_path) };
+    cmd_save_note_on_path(slug, dest_body, dest_arg, None, state)
+}
 
 #[tauri::command]
 pub fn cmd_create_note(title: String, state: State<AppState>) -> Result<notes::Note> {
@@ -986,6 +1423,9 @@ pub fn cmd_create_note(title: String, state: State<AppState>) -> Result<notes::N
     let repo = open_repo(&root)?;
     git::checkpoint(&repo, &format!("checkpoint: new note \"{}\"", title))?;
     let _ = graph::build(&root);
+    // Patch the new entry into the scan cache so the next debounced
+    // save_full doesn't have to fall back to a full directory rescan.
+    let _ = state.scan_cache_apply_save(&root, Some(&note.slug));
     // Keep every full-workspace path's membership in sync — a note created
     // anywhere should be reachable on any "full copy of main" path too.
     let _ = path_collections::reconcile_new_note(&root, &note.slug);
@@ -999,17 +1439,24 @@ pub fn cmd_rename_note(
     rewrite_wikilinks: bool,
     state: State<AppState>,
 ) -> Result<notes::Note> {
+    notes::validate_slug(&old_slug)?;
     let root = state.require_root()?;
     let note = notes::rename(&root, &old_slug, &new_title, rewrite_wikilinks)?;
     let repo = open_repo(&root)?;
     let suffix = if rewrite_wikilinks { " (wikilinks updated)" } else { "" };
     git::checkpoint(&repo, &format!("checkpoint: rename to \"{}\"{}", new_title, suffix))?;
     let _ = graph::build(&root);
+    // Rename moves the file (old_slug → new_slug) and may rewrite
+    // wikilinks in any other note that referenced it. The cleanest way
+    // to keep the cache coherent across that fan-out is a full rebuild
+    // on the next save.
+    state.scan_cache_invalidate();
     Ok(note)
 }
 
 #[tauri::command]
 pub fn cmd_count_wikilink_references(slug: String, state: State<AppState>) -> Result<usize> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     notes::count_wikilink_refs(&root, &slug)
 }
@@ -1020,6 +1467,7 @@ pub fn cmd_set_pinned(
     pinned: bool,
     state: State<AppState>,
 ) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let mut note = notes::read(&root, &slug)?;
     if note.frontmatter.pinned == pinned {
@@ -1030,6 +1478,7 @@ pub fn cmd_set_pinned(
     let repo = open_repo(&root)?;
     let verb = if pinned { "pin" } else { "unpin" };
     git::checkpoint(&repo, &format!("checkpoint: {} \"{}\"", verb, slug))?;
+    let _ = state.scan_cache_apply_save(&root, Some(&slug));
     Ok(saved)
 }
 
@@ -1048,6 +1497,7 @@ pub fn cmd_set_note_folder(
     folder: Option<String>,
     state: State<AppState>,
 ) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let mut note = notes::read(&root, &slug)?;
     // Folder names are pure metadata (the file always lives at
@@ -1099,6 +1549,7 @@ pub fn cmd_set_note_folder(
         };
         git::checkpoint(&repo, &msg)?;
     }
+    let _ = state.scan_cache_apply_save(&root, Some(&slug));
     Ok(saved)
 }
 
@@ -1111,6 +1562,7 @@ pub fn cmd_set_tags(
     tags: Vec<String>,
     state: State<AppState>,
 ) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let mut note = notes::read(&root, &slug)?;
     let mut cleaned: Vec<String> = tags.into_iter()
@@ -1128,6 +1580,7 @@ pub fn cmd_set_tags(
     let repo = open_repo(&root)?;
     git::checkpoint(&repo, &format!("checkpoint: tag \"{}\"", slug))?;
     let _ = graph::build(&root);
+    let _ = state.scan_cache_apply_save(&root, Some(&slug));
     // Tag change may have just qualified this note for an auto-path —
     // reconcile immediately so the paths pane reflects it.
     let _ = reconcile_auto_paths(&root);
@@ -1171,6 +1624,7 @@ pub fn cmd_set_annotations(
     annotations: Vec<notes::Annotation>,
     state: State<AppState>,
 ) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let mut note = notes::read(&root, &slug)?;
     // Normalize: drop entries that are *fully* empty (no anchor AND no
@@ -1198,11 +1652,13 @@ pub fn cmd_set_annotations(
     let saved = notes::write(&root, &slug, &note.body, Some(note.frontmatter))?;
     let repo = open_repo(&root)?;
     git::checkpoint(&repo, &format!("checkpoint: annotations \"{}\"", slug))?;
+    let _ = state.scan_cache_apply_save(&root, Some(&slug));
     Ok(saved)
 }
 
 #[tauri::command]
 pub fn cmd_note_absolute_path(slug: String, state: State<AppState>) -> Result<String> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let path = notes::note_path(&root, &slug);
     path.to_str()
@@ -1212,6 +1668,7 @@ pub fn cmd_note_absolute_path(slug: String, state: State<AppState>) -> Result<St
 
 #[tauri::command]
 pub fn cmd_delete_note(slug: String, state: State<AppState>) -> Result<()> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     // Stash a copy in `.yarrow/trash/` before the destructive notes::delete
     // strips backlinks and removes the file. Stash is best-effort — if it
@@ -1222,6 +1679,10 @@ pub fn cmd_delete_note(slug: String, state: State<AppState>) -> Result<()> {
     let repo = open_repo(&root)?;
     git::checkpoint(&repo, &format!("checkpoint: delete \"{}\"", slug))?;
     let _ = graph::build(&root);
+    // `notes::delete` strips backlinks from every other note that
+    // referenced the deleted slug, so the cache could be stale on those
+    // entries too. A full invalidate is the safe play here.
+    state.scan_cache_invalidate();
     // Scrub the slug out of every path's membership so nothing dangles.
     let _ = path_collections::reconcile_deleted_note(&root, &slug);
     Ok(())
@@ -1237,6 +1698,7 @@ pub fn cmd_list_trash(state: State<AppState>) -> Result<Vec<trash::TrashEntry>> 
 
 #[tauri::command]
 pub fn cmd_restore_from_trash(slug: String, state: State<AppState>) -> Result<String> {
+    notes::validate_trash_slug(&slug)?;
     let root = state.require_root()?;
     let restored_slug = trash::restore(&root, &slug)?;
     let repo = open_repo(&root)?;
@@ -1247,6 +1709,7 @@ pub fn cmd_restore_from_trash(slug: String, state: State<AppState>) -> Result<St
 
 #[tauri::command]
 pub fn cmd_purge_from_trash(slug: String, state: State<AppState>) -> Result<()> {
+    notes::validate_trash_slug(&slug)?;
     let root = state.require_root()?;
     trash::purge(&root, &slug)
 }
@@ -1263,6 +1726,7 @@ pub fn cmd_empty_trash(state: State<AppState>) -> Result<()> {
 /// inline stylesheet.
 #[tauri::command]
 pub fn cmd_render_note_body_html(slug: String, state: State<AppState>) -> Result<String> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let session = unpoison(state.session.lock());
     let note = notes::read_with_key(&root, &slug, session.master_key.as_ref())?;
@@ -1420,6 +1884,7 @@ fn pretty_callout_type(t: &str) -> String {
 #[tauri::command]
 pub fn cmd_render_note_html(slug: String, state: State<AppState>) -> Result<String> {
     use pulldown_cmark::{html, Options, Parser};
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let session = unpoison(state.session.lock());
     let note = notes::read_with_key(&root, &slug, session.master_key.as_ref())?;
@@ -1497,6 +1962,69 @@ a { color: #6b5d2f; text-decoration: none; border-bottom: 1px solid #c4b76b; }
 
 // ───────── new-workspace helpers ─────────
 
+/// Detect the Linux desktop environment from `XDG_CURRENT_DESKTOP` so the
+/// frontend can apply DE-conditional styling (GNOME header-bar feel, KDE
+/// Breeze conventions, etc.). Returns one of:
+///   - "gnome"     — GNOME or any DE that includes GNOME in the chain
+///   - "kde"       — KDE Plasma
+///   - "xfce"      — XFCE
+///   - "cinnamon"  — Cinnamon (Linux Mint default)
+///   - "mate"      — MATE
+///   - "unity"     — Unity (older Ubuntu)
+///   - "lxqt" / "lxde"
+///   - "unknown"   — anything else, or no XDG signal at all
+///   - ""          — non-Linux platforms (macOS, Windows). The frontend
+///                   uses this to skip the body-class entirely.
+///
+/// macOS and Windows return the empty string — they don't have a desktop
+/// environment in the Linux sense, and the existing `data-platform`
+/// attribute on `<html>` already covers their styling needs.
+#[tauri::command]
+pub fn cmd_desktop_env() -> String {
+    #[cfg(not(target_os = "linux"))]
+    {
+        return String::new();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // XDG_CURRENT_DESKTOP can be a colon-separated list (e.g. "ubuntu:GNOME").
+        // We match on substrings so a multi-token value still classifies cleanly.
+        let raw = std::env::var("XDG_CURRENT_DESKTOP")
+            .or_else(|_| std::env::var("XDG_SESSION_DESKTOP"))
+            .or_else(|_| std::env::var("DESKTOP_SESSION"))
+            .unwrap_or_default()
+            .to_lowercase();
+        if raw.is_empty() {
+            return "unknown".to_string();
+        }
+        if raw.contains("gnome") || raw.contains("unity") && raw.contains("gnome") {
+            return "gnome".to_string();
+        }
+        if raw.contains("kde") || raw.contains("plasma") {
+            return "kde".to_string();
+        }
+        if raw.contains("xfce") {
+            return "xfce".to_string();
+        }
+        if raw.contains("cinnamon") {
+            return "cinnamon".to_string();
+        }
+        if raw.contains("mate") {
+            return "mate".to_string();
+        }
+        if raw.contains("lxqt") {
+            return "lxqt".to_string();
+        }
+        if raw.contains("lxde") {
+            return "lxde".to_string();
+        }
+        if raw.contains("unity") {
+            return "unity".to_string();
+        }
+        "unknown".to_string()
+    }
+}
+
 /// Suggest a default place to put new workspaces — `~/Documents/Yarrow` if
 /// it exists or can be created, falling back to the home directory. Used by
 /// the onboarding wizard so the user doesn't have to think about location
@@ -1564,57 +2092,121 @@ pub fn cmd_create_workspace_dir(parent: String, name: String) -> Result<String> 
 
 // ───────── foreign imports ─────────
 
+/// Per-file progress event emitted to the frontend during an import.
+/// `current` is 0-indexed and matches the file `file` is *about to* be
+/// processed. The final event in a run is always `current == total`
+/// with an empty `file`, so the listener can flip to the post-import
+/// summary screen the moment progress reaches the end.
+#[derive(serde::Serialize, Clone)]
+struct ImportProgress {
+    current: usize,
+    total: usize,
+    file: String,
+    source: &'static str,
+}
+
+/// Build the progress closure each `cmd_import_*` hands to its
+/// importer's `_with_progress` variant. Captures the `AppHandle` by
+/// clone so it lives long enough for the synchronous walk.
+fn make_progress_emitter(
+    app: AppHandle,
+    source_label: &'static str,
+) -> Box<dyn Fn(usize, usize, &str) + Send + Sync> {
+    use tauri::Emitter;
+    Box::new(move |current, total, file| {
+        let _ = app.emit(
+            "yarrow:import-progress",
+            ImportProgress {
+                current,
+                total,
+                file: file.to_string(),
+                source: source_label,
+            },
+        );
+    })
+}
+
 #[tauri::command]
 pub fn cmd_import_obsidian_vault(
+    app: AppHandle,
     source: String,
     state: State<AppState>,
 ) -> Result<obsidian_import::ImportReport> {
     let root = state.require_root()?;
-    let report = obsidian_import::import_vault(&root, std::path::Path::new(&source))?;
+    let emit = make_progress_emitter(app, "obsidian");
+    let report = obsidian_import::import_vault_with_progress(
+        &root,
+        std::path::Path::new(&source),
+        Some(&*emit),
+    )?;
     post_import_checkpoint(&root, report.imported, "Obsidian")?;
     Ok(report)
 }
 
 #[tauri::command]
 pub fn cmd_import_bear_vault(
+    app: AppHandle,
     source: String,
     state: State<AppState>,
 ) -> Result<obsidian_import::ImportReport> {
     let root = state.require_root()?;
-    let report = foreign_import::import_bear(&root, std::path::Path::new(&source))?;
+    let emit = make_progress_emitter(app, "bear");
+    let report = foreign_import::import_bear_with_progress(
+        &root,
+        std::path::Path::new(&source),
+        Some(&*emit),
+    )?;
     post_import_checkpoint(&root, report.imported, "Bear")?;
     Ok(report)
 }
 
 #[tauri::command]
 pub fn cmd_import_logseq_vault(
+    app: AppHandle,
     source: String,
     state: State<AppState>,
 ) -> Result<obsidian_import::ImportReport> {
     let root = state.require_root()?;
-    let report = foreign_import::import_logseq(&root, std::path::Path::new(&source))?;
+    let emit = make_progress_emitter(app, "logseq");
+    let report = foreign_import::import_logseq_with_progress(
+        &root,
+        std::path::Path::new(&source),
+        Some(&*emit),
+    )?;
     post_import_checkpoint(&root, report.imported, "Logseq")?;
     Ok(report)
 }
 
 #[tauri::command]
 pub fn cmd_import_notion_vault(
+    app: AppHandle,
     source: String,
     state: State<AppState>,
 ) -> Result<obsidian_import::ImportReport> {
     let root = state.require_root()?;
-    let report = foreign_import::import_notion(&root, std::path::Path::new(&source))?;
+    let emit = make_progress_emitter(app, "notion");
+    let report = foreign_import::import_notion_with_progress(
+        &root,
+        std::path::Path::new(&source),
+        Some(&*emit),
+    )?;
     post_import_checkpoint(&root, report.imported, "Notion")?;
     Ok(report)
 }
 
 #[tauri::command]
 pub fn cmd_import_bibtex(
+    app: AppHandle,
     source: String,
     state: State<AppState>,
 ) -> Result<obsidian_import::ImportReport> {
     let root = state.require_root()?;
-    let report = crate::bibtex_import::import_bibtex(&root, std::path::Path::new(&source))?;
+    let emit = make_progress_emitter(app, "bibtex");
+    let report = crate::bibtex_import::import_bibtex_with_progress(
+        &root,
+        std::path::Path::new(&source),
+        Some(&*emit),
+    )?;
     post_import_checkpoint(&root, report.imported, "BibTeX")?;
     Ok(report)
 }
@@ -1799,8 +2391,11 @@ pub struct EncryptionStatus {
 pub fn cmd_encryption_status(state: State<AppState>) -> Result<EncryptionStatus> {
     let root = state.require_root()?;
     let enabled = workspace::read_security(&root)?.is_some();
-    // Touch idle-check: if session has expired, current_key will clear it.
-    let _ = state.current_key(idle_secs(&root));
+    // Trigger the lazy idle-timeout clear without extending the
+    // session — `peek_key` zeroes the in-memory key if expiry has
+    // passed but does NOT reset `last_activity`. Status checks aren't
+    // user activity, so they shouldn't keep the session alive.
+    let _ = state.peek_key(idle_secs(&root));
     Ok(EncryptionStatus {
         enabled,
         unlocked: state.is_unlocked(),
@@ -1839,9 +2434,25 @@ pub fn cmd_unlock_encryption(
     state: State<AppState>,
 ) -> Result<EncryptionStatus> {
     let root = state.require_root()?;
-    let env = workspace::read_security(&root)?
+    let mut env = workspace::read_security(&root)?
         .ok_or(YarrowError::EncryptionDisabled)?;
     let master = env.unlock_with_password(&password)?;
+    // Transparent KDF migration. Older workspaces were created at lower
+    // Argon2id parameters; if the envelope's stored params lag behind
+    // the current constants, re-derive + re-wrap with the current
+    // params and atomically rewrite security.toml. The user never sees
+    // it — at most they notice their next unlock takes the new (longer)
+    // duration. Migration failures are non-fatal — the unlock already
+    // succeeded, and we'd rather leave the workspace at the old params
+    // than refuse the unlock that the user just typed.
+    if env.needs_migration() {
+        if env
+            .migrate_password_wrap_with_password(&master, &password)
+            .is_ok()
+        {
+            let _ = workspace::write_security(&root, &env);
+        }
+    }
     state.set_session_key(master);
     Ok(EncryptionStatus {
         enabled: true,
@@ -1865,7 +2476,28 @@ pub fn cmd_recover_encryption(
         ));
     }
     let master = env.unlock_with_recovery(&phrase)?;
+    // Recovery flow always rewraps the password (with the new password
+    // the user just provided). When the envelope was at older params,
+    // also migrate the recovery wrap to the new params so future
+    // recovery unlocks use the stronger derivation. The order is:
+    // recovery-migrate first (purely local rewrap with the phrase we
+    // already have) → password rewrap (the canonical params anchor,
+    // which also bumps m/t/p on the envelope record). Either step's
+    // failure rolls the envelope back via the snapshot inside the
+    // migration helpers; then we'd surface the error.
+    if env.needs_migration() {
+        env.migrate_recovery_wrap_with_phrase(&master, &phrase)?;
+    }
     env.rewrap_password(&master, &new_password)?;
+    // Always stamp the current params on the envelope post-rewrap so
+    // the file is self-consistent — `rewrap_password` wraps under the
+    // current params, so the recorded params should match too.
+    env.kdf = "argon2id".into();
+    env.argon2_version = crypto::ARGON2_VERSION;
+    let (m, t, p) = crypto::current_params();
+    env.m_cost = m;
+    env.t_cost = t;
+    env.p_cost = p;
     workspace::write_security(&root, &env)?;
     state.set_session_key(master);
     Ok(EncryptionStatus {
@@ -1884,8 +2516,13 @@ pub fn cmd_lock_encryption(state: State<AppState>) -> Result<()> {
 #[tauri::command]
 pub fn cmd_activity_ping(state: State<AppState>) -> Result<bool> {
     let root = state.require_root()?;
-    // Returns true if the session is still alive after idle check.
-    Ok(state.current_key(idle_secs(&root)).is_some())
+    // Heartbeat — must NOT extend the session. The frontend fires this
+    // every 60s purely to surface the auto-locked toast when expiry
+    // passes; if the heartbeat itself counted as activity, the session
+    // would never expire while the app is open. `peek_key` returns the
+    // key if still valid (or zeroes it if expired) but never touches
+    // `last_activity`.
+    Ok(state.peek_key(idle_secs(&root)).is_some())
 }
 
 #[tauri::command]
@@ -1904,6 +2541,14 @@ pub fn cmd_change_encryption_password(
         ));
     }
     env.rewrap_password(&master, &new_password)?;
+    // The password change rewrapped under current params; stamp them on
+    // the envelope so the params record matches the wrap.
+    env.kdf = "argon2id".into();
+    env.argon2_version = crypto::ARGON2_VERSION;
+    let (m, t, p) = crypto::current_params();
+    env.m_cost = m;
+    env.t_cost = t;
+    env.p_cost = p;
     workspace::write_security(&root, &env)?;
     Ok(())
 }
@@ -1918,6 +2563,12 @@ pub fn cmd_regenerate_recovery_phrase(
         .ok_or(YarrowError::EncryptionDisabled)?;
     let master = env.unlock_with_password(&password)?;
     let phrase = env.rewrap_recovery(&master)?;
+    // The new recovery wrap is at current params. If the password wrap
+    // was still on legacy params, opportunistically migrate it too with
+    // the password the user just used to authorise this rotation.
+    if env.needs_migration() {
+        let _ = env.migrate_password_wrap_with_password(&master, &password);
+    }
     workspace::write_security(&root, &env)?;
     Ok(EnableEncryptionOutcome { recovery_phrase: phrase })
 }
@@ -1948,6 +2599,7 @@ pub fn cmd_disable_encryption(password: String, state: State<AppState>) -> Resul
 
 #[tauri::command]
 pub fn cmd_encrypt_note(slug: String, state: State<AppState>) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let key = require_key(&state, &root)?;
     state.with_repo_locked(|| -> Result<notes::Note> {
@@ -1992,6 +2644,7 @@ pub fn cmd_encrypt_note(slug: String, state: State<AppState>) -> Result<notes::N
 
 #[tauri::command]
 pub fn cmd_decrypt_note(slug: String, state: State<AppState>) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let key = require_key(&state, &root)?;
     state.with_repo_locked(|| -> Result<notes::Note> {
@@ -2238,6 +2891,8 @@ pub fn cmd_add_link(
     link_type: String,
     state: State<AppState>,
 ) -> Result<()> {
+    notes::validate_slug(&from)?;
+    notes::validate_slug(&to)?;
     let root = state.require_root()?;
     notes::add_link(&root, &from, &to, &link_type)?;
     let repo = open_repo(&root)?;
@@ -2251,6 +2906,8 @@ pub fn cmd_add_link(
 
 #[tauri::command]
 pub fn cmd_remove_link(from: String, to: String, state: State<AppState>) -> Result<()> {
+    notes::validate_slug(&from)?;
+    notes::validate_slug(&to)?;
     let root = state.require_root()?;
     notes::remove_link(&root, &from, &to)?;
     let repo = open_repo(&root)?;
@@ -2360,6 +3017,7 @@ pub fn cmd_set_note_on_path(
     present: bool,
     state: State<AppState>,
 ) -> Result<()> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
     let relpath = notes::relative_note_path(&slug);
@@ -2417,7 +3075,11 @@ pub fn cmd_delete_path(name: String, state: State<AppState>) -> Result<()> {
 pub fn cmd_merge_path(from: String, state: State<AppState>) -> Result<git::MergeOutcome> {
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
-    git::merge_into_current(&repo, &from)
+    let outcome = git::merge_into_current(&repo, &from)?;
+    // Merging a branch can rewrite many files at once — drop the cache
+    // so the next save_full re-reads what's now on disk.
+    state.scan_cache_invalidate();
+    Ok(outcome)
 }
 
 // ───────── path collections (v2 paths model) ─────────
@@ -2517,6 +3179,11 @@ pub fn cmd_promote_path_to_main(
         Ok(done)
     })?;
 
+    // Promote rewrites every member's main-note body in one go, so the
+    // cache could be stale on many slugs at once. Drop it; the next
+    // save_full will rebuild from the post-promote disk state.
+    state.scan_cache_invalidate();
+
     // After a successful checkpoint, clean up the path. Done outside the
     // repo lock because it only touches `.yarrow/`.
     path_collections::finalize_promote(&root, &name)?;
@@ -2555,6 +3222,84 @@ pub fn cmd_set_path_collection_color(
 ) -> Result<()> {
     let root = state.require_root()?;
     path_collections::set_color(&root, &name, color.as_deref())
+}
+
+/// "Set aside" / "Bring back" — toggle a path's archived flag. The
+/// path stays on disk with all its overlays and history intact; only
+/// the active list and the path-map dim treatment change.
+#[tauri::command]
+pub fn cmd_set_path_archived(
+    name: String,
+    archived: bool,
+    state: State<AppState>,
+) -> Result<()> {
+    let root = state.require_root()?;
+    path_collections::set_archived(&root, &name, archived)
+}
+
+/// For a given note, list which non-root paths have an override (i.e.
+/// where this note's body diverges from main on that path). Empty list
+/// when the note is identical across every path. Used by the editor
+/// metadata strip's path-awareness line and by the path map for
+/// per-path divergence counts.
+#[tauri::command]
+pub fn cmd_paths_diverging_for_note(
+    slug: String,
+    state: State<AppState>,
+) -> Result<Vec<String>> {
+    notes::validate_slug(&slug)?;
+    let root = state.require_root()?;
+    let view = match path_collections::read_all(&root) {
+        Ok(v) => v,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let mut out = Vec::new();
+    for c in view.collections.iter() {
+        if c.name == view.root {
+            continue;
+        }
+        if path_content::has_override(&root, &c.name, &slug) {
+            out.push(c.name.clone());
+        }
+    }
+    Ok(out)
+}
+
+/// Per-path divergence summary for the whole workspace: for each
+/// non-root path, how many notes have an override. The path map uses
+/// this to render the spec's "5 differ from main" badge without
+/// fanning out to one IPC per card.
+#[derive(serde::Serialize)]
+pub struct PathDivergenceSummary {
+    pub name: String,
+    pub differs: usize,
+    /// Slugs whose body diverges on this path. Frontend uses this to
+    /// drive cell-level indicators (e.g. ◐ in the decision matrix).
+    pub slugs: Vec<String>,
+}
+
+#[tauri::command]
+pub fn cmd_path_divergence_summary(
+    state: State<AppState>,
+) -> Result<Vec<PathDivergenceSummary>> {
+    let root = state.require_root()?;
+    let view = match path_collections::read_all(&root) {
+        Ok(v) => v,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let mut out = Vec::new();
+    for c in view.collections.iter() {
+        if c.name == view.root {
+            continue;
+        }
+        let slugs = path_content::list_overridden_slugs(&root, &c.name).unwrap_or_default();
+        out.push(PathDivergenceSummary {
+            differs: slugs.len(),
+            name: c.name.clone(),
+            slugs,
+        });
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -2606,6 +3351,9 @@ pub fn cmd_set_path_collection_main_note(
     slug: Option<String>,
     state: State<AppState>,
 ) -> Result<()> {
+    if let Some(s) = slug.as_deref() {
+        notes::validate_slug(s)?;
+    }
     let root = state.require_root()?;
     path_collections::set_main_note(&root, &name, slug.as_deref())
 }
@@ -2626,6 +3374,7 @@ pub fn cmd_add_note_to_path_collection(
     slug: String,
     state: State<AppState>,
 ) -> Result<()> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     path_collections::add_member(&root, &name, &slug)
 }
@@ -2636,6 +3385,7 @@ pub fn cmd_remove_note_from_path_collection(
     slug: String,
     state: State<AppState>,
 ) -> Result<()> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     path_collections::remove_member(&root, &name, &slug)
 }
@@ -2668,6 +3418,7 @@ pub fn cmd_note_history(
     slug: String,
     state: State<AppState>,
 ) -> Result<Vec<git::HistoryEntry>> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
     git::note_history(&repo, &notes::relative_note_path(&slug))
@@ -2689,6 +3440,7 @@ pub fn cmd_note_at_checkpoint(
     oid: String,
     state: State<AppState>,
 ) -> Result<String> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
     let oid_val = git2::Oid::from_str(&oid).map_err(|e| YarrowError::Invalid(e.to_string()))?;
@@ -2758,10 +3510,13 @@ fn rebuild_raw_with_body(fm: &str, body: &str) -> String {
 
 #[tauri::command]
 pub fn cmd_restore_note(slug: String, oid: String, state: State<AppState>) -> Result<()> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
     let oid = git2::Oid::from_str(&oid).map_err(|e| YarrowError::Invalid(e.to_string()))?;
-    git::restore_note(&repo, &root, &notes::relative_note_path(&slug), oid)
+    git::restore_note(&repo, &root, &notes::relative_note_path(&slug), oid)?;
+    let _ = state.scan_cache_apply_save(&root, Some(&slug));
+    Ok(())
 }
 
 #[tauri::command]
@@ -2770,6 +3525,7 @@ pub fn cmd_paragraph_provenance(
     line: u32,
     state: State<AppState>,
 ) -> Result<git::Provenance> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
     git::paragraph_provenance(&repo, &notes::relative_note_path(&slug), line)
@@ -2819,6 +3575,7 @@ pub fn cmd_pin_checkpoint(
     note: Option<String>,
     state: State<AppState>,
 ) -> Result<git::Keepsake> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
     let label = label.trim();
@@ -2854,6 +3611,11 @@ pub fn cmd_unpin_checkpoint(id: String, state: State<AppState>) -> Result<()> {
 pub fn cmd_sync(state: State<AppState>) -> Result<git::SyncOutcome> {
     eprintln!("[yarrow] cmd_sync: entry");
     let root = state.require_root()?;
+    // A successful sync may pull, fast-forward, or merge — any of which
+    // can rewrite many note files at once. Drop the scan cache up
+    // front so whatever's on disk after sync is the source of truth
+    // for the next save_full's cache rebuild.
+    state.scan_cache_invalidate();
     let mut cfg = workspace::read_config(&root)?;
     let repo = open_repo(&root)?;
     eprintln!(
@@ -3303,7 +4065,11 @@ pub fn cmd_discard_unsynced_changes(
     let repo = open_repo(&root)?;
     let branch = git::current_path_name(&repo)?;
     let tracking_ref = git::server_tracking_ref(&branch);
-    git::discard_unsynced_commits(&repo, &tracking_ref, confirm)
+    let outcome = git::discard_unsynced_commits(&repo, &tracking_ref, confirm)?;
+    if confirm {
+        state.scan_cache_invalidate();
+    }
+    Ok(outcome)
 }
 
 /// Post-reclaim recovery: fetch the server's new history (no push)
@@ -3357,7 +4123,11 @@ pub fn cmd_force_align_with_server(
 
     let branch = git::current_path_name(&repo)?;
     let tracking_ref = git::server_tracking_ref(&branch);
-    git::discard_unsynced_commits(&repo, &tracking_ref, confirm)
+    let outcome = git::discard_unsynced_commits(&repo, &tracking_ref, confirm)?;
+    if confirm {
+        state.scan_cache_invalidate();
+    }
+    Ok(outcome)
 }
 
 // ───────── path diffing ─────────
@@ -3430,6 +4200,33 @@ pub fn cmd_promote_scratchpad(
     git::checkpoint(&repo, &format!("checkpoint: keep scratchpad as \"{}\"", title))?;
     let _ = graph::build(&root);
     Ok(_final)
+}
+
+// Write arbitrary UTF-8 text to a user-chosen filesystem path. Used by
+// the Settings → About export-as-JSON flow so the frontend can hand the
+// path returned from `dialog.save(...)` to the backend without needing
+// the tauri-plugin-fs file-write capability. Path is whatever the user
+// just picked in the OS save dialog — no traversal hardening needed
+// beyond what the OS already enforces (the file picker is the gate).
+#[tauri::command]
+pub fn cmd_write_text_file(path: String, content: String) -> Result<()> {
+    let p = PathBuf::from(path);
+    if let Some(parent) = p.parent() {
+        // Best-effort parent-dir create — most OS save dialogs already
+        // ensure the parent exists, but if a user typed a fresh subdir
+        // into the filename field we don't want the write to fail just
+        // because that one directory hasn't been mkdir'd yet.
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                YarrowError::Other(format!(
+                    "Could not create directory for export: {}",
+                    e
+                ))
+            })?;
+        }
+    }
+    std::fs::write(&p, content.as_bytes())
+        .map_err(|e| YarrowError::Other(format!("Could not write file: {}", e)))
 }
 
 // ───────── search ─────────
@@ -3546,7 +4343,9 @@ pub fn cmd_resolve_conflict(
 ) -> Result<()> {
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
-    git::resolve_conflict(&repo, &root, &relpath, &content)
+    git::resolve_conflict(&repo, &root, &relpath, &content)?;
+    state.scan_cache_invalidate();
+    Ok(())
 }
 
 #[tauri::command]
@@ -3558,6 +4357,7 @@ pub fn cmd_finalize_merge(
     let repo = open_repo(&root)?;
     git::finalize_merge(&repo, thinking.as_deref())?;
     let _ = graph::build(&root);
+    state.scan_cache_invalidate();
     Ok(())
 }
 
@@ -3565,7 +4365,9 @@ pub fn cmd_finalize_merge(
 pub fn cmd_abort_merge(state: State<AppState>) -> Result<()> {
     let root = state.require_root()?;
     let repo = open_repo(&root)?;
-    git::abort_merge(&repo)
+    git::abort_merge(&repo)?;
+    state.scan_cache_invalidate();
+    Ok(())
 }
 
 /// Fetch a URL and extract its `<title>` text. Used by smart paste so a pasted
@@ -3732,6 +4534,7 @@ fn extract_html_title(html: &str) -> Option<String> {
 /// the note. Useful for live preview.
 #[tauri::command]
 pub fn cmd_render_bibliography(slug: String, state: State<AppState>) -> Result<String> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     state.touch_activity();
     let session = unpoison(state.session.lock());
@@ -3746,6 +4549,7 @@ pub fn cmd_render_bibliography(slug: String, state: State<AppState>) -> Result<S
 /// body so the frontend can hot-swap without an extra read.
 #[tauri::command]
 pub fn cmd_insert_bibliography(slug: String, state: State<AppState>) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     state.touch_activity();
     let session = unpoison(state.session.lock());
@@ -3896,6 +4700,7 @@ pub fn cmd_add_recipe_to_shopping_list(
     slug: String,
     state: State<AppState>,
 ) -> Result<shopping_list::ShoppingListOutcome> {
+    notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     state.touch_activity();
     let session = unpoison(state.session.lock());
@@ -3967,5 +4772,357 @@ pub fn cmd_clip_recipe(url: String, state: State<AppState>) -> Result<notes::Not
         let _ = path_collections::reconcile_new_note(&root, &saved.slug);
         Ok(saved)
     })
+}
+
+// ───────── drafts (Pillar 2) ─────────
+//
+// Drafts are scratchpad-grade alternative bodies for a note, stored
+// under `.yarrow/drafts/<slug>/<draft-id>.md` (gitignored). Spec lives
+// in `YARROW_BRANCHING_SPEC.md` §6.2 and the design notes at the top of
+// `drafts.rs`. The promote command is the only path that turns a draft
+// into a real edit — it replaces the canonical note's body and routes
+// through the normal save → checkpoint pipeline so the act of keeping a
+// draft shows up in history exactly like any other edit.
+
+#[tauri::command]
+pub fn cmd_draft_list_for_note(
+    slug: String,
+    state: State<AppState>,
+) -> Result<Vec<drafts::Draft>> {
+    notes::validate_slug(&slug)?;
+    let root = state.require_root()?;
+    drafts::list(&root, &slug)
+}
+
+#[tauri::command]
+pub fn cmd_draft_create(
+    slug: String,
+    display_name: String,
+    seed_body: String,
+    state: State<AppState>,
+) -> Result<drafts::Draft> {
+    notes::validate_slug(&slug)?;
+    let root = state.require_root()?;
+    drafts::create(&root, &slug, &display_name, &seed_body)
+}
+
+#[tauri::command]
+pub fn cmd_draft_read(
+    slug: String,
+    draft_id: String,
+    state: State<AppState>,
+) -> Result<String> {
+    notes::validate_slug(&slug)?;
+    notes::validate_slug(&draft_id)?;
+    let root = state.require_root()?;
+    drafts::read(&root, &slug, &draft_id)
+}
+
+#[tauri::command]
+pub fn cmd_draft_save(
+    slug: String,
+    draft_id: String,
+    body: String,
+    state: State<AppState>,
+) -> Result<()> {
+    notes::validate_slug(&slug)?;
+    notes::validate_slug(&draft_id)?;
+    let root = state.require_root()?;
+    drafts::save(&root, &slug, &draft_id, &body)
+}
+
+#[tauri::command]
+pub fn cmd_draft_rename(
+    slug: String,
+    draft_id: String,
+    display_name: String,
+    state: State<AppState>,
+) -> Result<()> {
+    notes::validate_slug(&slug)?;
+    notes::validate_slug(&draft_id)?;
+    let root = state.require_root()?;
+    drafts::rename(&root, &slug, &draft_id, &display_name)
+}
+
+#[tauri::command]
+pub fn cmd_draft_discard(
+    slug: String,
+    draft_id: String,
+    state: State<AppState>,
+) -> Result<()> {
+    notes::validate_slug(&slug)?;
+    notes::validate_slug(&draft_id)?;
+    let root = state.require_root()?;
+    drafts::discard(&root, &slug, &draft_id)
+}
+
+/// Promote a draft to the canonical note. Reads the draft body, writes
+/// it to the note via the normal write path (preserving frontmatter),
+/// emits a single amend-aware checkpoint with a "kept draft" message,
+/// then discards the draft file. Returns the saved Note so the frontend
+/// can refresh its view.
+#[tauri::command]
+pub fn cmd_draft_promote(
+    slug: String,
+    draft_id: String,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
+    notes::validate_slug(&draft_id)?;
+    let root = state.require_root()?;
+    let body = drafts::read(&root, &slug, &draft_id)?;
+
+    let existing = notes::read_with_key(&root, &slug, None).ok();
+    let is_encrypted = existing.as_ref().map(|n| n.encrypted).unwrap_or(false);
+    let key = if is_encrypted {
+        Some(require_key(&state, &root)?)
+    } else {
+        state.touch_activity();
+        None
+    };
+
+    state.with_repo_locked(|| -> Result<notes::Note> {
+        let (note, _changed) =
+            notes::write_with_key_status(&root, &slug, &body, None, key.as_ref())?;
+        let repo = open_repo(&root)?;
+        let title = if note.frontmatter.title.is_empty() {
+            note.slug.clone()
+        } else {
+            note.frontmatter.title.clone()
+        };
+        // Distinct, human-readable message so the user can spot a
+        // promote in history. Still routes through the amend window —
+        // a user who promotes one draft, immediately edits, and saves
+        // again gets one combined checkpoint, not two.
+        let message = format!("checkpoint: kept draft for \"{}\"", title);
+        git::checkpoint_or_amend(&repo, &message, &note.slug)?;
+        let _ = drafts::discard(&root, &slug, &draft_id);
+        let _ = graph::build(&root);
+        Ok(note)
+    })
+}
+
+#[cfg(test)]
+mod idle_lock_tests {
+    //! Whole-state tests for the encryption idle auto-lock.
+    //!
+    //! These don't go through Tauri — they exercise [`AppState`]
+    //! directly, since the lifecycle that matters is purely
+    //! Session-level: set_session_key → touch_activity → current_key/
+    //! peek_key → lock_session.
+    use super::*;
+    use crate::crypto;
+    use std::time::Duration;
+
+    fn fresh_state_with_key() -> AppState {
+        let st = AppState::default();
+        st.set_session_key(crypto::random_master_key());
+        st
+    }
+
+    #[test]
+    fn fresh_session_is_unlocked() {
+        let st = fresh_state_with_key();
+        assert!(st.is_unlocked());
+        assert!(st.current_key(900).is_some());
+    }
+
+    #[test]
+    fn lock_session_clears_key_immediately() {
+        let st = fresh_state_with_key();
+        st.lock_session();
+        assert!(!st.is_unlocked());
+        assert!(st.current_key(900).is_none());
+    }
+
+    #[test]
+    fn current_key_returns_none_after_idle_expiry() {
+        let st = fresh_state_with_key();
+        // Force last_activity into the deep past by reaching into the
+        // session directly. Subtracting 10 minutes from `Instant::now()`
+        // simulates a session that's been idle for 10 minutes.
+        {
+            let mut s = unpoison(st.session.lock());
+            s.last_activity = Instant::now()
+                .checked_sub(Duration::from_secs(600))
+                .expect("Instant::now - 10min should fit");
+        }
+        // idle_secs = 300 (5 min) — we've been idle for 600s.
+        assert!(st.current_key(300).is_none());
+        // The key was zeroed in-place — subsequent calls also return None.
+        assert!(!st.is_unlocked());
+        assert!(st.current_key(300).is_none());
+    }
+
+    #[test]
+    fn idle_secs_zero_disables_timeout() {
+        let st = fresh_state_with_key();
+        {
+            let mut s = unpoison(st.session.lock());
+            s.last_activity = Instant::now()
+                .checked_sub(Duration::from_secs(99_999))
+                .unwrap();
+        }
+        // idle_secs = 0 → timeout disabled, key remains.
+        assert!(st.current_key(0).is_some());
+        assert!(st.is_unlocked());
+    }
+
+    #[test]
+    fn current_key_extends_session_on_successful_read() {
+        let st = fresh_state_with_key();
+        // Push activity 4 minutes into the past.
+        {
+            let mut s = unpoison(st.session.lock());
+            s.last_activity = Instant::now()
+                .checked_sub(Duration::from_secs(240))
+                .unwrap();
+        }
+        // Successful current_key read with idle_secs = 300 (5min) — not
+        // expired — should reset last_activity to ~now.
+        let key = st.current_key(300);
+        assert!(key.is_some());
+        let elapsed = unpoison(st.session.lock()).last_activity.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "current_key should have reset last_activity to now, got elapsed={elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn peek_key_does_not_extend_session() {
+        // The bug-fix lock-in: peek_key MUST NOT reset last_activity.
+        // Otherwise the 60-second heartbeat from cmd_activity_ping
+        // would keep the session alive forever while the app is open.
+        let st = fresh_state_with_key();
+        // Push activity 4 minutes into the past.
+        let target = Instant::now()
+            .checked_sub(Duration::from_secs(240))
+            .unwrap();
+        {
+            let mut s = unpoison(st.session.lock());
+            s.last_activity = target;
+        }
+        // Peek with timeout 300s — not expired, returns the key.
+        let key = st.peek_key(300);
+        assert!(key.is_some());
+        // last_activity is still ~4 minutes ago, NOT now.
+        let after = unpoison(st.session.lock()).last_activity;
+        assert!(
+            after.elapsed() >= Duration::from_secs(238),
+            "peek_key must not reset last_activity (elapsed dropped to {:?})",
+            after.elapsed()
+        );
+    }
+
+    #[test]
+    fn peek_key_still_clears_on_expiry() {
+        // peek_key triggers the lazy zeroize when the timeout has
+        // passed, so the heartbeat itself is the natural place for
+        // expiry to fire.
+        let st = fresh_state_with_key();
+        {
+            let mut s = unpoison(st.session.lock());
+            s.last_activity = Instant::now()
+                .checked_sub(Duration::from_secs(901))
+                .unwrap();
+        }
+        assert!(st.peek_key(900).is_none());
+        assert!(!st.is_unlocked()); // proves the master key was zeroed
+    }
+
+    #[test]
+    fn many_peeks_in_a_row_dont_keep_session_alive() {
+        // Simulate the heartbeat firing many times during a long idle
+        // window. Without the bug fix this loop would extend
+        // last_activity on every iteration and the session would never
+        // expire.
+        let st = fresh_state_with_key();
+        // Start at "1 second" of idle — well within timeout.
+        {
+            let mut s = unpoison(st.session.lock());
+            s.last_activity = Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap();
+        }
+        // Pretend 60 heartbeats fire (60 minutes of polling), with the
+        // last_activity manually advanced backwards each time the way
+        // a real-time clock would be advancing forward.
+        for minutes in 1..=60 {
+            // peek
+            let _ = st.peek_key(900);
+            // simulate "minutes" minutes have actually elapsed since
+            // unlock by pushing last_activity that far back.
+            let mut s = unpoison(st.session.lock());
+            s.last_activity = Instant::now()
+                .checked_sub(Duration::from_secs(minutes * 60))
+                .unwrap();
+        }
+        // After 60 minutes (idle_secs=900 = 15 minutes), the next peek
+        // must zeroize the key. With the bug, peek_key would have
+        // reset last_activity on every iteration and we'd still have
+        // the key here.
+        assert!(st.peek_key(900).is_none());
+        assert!(!st.is_unlocked());
+    }
+
+    #[test]
+    fn touch_activity_extends_session() {
+        let st = fresh_state_with_key();
+        {
+            let mut s = unpoison(st.session.lock());
+            s.last_activity = Instant::now()
+                .checked_sub(Duration::from_secs(800))
+                .unwrap();
+        }
+        // 800s in past, timeout 900s — still alive.
+        st.touch_activity();
+        // After touch, peek with 900s timeout still alive AND
+        // last_activity is now (not 800s ago).
+        let key = st.peek_key(900);
+        assert!(key.is_some());
+        let elapsed = unpoison(st.session.lock()).last_activity.elapsed();
+        assert!(elapsed < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn lock_session_zeroes_history_cache_too() {
+        let st = fresh_state_with_key();
+        // Seed the history cache with one entry.
+        {
+            let mut s = unpoison(st.session.lock());
+            s.history_cache.insert(
+                ("note-1".into(), "deadbeef".into()),
+                Zeroizing::new("plaintext-body".into()),
+            );
+        }
+        st.lock_session();
+        let s = unpoison(st.session.lock());
+        assert!(s.master_key.is_none());
+        assert!(s.history_cache.is_empty());
+    }
+
+    #[test]
+    fn idle_expiry_zeroes_history_cache_too() {
+        let st = fresh_state_with_key();
+        {
+            let mut s = unpoison(st.session.lock());
+            s.history_cache.insert(
+                ("note-1".into(), "deadbeef".into()),
+                Zeroizing::new("plaintext-body".into()),
+            );
+            s.last_activity = Instant::now()
+                .checked_sub(Duration::from_secs(901))
+                .unwrap();
+        }
+        // Trigger expiry via current_key.
+        let _ = st.current_key(900);
+        let s = unpoison(st.session.lock());
+        assert!(s.master_key.is_none());
+        assert!(
+            s.history_cache.is_empty(),
+            "history cache must be cleared on idle expiry"
+        );
+    }
 }
 

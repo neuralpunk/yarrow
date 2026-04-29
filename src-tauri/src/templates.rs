@@ -140,7 +140,7 @@ pub fn read(root: &Path, name: &str) -> Result<String> {
     if !path.exists() {
         return Err(YarrowError::Invalid(format!("template not found: {}", name)));
     }
-    Ok(std::fs::read_to_string(path)?)
+    workspace::read_to_string_capped(&path)
 }
 
 pub fn write(root: &Path, name: &str, content: &str) -> Result<()> {

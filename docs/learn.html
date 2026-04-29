@@ -1,0 +1,2108 @@
+<!doctype html>
+<html lang="en" data-theme="vellum">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Learn Yarrow — Modes, Personas, Scenarios, plainly explained</title>
+<meta name="description" content="A friendly, no-prior-knowledge teaching guide to Yarrow 3.0. Modes &amp; Personas, Scenarios (the renamed feature formerly called Paths), Wikilinks, Tags, Open questions, and History — taught from scratch with diagrams and mocks." />
+
+<meta name="theme-color" content="#EFEDE7" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#14202E" media="(prefers-color-scheme: dark)" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400;1,8..60,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="apple-touch-icon" href="app-icon-256.png" />
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="guide.css" />
+
+<!-- Inline SVG symbol sprite for the Yarrow mark (used in the masthead). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="yarrow-mark" viewBox="0 0 64 64">
+      <!-- Yarrow plant glyph — three stalks fanning from a trunk node
+           at bottom-left to three buds on the right. Geometry ported
+           from icons/yarrow-mac.svg (the App icon) and rendered
+           monochrome so it picks up var(--accent) per theme. -->
+      <path d="M 19.4 41.6 C 32.4 39.8 32.4 21.3 45.3 19.4" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M 19.4 41.6 C 32.4 41.6 35.2 30.5 48.1 30.5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M 19.4 41.6 C 32.4 43.5 32.4 39.8 45.3 41.6" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <circle cx="45.3" cy="19.4" r="4.0" stroke="currentColor" stroke-width="2.6" fill="none"/>
+      <circle cx="48.1" cy="30.5" r="4.0" stroke="currentColor" stroke-width="2.6" fill="none"/>
+      <circle cx="45.3" cy="41.6" r="4.0" stroke="currentColor" stroke-width="2.6" fill="none"/>
+      <circle cx="19.4" cy="41.6" r="6.4" fill="currentColor"/>
+    </symbol>
+  </defs>
+</svg>
+
+<script>
+  // FOUC blocker — same shape as user-guide.html. Resolves stored theme,
+  // falls back to system prefers-color-scheme, applies before stylesheet
+  // parses so first paint is the right palette.
+  (function () {
+    var valid = { vellum: 1, workshop: 1 };
+    var mode;
+    try {
+      var stored = localStorage.getItem('yarrow.docs.theme')
+        || localStorage.getItem('yarrow.site.theme');
+      if (stored === 'light') stored = 'vellum';
+      else if (stored === 'dark') stored = 'workshop';
+      if (stored && valid[stored]) mode = stored;
+    } catch (_) {}
+    if (!mode) {
+      mode = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'workshop' : 'vellum';
+    }
+    document.documentElement.setAttribute('data-theme', mode);
+  })();
+</script>
+
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     Learn page — supplemental styles
+     Inherits the Vellum / Workshop palette tokens from style.css
+     (var(--bg), var(--char), var(--yel), var(--rule), etc.) so
+     every mock and diagram swaps automatically with the theme.
+     ───────────────────────────────────────────────────────────── */
+
+  /* ── page shell ───────────────────────────────────────────── */
+  .learn-shell {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: clamp(40px, 6vw, 80px) var(--gutter) 120px;
+  }
+  .learn-hero {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 32px;
+    margin-bottom: 48px;
+  }
+  .learn-hero .kicker {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--t3);
+    margin-bottom: 16px;
+    display: inline-block;
+  }
+  .learn-hero h1 {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: clamp(40px, 6vw, 64px);
+    line-height: 1.04;
+    letter-spacing: -0.02em;
+    margin: 0 0 16px;
+    color: var(--char);
+  }
+  .learn-hero h1 em {
+    font-style: italic;
+    color: var(--yel);
+    font-weight: 500;
+  }
+  .learn-hero .lede {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: clamp(17px, 2vw, 21px);
+    line-height: 1.5;
+    color: var(--t1);
+    max-width: 56ch;
+    margin: 0;
+  }
+
+  /* ── top TOC ──────────────────────────────────────────────── */
+  .learn-toc {
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 18px 0;
+    margin: 0 0 56px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--t2);
+  }
+  .learn-toc strong {
+    display: block;
+    color: var(--char);
+    font-weight: 600;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    margin-bottom: 10px;
+  }
+  .learn-toc ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    columns: 2;
+    column-gap: 32px;
+  }
+  @media (max-width: 600px) { .learn-toc ol { columns: 1; } }
+  .learn-toc li { padding: 4px 0; }
+  .learn-toc a {
+    color: var(--t2);
+    text-decoration: none;
+    transition: color 120ms ease;
+  }
+  .learn-toc a:hover { color: var(--char); }
+  .learn-toc .num {
+    color: var(--t3);
+    margin-right: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── prose ────────────────────────────────────────────────── */
+  .learn-shell h2 {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: clamp(26px, 3.4vw, 34px);
+    line-height: 1.18;
+    letter-spacing: -0.014em;
+    margin: 64px 0 12px;
+    color: var(--char);
+    scroll-margin-top: 24px;
+  }
+  .learn-shell h2 .num {
+    font-family: var(--mono);
+    font-size: 0.6em;
+    color: var(--t3);
+    margin-right: 10px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+  }
+  .learn-shell h3 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 19px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    margin: 28px 0 10px;
+    color: var(--char);
+  }
+  .learn-shell p {
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--ch2);
+    margin: 0 0 16px;
+    max-width: 64ch;
+  }
+  .learn-shell ul, .learn-shell ol {
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--ch2);
+    margin: 0 0 18px;
+    padding-left: 24px;
+    max-width: 64ch;
+  }
+  .learn-shell li { margin: 6px 0; }
+  .learn-shell li strong, .learn-shell p strong {
+    color: var(--char);
+    font-weight: 600;
+  }
+  .learn-shell em { font-style: italic; }
+  .learn-shell a {
+    color: var(--yel);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+  .learn-shell code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--s2);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--bd);
+    color: var(--char);
+  }
+  .learn-shell kbd {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    background: var(--s1);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--bd2);
+    color: var(--char);
+    box-shadow: 0 1px 0 var(--bd2);
+  }
+
+  /* ── pull quote ───────────────────────────────────────────── */
+  .pull {
+    border-left: 3px solid var(--yel);
+    padding: 6px 0 6px 20px;
+    margin: 26px 0;
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 22px;
+    line-height: 1.35;
+    color: var(--char);
+    max-width: 56ch;
+  }
+
+  /* ── aside / callout cards ────────────────────────────────── */
+  .aside {
+    background: var(--s1);
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 24px 0;
+    font-size: 15.5px;
+  }
+  .aside h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 16px;
+    color: var(--char);
+  }
+  .aside p, .aside ul, .aside ol {
+    font-size: 15.5px;
+    color: var(--t1);
+    margin-bottom: 8px;
+  }
+  .aside p:last-child, .aside ul:last-child, .aside ol:last-child { margin-bottom: 0; }
+  .aside.warm {
+    background: var(--yelp);
+    border-color: var(--yel);
+  }
+  .aside.warm h3 { color: var(--yeld); }
+  .aside.warm p, .aside.warm ul, .aside.warm ol { color: var(--yeld); }
+
+  /* ── numbered steps ───────────────────────────────────────── */
+  .steps {
+    counter-reset: step;
+    padding-left: 0 !important;
+    list-style: none !important;
+    max-width: 64ch;
+  }
+  .steps > li {
+    counter-increment: step;
+    position: relative;
+    padding: 4px 0 4px 50px !important;
+    margin: 14px 0;
+  }
+  .steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0; top: 2px;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--char);
+    color: var(--bg);
+    font-family: var(--mono);
+    font-size: 13px;
+    display: grid;
+    place-items: center;
+    font-weight: 500;
+  }
+
+  /* ── persona cards grid ───────────────────────────────────── */
+  .persona-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .persona-card {
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    padding: 18px 20px;
+    background: var(--s1);
+    border-top: 3px solid var(--persona-c, var(--yel));
+  }
+  .persona-card h4 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 17px;
+    color: var(--char);
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .persona-card .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--persona-c, var(--yel));
+    display: inline-block;
+  }
+  .persona-card .role {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--t3);
+    margin-bottom: 10px;
+  }
+  .persona-card p {
+    font-family: var(--serif);
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: var(--t1);
+    margin: 0;
+  }
+
+  /* ── note metadata + path-aware chips mock ────────────────── */
+  .mock {
+    background: var(--s1);
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin: 18px 0;
+    font-size: 14.5px;
+  }
+  .mock .meta {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--t3);
+    font-size: 12.5px;
+    margin-bottom: 6px;
+  }
+  .mock .meta .pname {
+    font-family: var(--mono);
+    font-style: normal;
+    font-size: 11px;
+    color: var(--t2);
+  }
+  .mock .title {
+    font-family: var(--display);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.05;
+    margin: 6px 0 10px;
+    letter-spacing: -0.01em;
+    color: var(--char);
+  }
+  .mock .body {
+    font-family: var(--serif);
+    color: var(--ch2);
+    line-height: 1.5;
+    font-size: 15px;
+  }
+  .aware-strip {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--t3);
+    margin: 6px 0 12px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .aware-strip .chip {
+    font-family: var(--mono);
+    font-style: normal;
+    font-size: 11px;
+    padding: 3px 8px;
+    border: 1px solid var(--bd2);
+    border-radius: 6px;
+    background: var(--s2);
+    color: var(--char);
+    cursor: pointer;
+  }
+  .aware-strip .chip .differs { color: var(--yel); margin-left: 4px; }
+  .aware-strip .chip:hover { border-color: var(--bd3); }
+
+  /* ── peek popover mock ────────────────────────────────────── */
+  .peek-mock {
+    border: 1px solid var(--bd2);
+    background: var(--bg);
+    border-radius: 10px;
+    box-shadow: var(--shadow-lift);
+    overflow: hidden;
+    margin: 16px auto;
+    max-width: 420px;
+  }
+  .peek-mock header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--bd);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    color: var(--t3);
+    letter-spacing: 0.06em;
+  }
+  .peek-mock .differs-pill {
+    margin-left: auto;
+    color: var(--yel);
+    text-transform: none;
+    font-size: 11px;
+  }
+  .peek-mock .body-area {
+    padding: 16px;
+    font-family: var(--serif);
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--char);
+  }
+  .peek-mock footer {
+    border-top: 1px solid var(--bd);
+    padding: 10px 14px;
+    display: flex;
+    gap: 10px;
+  }
+  .ll-btn {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--bd2);
+    background: transparent;
+    color: var(--t1);
+    cursor: pointer;
+  }
+  .ll-btn:hover { color: var(--char); border-color: var(--bd3); }
+  .ll-btn.primary {
+    border-color: var(--yel);
+    color: var(--yel);
+  }
+  .ll-btn.primary:hover { background: var(--yelp); color: var(--yeld); }
+
+  /* ── scenario card mock ───────────────────────────────────── */
+  .card-mock {
+    border: 1px solid var(--bd);
+    border-left: 3px solid var(--yel);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 12px 0;
+    background: var(--s1);
+    font-size: 14px;
+  }
+  .card-mock.archived { opacity: 0.55; }
+  .card-mock.archived { border-left-color: var(--rose); }
+  .card-mock h4 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 17px;
+    margin: 0 0 4px;
+    color: var(--char);
+  }
+  .card-mock .row {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+  .card-mock .pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--t3);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .card-mock .pill.you { color: var(--yel); }
+  .card-mock .pill.set-aside {
+    font-style: italic;
+    text-transform: none;
+    color: var(--t3);
+    letter-spacing: 0;
+  }
+  .card-mock .differs {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--yel);
+    margin-top: 6px;
+  }
+  .card-mock .condition {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--t2);
+    font-size: 13.5px;
+    margin: 4px 0;
+  }
+  .card-mock .meta {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--t3);
+  }
+  .card-mock .swatch-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--yel);
+    margin-right: 4px;
+  }
+
+  /* ── decision matrix mock ─────────────────────────────────── */
+  table.matrix {
+    border-collapse: collapse;
+    margin: 18px 0;
+    font-size: 13.5px;
+    width: 100%;
+    font-family: var(--serif);
+  }
+  table.matrix th, table.matrix td {
+    border-bottom: 1px solid var(--bd);
+    padding: 9px 10px;
+    text-align: left;
+  }
+  table.matrix th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--t3);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+  }
+  table.matrix td.cell { text-align: center; width: 44px; }
+  table.matrix .star { background: var(--yelp); }
+  table.matrix .row-title {
+    font-family: var(--serif);
+    font-size: 14px;
+    color: var(--char);
+  }
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px 22px;
+    margin: 14px 0 0;
+    font-size: 14px;
+    font-family: var(--serif);
+    color: var(--t1);
+  }
+  .legend > div { display: flex; gap: 12px; align-items: center; }
+  .legend .glyph { width: 26px; flex: 0 0 26px; text-align: center; }
+
+  /* ── draft tab strip mock ─────────────────────────────────── */
+  .tabstrip {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin: 0 0 12px;
+  }
+  .tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 10px;
+    border: 1px solid var(--bd);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--t2);
+    cursor: pointer;
+  }
+  .tab.active { border-color: var(--yel); background: var(--yelp); color: var(--yeld); }
+  .tab.draft { font-style: italic; }
+  .tab.add { border-style: dashed; color: var(--t3); }
+
+  /* ── SVG diagram styles ───────────────────────────────────── */
+  .diagram {
+    margin: 28px 0;
+    padding: 20px;
+    background: var(--s1);
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+  }
+  .diagram svg { width: 100%; height: auto; display: block; }
+  .diagram .cap {
+    text-align: center;
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--t3);
+    font-size: 13px;
+    margin-top: 10px;
+  }
+
+  /* ── tag pill mocks (for the special-tag colours section) ── */
+  .tag-strip {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 14px 0 6px;
+  }
+  .tag-pill {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--bd2);
+    background: var(--s2);
+    color: var(--char);
+  }
+  .tag-pill.sensitive { background: #f4dde2; color: #963042; border-color: #e9c0c8; }
+  .tag-pill.attention { background: #f8e9c8; color: #9a6f10; border-color: #e9d292; }
+  .tag-pill.mature    { background: #d8ead2; color: #2f6633; border-color: #b9d2b1; }
+  .tag-pill.question  { background: #cfe6ec; color: #1f5e6e; border-color: #aed1d8; }
+  .tag-pill.decision  { background: #d8d9ee; color: #2f3e7c; border-color: #b9bbdc; }
+  .tag-pill.draft     { font-style: italic; color: #957a26; background: #f8efc8; opacity: 0.8; border-color: #e6d59a; }
+  .tag-pill.archived  { text-decoration: line-through; color: #6e6960; background: var(--s2); }
+  html[data-theme="workshop"] .tag-pill.sensitive { background: #4a232b; color: #e9b9bf; border-color: #6b3540; }
+  html[data-theme="workshop"] .tag-pill.attention { background: #4d3a18; color: #ecca8a; border-color: #6b5424; }
+  html[data-theme="workshop"] .tag-pill.mature    { background: #1f3623; color: #b3d3a8; border-color: #2f4d35; }
+  html[data-theme="workshop"] .tag-pill.question  { background: #1d3a44; color: #a6c9d2; border-color: #2c5562; }
+  html[data-theme="workshop"] .tag-pill.decision  { background: #25264a; color: #b1b5dc; border-color: #353874; }
+  html[data-theme="workshop"] .tag-pill.draft     { background: #3a341c; color: #d2bf7d; border-color: #564e2c; opacity: 0.8; }
+  html[data-theme="workshop"] .tag-pill.archived  { color: var(--t3); }
+
+  /* ── soft horizontal rule ─────────────────────────────────── */
+  hr.soft {
+    border: none;
+    border-top: 1px dashed var(--bd2);
+    margin: 56px 0;
+  }
+
+  /* ── FAQ accordion ────────────────────────────────────────── */
+  .qa {
+    background: var(--s1);
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    padding: 0;
+    margin: 18px 0;
+    overflow: hidden;
+  }
+  .qa details { border-bottom: 1px solid var(--bd); }
+  .qa details:last-child { border-bottom: none; }
+  .qa summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 16px 20px;
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 16px;
+    color: var(--char);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .qa summary::-webkit-details-marker { display: none; }
+  .qa summary::before {
+    content: "+";
+    font-family: var(--mono);
+    color: var(--t3);
+    font-size: 18px;
+    width: 16px;
+    flex: 0 0 16px;
+    text-align: center;
+  }
+  .qa details[open] summary::before { content: "−"; }
+  .qa .ans {
+    padding: 0 20px 18px 48px;
+    color: var(--t1);
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.6;
+  }
+  .qa .ans p { color: var(--t1); margin-bottom: 10px; }
+  .qa .ans p:last-child { margin-bottom: 0; }
+
+  /* ── back-to-guide CTA at the bottom ──────────────────────── */
+  .learn-cta {
+    margin-top: 80px;
+    padding: 28px 32px;
+    border: 1px solid var(--bd2);
+    border-radius: 12px;
+    background: var(--s1);
+    text-align: center;
+  }
+  .learn-cta h2 {
+    margin: 0 0 8px;
+    font-size: 24px;
+  }
+  .learn-cta p {
+    color: var(--t1);
+    margin: 0 auto 18px;
+    max-width: 48ch;
+  }
+  .learn-cta .row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .learn-cta a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-family: var(--sans);
+    font-weight: 500;
+    text-decoration: none;
+    font-size: 14px;
+    border: 1px solid var(--bd2);
+    background: transparent;
+    color: var(--char);
+  }
+  .learn-cta a.primary {
+    background: var(--yel);
+    color: var(--on-yel);
+    border-color: var(--yel);
+  }
+  .learn-cta a:hover { border-color: var(--bd3); }
+  .learn-cta a.primary:hover { background: var(--yel2); border-color: var(--yel2); }
+
+  /* ── back-to-top button ───────────────────────────────────── */
+  .to-top {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    border: 1px solid var(--bd2);
+    background: var(--bg);
+    color: var(--char);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 220ms ease, transform 220ms ease, border-color 160ms ease, background 160ms ease;
+    z-index: 50;
+  }
+  .to-top.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .to-top:hover {
+    border-color: var(--yel);
+    background: var(--s1);
+  }
+  .to-top:focus-visible {
+    outline: 2px solid var(--yel);
+    outline-offset: 3px;
+  }
+  .to-top svg { width: 18px; height: 18px; }
+  @media (max-width: 640px) {
+    .to-top {
+      bottom: 18px;
+      right: 18px;
+      width: 40px;
+      height: 40px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .to-top { transition: opacity 120ms ease; transform: none; }
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     3.0 — Card-based "lesson" layout for Learn (one card at a time)
+     ───────────────────────────────────────────────────────────────
+     Differentiates Learn from User Guide: User Guide uses a long
+     scrollable reference page with a permanent left sidebar TOC;
+     Learn switches to a single visible "lesson card" with a chip
+     stepper above it (number + label per lesson) and Prev/Next
+     buttons below. Clicking a chip swaps the active card; the URL
+     hash + arrow keys also work. Mobile collapses the chip strip
+     into a horizontally scrollable rail.
+     ───────────────────────────────────────────────────────────── */
+
+  /* Compact the hero a bit so the page does not start with a wall
+     of text before the lesson card. */
+  .learn-hero {
+    padding-bottom: 22px;
+    margin-bottom: 22px;
+  }
+
+  /* Stepper container — sits as the cap of the lesson frame. */
+  .lessons-stepper {
+    background: var(--s1);
+    border: 1px solid var(--bd);
+    border-bottom: none;
+    border-radius: 14px 14px 0 0;
+    padding: 18px 20px 14px;
+  }
+  .lessons-stepper-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .lessons-stepper-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--yeld);
+    background: var(--yelp);
+    border: 1px solid var(--yel);
+    padding: 4px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .lessons-stepper-title {
+    font-family: var(--display);
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--char);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .lessons-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .lessons-chips li { margin: 0; padding: 0; }
+  .lessons-chips button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 10px;
+    border: 1px solid var(--bd);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--t2);
+    cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+    font-family: var(--display);
+    font-size: 12.5px;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+  .lessons-chips button .n {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--t3);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .lessons-chips button:hover {
+    border-color: var(--bd2);
+    color: var(--char);
+  }
+  .lessons-chips button:hover .n { color: var(--t1); }
+  .lessons-chips button.is-active {
+    background: var(--char);
+    border-color: var(--char);
+    color: var(--bg);
+  }
+  .lessons-chips button.is-active .n { color: var(--bg); opacity: 0.7; }
+  .lessons-chips button.is-visited:not(.is-active) {
+    border-color: var(--yel);
+    color: var(--char);
+  }
+  .lessons-chips button.is-visited:not(.is-active) .n { color: var(--yeld); }
+
+  /* The card itself — wraps each <section> in the main area. The
+     JS hides every card except the active one, and toggles
+     `is-entering` on a card when it becomes active so the entry
+     animation re-runs. */
+  .lesson-card {
+    background: var(--bg);
+    border: 1px solid var(--bd);
+    border-top: none;
+    border-radius: 0 0 14px 14px;
+    padding: clamp(28px, 4vw, 48px) clamp(22px, 4vw, 56px) clamp(28px, 4vw, 44px);
+    margin: 0;
+  }
+  .lesson-card[hidden] { display: none; }
+  .lesson-card.is-entering {
+    animation: lesson-fade-in 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes lesson-fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+  /* Tighten the first heading in the card — the stepper above
+     already shows the number + title, so the in-card h2 doesn't
+     need the same top margin it has in the long-form layout. */
+  .lesson-card > h2:first-child {
+    margin-top: 0;
+  }
+
+  /* Prev / Next + progress under the card. */
+  .lesson-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 22px;
+    padding: 0 4px;
+    flex-wrap: wrap;
+  }
+  .lesson-nav button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--bd2);
+    background: var(--bg);
+    color: var(--char);
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+  }
+  .lesson-nav button:hover {
+    border-color: var(--char);
+    background: var(--s1);
+  }
+  .lesson-nav button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .lesson-nav button:disabled:hover {
+    border-color: var(--bd2);
+    background: var(--bg);
+  }
+  .lesson-nav button svg {
+    width: 14px;
+    height: 14px;
+  }
+  .lesson-progress {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--t3);
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+    flex: 1 1 auto;
+    text-align: center;
+  }
+  .lesson-progress-bar {
+    display: block;
+    margin: 6px auto 0;
+    height: 3px;
+    width: clamp(120px, 30vw, 220px);
+    background: var(--bd);
+    border-radius: 999px;
+    position: relative;
+    overflow: hidden;
+  }
+  .lesson-progress-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: var(--progress, 0%);
+    background: var(--yel);
+    border-radius: 999px;
+    transition: width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Mobile: the chip list scrolls horizontally with snap points
+     instead of wrapping into many rows. */
+  @media (max-width: 720px) {
+    .lessons-chips {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 4px;
+      margin: 0 -8px;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    .lessons-chips li {
+      scroll-snap-align: start;
+      flex: 0 0 auto;
+    }
+    .lessons-stepper { padding: 14px 14px 12px; }
+    .lessons-stepper-num { font-size: 11px; }
+    .lessons-stepper-title { font-size: 15px; }
+    .lesson-nav button { padding: 9px 14px; font-size: 13px; }
+    .lesson-progress { flex: 1 1 100%; order: 3; margin-top: 6px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lesson-card.is-entering { animation: none; }
+    .lesson-progress-bar::after { transition: none; }
+    .lessons-chips button { transition: none; }
+    .lesson-nav button { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ masthead ═══ -->
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="index.html">
+      <span class="mark-svg"><svg><use href="#yarrow-mark"/></svg></span>
+      Yarrow
+      <span class="version">Learn · v3.0</span>
+    </a>
+    <span></span>
+    <div class="mast-nav">
+      <a href="index.html#gallery">A look</a>
+      <a href="user-guide.html">User Guide</a>
+      <a href="index.html#features">Features</a>
+      <a href="index.html#download">Download</a>
+      <span class="sep">·</span>
+      <div class="theme-toggle" role="radiogroup" aria-label="Theme">
+        <button type="button" data-theme-value="vellum" aria-pressed="false" aria-label="Vellum theme" title="Vellum — cool bone &amp; slate (light)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        </button>
+        <button type="button" data-theme-value="workshop" aria-pressed="false" aria-label="Workshop theme" title="Workshop — deep ink &amp; bronze (dark)">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+      </div>
+      <a class="btn-mini" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+        Download 3.0
+      </a>
+    </div>
+  </div>
+</header>
+
+<div class="learn-shell">
+
+<!-- ═══ hero ═══ -->
+<header class="learn-hero">
+  <span class="kicker">Yarrow · a gentle introduction</span>
+  <h1>Welcome. Let's walk through this together.</h1>
+  <p class="lede">
+    No prior knowledge needed. No tech background needed. This is a slow, friendly walk through the few ideas that make Yarrow what it is — Modes, Personas, and Scenarios — plus a handful of small things you'll be glad to know. Take your time. Skip around. There's no test at the end.
+  </p>
+  <p class="lede" style="margin-top: 14px; font-size: 16px; color: var(--t1);">
+    A note before we start: it's completely okay if some of this doesn't click on the first read. Tools are personal, and the language Yarrow uses is built around <em>your</em> messy, real, human thinking — not the tidy version. If anything feels weird, that's normal. Read it twice, try it once, and you'll have it.
+  </p>
+</header>
+
+<!-- ═══ Lesson stepper ═══ -->
+<!-- Replaces the old TOC. The stepper-head shows the current
+     lesson's number and title; the chip list lets the reader
+     jump anywhere or eye their progress at a glance. JS at the
+     bottom of the page handles the show/hide. -->
+<nav class="lessons-stepper" aria-label="Lesson navigation">
+  <div class="lessons-stepper-head">
+    <span class="lessons-stepper-num" data-lesson-num>01 / 21</span>
+    <span class="lessons-stepper-title" data-lesson-title>Modes — pick your shape</span>
+  </div>
+  <ol class="lessons-chips" role="list">
+    <li><button type="button" data-lesson-step="modes"          aria-label="Lesson 1 — Modes"><span class="n">01</span><span>Modes</span></button></li>
+    <li><button type="button" data-lesson-step="personas"       aria-label="Lesson 2 — Personas"><span class="n">02</span><span>Personas</span></button></li>
+    <li><button type="button" data-lesson-step="switching"      aria-label="Lesson 3 — Switching"><span class="n">03</span><span>Switching</span></button></li>
+    <li><button type="button" data-lesson-step="scenarios-what" aria-label="Lesson 4 — What's a scenario"><span class="n">04</span><span>What's a scenario</span></button></li>
+    <li><button type="button" data-lesson-step="scenarios-why"  aria-label="Lesson 5 — Why bother"><span class="n">05</span><span>Why bother</span></button></li>
+    <li><button type="button" data-lesson-step="scenarios-see"  aria-label="Lesson 6 — Seeing them"><span class="n">06</span><span>Seeing them</span></button></li>
+    <li><button type="button" data-lesson-step="scenarios-make" aria-label="Lesson 7 — Making one"><span class="n">07</span><span>Making one</span></button></li>
+    <li><button type="button" data-lesson-step="aware"          aria-label="Lesson 8 — The aware line"><span class="n">08</span><span>Aware line</span></button></li>
+    <li><button type="button" data-lesson-step="peek"           aria-label="Lesson 9 — Peek"><span class="n">09</span><span>Peek</span></button></li>
+    <li><button type="button" data-lesson-step="borrow"         aria-label="Lesson 10 — Borrow"><span class="n">10</span><span>Borrow</span></button></li>
+    <li><button type="button" data-lesson-step="compare"        aria-label="Lesson 11 — Compare"><span class="n">11</span><span>Compare</span></button></li>
+    <li><button type="button" data-lesson-step="drafts"         aria-label="Lesson 12 — Drafts vs scenarios"><span class="n">12</span><span>Drafts</span></button></li>
+    <li><button type="button" data-lesson-step="archive"        aria-label="Lesson 13 — Set aside"><span class="n">13</span><span>Set aside</span></button></li>
+    <li><button type="button" data-lesson-step="adopt"          aria-label="Lesson 14 — Adopt"><span class="n">14</span><span>Adopt</span></button></li>
+    <li><button type="button" data-lesson-step="matrix"         aria-label="Lesson 15 — Decision matrix"><span class="n">15</span><span>Matrix</span></button></li>
+    <li><button type="button" data-lesson-step="wikilinks"      aria-label="Lesson 16 — Wikilinks"><span class="n">16</span><span>Wikilinks</span></button></li>
+    <li><button type="button" data-lesson-step="open-questions" aria-label="Lesson 17 — Open questions"><span class="n">17</span><span>Open ??</span></button></li>
+    <li><button type="button" data-lesson-step="tags"           aria-label="Lesson 18 — Tags"><span class="n">18</span><span>Tags</span></button></li>
+    <li><button type="button" data-lesson-step="history"        aria-label="Lesson 19 — History"><span class="n">19</span><span>History</span></button></li>
+    <li><button type="button" data-lesson-step="cheatsheet"     aria-label="Lesson 20 — Cheat sheet"><span class="n">20</span><span>Cheat sheet</span></button></li>
+    <li><button type="button" data-lesson-step="faq"            aria-label="Lesson 21 — FAQ"><span class="n">21</span><span>FAQ</span></button></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ───────────────────────────────────────────────────────────
+     1 — MODES
+     ─────────────────────────────────────────────────────────── -->
+<section id="modes" class="lesson-card" hidden>
+<h2><span class="num">01</span>Modes — how busy do you want the app to feel?</h2>
+
+<p>When you first open Yarrow, there's one tiny choice to make, and it's truly tiny — you can change your mind any time, nothing gets deleted, and there's no wrong answer. The choice is just: <em>how much of the app do you want visible right now?</em> That's your <strong>Mode</strong>. There are two of them:</p>
+
+<div class="diagram" aria-label="Two boxes showing the difference between Basic and Path-Based modes">
+<svg viewBox="0 0 700 230" role="img" aria-labelledby="modesTitle">
+  <title id="modesTitle">Basic mode vs Path-Based mode side by side</title>
+  <!-- Basic mode -->
+  <rect x="20" y="30" width="320" height="180" rx="10" fill="var(--s2)" stroke="var(--bd2)"/>
+  <text x="40" y="60" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--t3)" letter-spacing="1.5">BASIC</text>
+  <text x="40" y="90" font-family="Newsreader, serif" font-size="20" fill="var(--char)" font-weight="500">Just write.</text>
+  <line x1="40" y1="110" x2="320" y2="110" stroke="var(--bd2)"/>
+  <text x="40" y="135" font-family="Source Serif 4, serif" font-size="13" fill="var(--t1)">— A reading / writing toggle</text>
+  <text x="40" y="155" font-family="Source Serif 4, serif" font-size="13" fill="var(--t1)">— Outline, Tags, Scratchpad</text>
+  <text x="40" y="175" font-family="Source Serif 4, serif" font-size="13" fill="var(--t1)">— Settings</text>
+  <text x="40" y="200" font-family="Source Serif 4, serif" font-size="12" fill="var(--t3)" font-style="italic">Five buttons. That's it.</text>
+
+  <!-- Path-Based mode -->
+  <rect x="360" y="30" width="320" height="180" rx="10" fill="var(--yelp)" stroke="var(--yel)" stroke-width="1.5"/>
+  <text x="380" y="60" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--yeld)" letter-spacing="1.5">PATH-BASED</text>
+  <text x="380" y="90" font-family="Newsreader, serif" font-size="20" fill="var(--yeld)" font-weight="500">The full workshop.</text>
+  <line x1="380" y1="110" x2="660" y2="110" stroke="var(--yel)" opacity="0.5"/>
+  <text x="380" y="135" font-family="Source Serif 4, serif" font-size="13" fill="var(--yeld)">— Everything in Basic, plus:</text>
+  <text x="380" y="155" font-family="Source Serif 4, serif" font-size="13" fill="var(--yeld)">— Connections, History, Scenarios</text>
+  <text x="380" y="175" font-family="Source Serif 4, serif" font-size="13" fill="var(--yeld)">— Kits, Plugin slots</text>
+  <text x="380" y="200" font-family="Source Serif 4, serif" font-size="12" fill="var(--yeld)" font-style="italic">The default. Pick this one.</text>
+</svg>
+<div class="cap">Two modes, one decision. Switching between them is instant and never deletes anything.</div>
+</div>
+
+<h3>Basic — for when you just want to write</h3>
+<p><strong>Basic</strong> is what you'd hand to a friend who said, "I just want a quiet notebook, please." The right-hand toolbar shows only the essentials: a switch between reading and writing, an outline of the current note, your tags, a scratchpad, and settings. That's it. Every other Yarrow feature is still there — it's just not on the wall, like a tool you keep in the drawer instead of the workbench.</p>
+
+<h3>Path-Based — for when you want the whole workshop</h3>
+<p><strong>Path-Based</strong> is what most people end up using, and it's the default. You get everything Basic has, plus the connections graph, the history scrubber, Scenarios, Kits, and a small space saved for whichever <em>persona</em> you choose (we'll get to those in a second). It looks like a bit more, but you can ignore any part of it — nothing here demands your attention until you reach for it.</p>
+
+<p class="pull">Modes are gentle leanings, not locked doors. Whichever one you pick, every feature is still one quick keyboard shortcut away.</p>
+
+<div class="aside warm">
+<h3>A small promise</h3>
+<p>Choosing a mode never takes anything away from you. If you're in Basic and you suddenly want Scenarios, just hit <kbd>⌘K</kbd> and type the word — the Scenarios pane opens like nothing's missing. The mode only decides what shows up on the rail by default. Switch modes whenever you like; your notes don't notice and never move.</p>
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     2 — PERSONAS
+     ─────────────────────────────────────────────────────────── -->
+<section id="personas" class="lesson-card" hidden>
+<h2><span class="num">02</span>Personas — what kind of writing are you doing today?</h2>
+
+<p>If a Mode is the shape of the app, a <strong>Persona</strong> is its mood. It's an optional little add-on that sits on top of Path-Based mode and gently nudges the toolbar toward whatever you're doing right now — drafting a chapter, working through a research paper, keeping a recipe book, talking through a tough decision. A small group of tinted buttons appears on the right rail, three or so, all picked to be useful for that kind of work.</p>
+
+<p>You pick one persona at a time, and there are five (plus a "no thanks" option if none of them fit). All five share exactly the same notes, tags, scenarios, and history underneath — the persona is just the easier doorway in.</p>
+
+<div class="persona-grid">
+  <div class="persona-card" style="--persona-c: #c66a78;">
+    <h4><span class="swatch"></span>Writer</h4>
+    <div class="role">Novels · essays · journals</div>
+    <p>For when the only thing that matters is getting the next sentence out. Typewriter mode keeps the line you're on gently centered on the screen, and a small daily word-count streak gives you a quiet pat on the back when you keep showing up. Nothing more, because the writing is the work.</p>
+  </div>
+  <div class="persona-card" style="--persona-c: #4a8c4f;">
+    <h4><span class="swatch"></span>Researcher</h4>
+    <div class="role">Papers · sources · open questions</div>
+    <p>For when you're chasing down ideas and you keep running into things you don't know yet. One click pulls up every <code>??</code> you've left around the workspace. Another shows your sources. A third gives you a fresh source-note with the bibliographic header already in place, so you can just start reading.</p>
+  </div>
+  <div class="persona-card" style="--persona-c: #4f6fa3;">
+    <h4><span class="swatch"></span>Developer</h4>
+    <div class="role">Decision logs · ADRs · code</div>
+    <p>For when you're trying to remember <em>why</em> past-you made a call. A running log of every decision-tagged note, a one-click "new ADR" template (Status / Context / Decision / Alternatives / Consequences), and a code-highlight toggle for the moments your notes turn into snippets.</p>
+  </div>
+  <div class="persona-card" style="--persona-c: #3f8a8a;">
+    <h4><span class="swatch"></span>Clinician</h4>
+    <div class="role">Sensitive notes · follow-ups · sessions</div>
+    <p>For careful work. Sensitive notes are quietly hidden from autocomplete previews so they don't peek out by accident. A follow-ups list keeps loose ends visible. And the session-note picker (SOAP, BIRP, DAP, Intake) lets you skip the blank page when you're sitting down to write up the day.</p>
+  </div>
+  <div class="persona-card" style="--persona-c: #c8843d;">
+    <h4><span class="swatch"></span>Cooking</h4>
+    <div class="role">Recipes · cook mode · shopping</div>
+    <p>For the kitchen, with hands that aren't going to wipe themselves. Cook mode bumps up the text size and stops the screen from sleeping, the URL clipper turns a recipe site into a clean note, and a button moves the ingredients straight to your shopping list — because that's the bit nobody wants to do by hand.</p>
+  </div>
+  <div class="persona-card" style="--persona-c: #8c95a1;">
+    <h4><span class="swatch"></span>None</h4>
+    <div class="role">Path-Based without the extras</div>
+    <p>For when none of the five fit, or your work shifts too often to settle on one, or you just want the rail to be quieter. This is plain Path-Based mode — all the features, none of the persona buttons. There's nothing wrong with picking this; many people stay here forever.</p>
+  </div>
+</div>
+
+<p class="pull">A persona isn't who you are. It's just what you're doing this week. Switch as the work changes — Yarrow doesn't keep score.</p>
+
+<div class="aside">
+<h3>The same notes, no matter the persona</h3>
+<p>You can be a Researcher before lunch and a Writer after it. The notes don't care; they don't move, change, or lose anything. Only the rail rearranges. Tags stay tags. Scenarios stay scenarios. Your history is your history. Switching personas is more like changing the music in the room than rearranging the furniture.</p>
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     3 — SWITCHING
+     ─────────────────────────────────────────────────────────── -->
+<section id="switching" class="lesson-card" hidden>
+<h2><span class="num">03</span>How to switch — two ways, both painless</h2>
+
+<p>You have two options for switching. They both work; pick the one that feels easier in the moment.</p>
+
+<h3>The slow-and-clear way: Settings</h3>
+<ol class="steps">
+  <li>Press <kbd>⌘,</kbd> on Mac, or <kbd>Ctrl ,</kbd> on Linux and Windows. That opens Settings.</li>
+  <li>Click the <strong>Modes &amp; Personas</strong> tab near the top.</li>
+  <li>Step 1 is where you pick your mode — <em>Basic</em> or <em>Path-Based</em>.</li>
+  <li>If you went Path-Based, Step 2 lets you pick a persona, or skip it with <em>None</em>.</li>
+</ol>
+
+<h3>The quick way: command palette</h3>
+<p>Press <kbd>⌘K</kbd>, type the persona name (just "writer" works), and press <kbd>Enter</kbd>. The rail rearranges right then. No menus, no scrolling — just a few keys and you're there.</p>
+
+<div class="aside warm">
+<h3>About switching computers</h3>
+<p>Your mode and persona choice live on this computer, not in your notes. If you set up Yarrow on a second machine, that other machine starts fresh with its own mode and persona — sort of like how each room can have its own light setting. Your notes still sync; only this little preference is local.</p>
+</div>
+</section>
+
+<hr class="soft">
+
+<!-- ───────────────────────────────────────────────────────────
+     4 — SCENARIOS: WHAT
+     ─────────────────────────────────────────────────────────── -->
+<section id="scenarios-what" class="lesson-card" hidden>
+<h2><span class="num">04</span>What's a scenario? (Let's start with a story.)</h2>
+
+<p>Picture this: you're planning a month in Europe. You've jotted down a few notes — <em>flights</em>, <em>budget</em>, <em>where to stay</em>, <em>what to pack</em>. They all hang together. They're parts of one trip.</p>
+
+<p>Then a thought pops up: <em>"what if we went solo instead of as a couple?"</em> And you can already feel it — the flight note would shift, the budget would shift, the packing list would shift, half a dozen things at once. It's not one little change; it's a whole different version of the same trip.</p>
+
+<p>Here's the thing: you don't want to throw away your couple's-trip notes. You're not committing to anything yet. You just want to <em>hold both versions side by side</em> for a while and see which one actually fits. That's exactly what a scenario is for.</p>
+
+<p class="pull">A scenario is a named "what if?" — a parallel version of your notes you can write into freely, knowing the original is safe and sitting right next to it.</p>
+
+<div class="diagram" aria-label="A trunk note splitting into two scenarios">
+<svg viewBox="0 0 600 220" role="img" aria-labelledby="treeTitle">
+  <title id="treeTitle">A trunk labeled main, branching into two scenarios</title>
+  <!-- main trunk -->
+  <line x1="60" y1="110" x2="240" y2="110" stroke="var(--char)" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="60" cy="110" r="6" fill="var(--char)"/>
+  <text x="60" y="138" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--t2)" text-anchor="middle">main</text>
+  <text x="60" y="92" font-family="Newsreader, serif" font-style="italic" font-size="13" fill="var(--t3)" text-anchor="middle">your trip</text>
+
+  <!-- divergence point -->
+  <circle cx="240" cy="110" r="5" fill="var(--yel)"/>
+
+  <!-- upper branch -->
+  <path d="M 240 110 Q 320 110, 360 70 L 540 70" stroke="var(--yel)" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <circle cx="540" cy="70" r="6" fill="var(--yel)"/>
+  <text x="540" y="58" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--yel)" text-anchor="end">solo-version</text>
+  <text x="540" y="92" font-family="Newsreader, serif" font-style="italic" font-size="13" fill="var(--yel)" text-anchor="end">"if I went alone"</text>
+
+  <!-- lower branch -->
+  <path d="M 240 110 Q 320 110, 360 150 L 540 150" stroke="var(--rose)" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <circle cx="540" cy="150" r="6" fill="var(--rose)"/>
+  <text x="540" y="138" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--rose)" text-anchor="end">couples-luxury</text>
+  <text x="540" y="172" font-family="Newsreader, serif" font-style="italic" font-size="13" fill="var(--rose)" text-anchor="end">"if we splurged"</text>
+
+  <!-- divergence label -->
+  <text x="240" y="200" font-family="Newsreader, serif" font-style="italic" font-size="12" fill="var(--t3)" text-anchor="middle">where the thinking branched</text>
+</svg>
+<div class="cap">Each branch is a real, coherent version of the trip — not just a label or a filter.</div>
+</div>
+
+<div class="aside">
+<h3>Coming from Yarrow 2.x?</h3>
+<p>If you used Yarrow before, you'll recognize this as what we used to call "Paths." Same feature, same shortcuts, same mechanics — we just renamed it to something that's easier to say out loud. <em>Paths are now Scenarios.</em> Nothing in your notes had to move.</p>
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     5 — SCENARIOS: WHY
+     ─────────────────────────────────────────────────────────── -->
+<section id="scenarios-why" class="lesson-card" hidden>
+<h2><span class="num">05</span>Why would I bother with this?</h2>
+
+<p>Honestly? Because life rarely gives you one path at a time. Here are real reasons real people end up reaching for a scenario:</p>
+
+<ul>
+  <li><strong>Planning a trip two ways</strong> — going alone or with friends, doing it on a budget or splurging just this once.</li>
+  <li><strong>Drafting the same chapter twice</strong> — the same scene, but told from a different character's eyes, just to see which voice rings truer.</li>
+  <li><strong>Making a big life decision</strong> — laying out <em>"if we moved to Seattle"</em> as a real, fleshed-out set of notes about apartments, schools, jobs, costs, before deciding for real.</li>
+  <li><strong>Tinkering with a recipe</strong> — keeping the version your grandmother taught you, and also a version where you tried olive oil instead of butter.</li>
+  <li><strong>Thinking through a stuck problem</strong> — exploring a second approach without abandoning your first one, in case the second one falls apart.</li>
+  <li><strong>Weighing job offers</strong> — one scenario per offer, so the trade-offs sit side by side instead of swimming around in your head.</li>
+</ul>
+
+<p>The thread that ties all of these together: <em>several notes need to shift together, in a way that hangs together as a whole.</em> A tag can't do that. A folder can't do that. What you actually need is a name for "the other version of this," and that's exactly what a scenario gives you.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     6 — SCENARIOS: SEEING
+     ─────────────────────────────────────────────────────────── -->
+<section id="scenarios-see" class="lesson-card" hidden>
+<h2><span class="num">06</span>How do I see my scenarios?</h2>
+
+<p>Open the <strong>Scenarios</strong> pane from the right-side rail — the icon looks like a small branching tree. Once it's open, there's a tiny toggle at the top-right that flips between two views:</p>
+
+<ol>
+  <li><strong>Graph</strong> (the default) — a calm left-to-right tree showing where each scenario branched off the main trunk.</li>
+  <li><strong>Cards</strong> — a tidy vertical list, one card per scenario. Easier on the eyes when you've got more than a few.</li>
+</ol>
+
+<p>Here's what one of those cards looks like:</p>
+
+<div class="card-mock">
+  <div class="row">
+    <span class="swatch-dot"></span>
+    <h4>solo-version</h4>
+    <span class="pill you">YOU ARE HERE</span>
+    <span class="meta" style="margin-left:auto;">7 notes</span>
+  </div>
+  <div class="condition">If only one of us could go</div>
+  <div class="meta">★ Main note: <em>"If only one of us can go"</em></div>
+  <div class="differs">5 differ from main</div>
+</div>
+
+<p>That yellow line — <em>"5 differ from main"</em> — is one of the most useful little numbers Yarrow shows you. It's how many notes you've actually changed in this scenario compared to the main version. In other words, it's a quick read on <em>"how far has my thinking moved here?"</em> Five small shifts? Big rewrite? You can tell at a glance.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     7 — SCENARIOS: MAKE
+     ─────────────────────────────────────────────────────────── -->
+<section id="scenarios-make" class="lesson-card" hidden>
+<h2><span class="num">07</span>Making your first scenario</h2>
+
+<ol class="steps">
+  <li>Open the Scenarios pane.</li>
+  <li>Click <strong>+ New scenario from main</strong> — or, if you want to branch off another scenario instead, click that one.</li>
+  <li>A small dialog asks, <em>"What question is this asking?"</em> Type whatever feels honest — something like <code>If I rewrite from her POV</code> or <code>If we go in summer instead</code>. There are no rules here.</li>
+  <li>Press <kbd>Enter</kbd>. Your new scenario shows up in the tree, branching off from where you started.</li>
+</ol>
+
+<p>That's all there is to it. Nothing in your existing notes has changed — the new scenario starts as an empty space layered over its parent, and from this moment on, anything you write goes onto that new layer instead of the original. The original sits patiently underneath, waiting in case you need it back.</p>
+
+<div class="aside warm">
+<h3>Naming, briefly</h3>
+<p>The scenario's <strong>name</strong> is the short tag — <code>solo-version</code>, <code>winter-trip</code>, <code>her-pov</code>. The longer "if…" sentence is its <strong>condition</strong>, and it shows up just below the name. Don't sweat either of these — both can be edited later, and you can absolutely change your mind tomorrow.</p>
+</div>
+
+<p>If you'd rather skip the click-around, you can start a scenario from your keyboard any time: <kbd>⌘⇧N</kbd> on Mac, <kbd>Ctrl⇧N</kbd> on Linux and Windows. Yarrow uses whatever note you're looking at as the starting point.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     8 — AWARE
+     ─────────────────────────────────────────────────────────── -->
+<section id="aware" class="lesson-card" hidden>
+<h2><span class="num">08</span>The little "also exists on…" line</h2>
+
+<p>One of the kindest small touches in Yarrow: when you open a note that has another version of itself living over on a different scenario, a small italic line shows up just under the date. It quietly says, "by the way, you wrote a different version of this note over here." Each scenario it mentions is a clickable chip:</p>
+
+<div class="mock">
+  <div class="meta">Tuesday, April 27 · written in the morning · <span class="pname">main</span> · saved 3 minutes ago</div>
+  <div class="aware-strip">
+    <span>also exists on</span>
+    <span class="chip" tabindex="0">solo-version <span class="differs">· differs</span></span>
+    <span class="chip" tabindex="0">couples-luxury <span class="differs">· differs</span></span>
+  </div>
+  <div class="title">Flights to Madrid</div>
+  <div class="body">Iberia direct from Boston, mornings. Watch fares around the second week of April — historically the dip…</div>
+</div>
+
+<p>If you read that strip out loud, it goes something like: <em>"hey, this note you're reading — Flights to Madrid — also exists in two other versions, on solo-version and couples-luxury, and they're not the same as this one."</em> If a scenario isn't on the strip, it just means the note is identical there, or doesn't exist there at all yet. No drama either way.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     9 — PEEK
+     ─────────────────────────────────────────────────────────── -->
+<section id="peek" class="lesson-card" hidden>
+<h2><span class="num">09</span>Taking a peek at the other version</h2>
+
+<p>Curious what the other version says? Click any chip in that strip and a small floating window appears, anchored right next to where you clicked. Inside it: the same note's body, exactly as it reads on that other scenario. You don't lose your place — your current view stays right where it was.</p>
+
+<div class="peek-mock">
+  <header>
+    <span>On solo-version</span>
+    <span class="differs-pill">Differs from your version</span>
+    <span aria-hidden="true" style="cursor:pointer;color:var(--t3);font-size:14px;">×</span>
+  </header>
+  <div class="body-area">Iberia early morning out of Boston — single-traveler, no checked bag. Cheaper window historically third week of April. Watch the deep-discount carriers on Tuesdays.</div>
+  <footer>
+    <button class="ll-btn primary">⇠ Borrow this whole version</button>
+    <button class="ll-btn" style="margin-left:auto;">Compare side-by-side</button>
+  </footer>
+</div>
+
+<p>From here, you can do three things: read it and just close the popover (press <kbd>Esc</kbd> or click anywhere outside it), or actually do something with what you've read. We'll get to those next.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     10 — BORROW
+     ─────────────────────────────────────────────────────────── -->
+<section id="borrow" class="lesson-card" hidden>
+<h2><span class="num">10</span>Liking the other version better — borrow it</h2>
+
+<p>If, while you're peeking, you find yourself thinking <em>"oh, that one's actually better,"</em> you can take it. Click <strong>Borrow this whole version</strong>, confirm when Yarrow asks, and your current note's body is replaced with the one you were just reading. Your old version doesn't disappear — it slides quietly into history, where you can always go grab it back.</p>
+
+<p>If you've used a tool like git, this is what would normally be called "merging." We named it borrow because that's much closer to what you're actually doing: <em>you</em> picked which version you liked, and <em>you</em> chose to put it in this spot. There are no merge conflicts, no symbols cluttering up your file, no decisions being made by the computer. The other scenario is left exactly as it was. Only this note, on this scenario, moves forward.</p>
+
+<div class="aside">
+<h3>A way to think about it</h3>
+<p>You and a friend both keep handwritten copies of your grandmother's pasta sauce. You glance at theirs, notice they wrote a clearer version of the simmer step, and copy that into yours. Their copy stays the way it was. Yours got a small upgrade. Nothing was destroyed. That's <em>borrow</em>.</p>
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     11 — COMPARE
+     ─────────────────────────────────────────────────────────── -->
+<section id="compare" class="lesson-card" hidden>
+<h2><span class="num">11</span>Looking at both versions side by side</h2>
+
+<p>Sometimes a peek isn't enough — you want to see <em>everything</em>, every paragraph, every line that's different, both versions next to each other. That's what the <strong>Compare</strong> view is for. You can open it three ways:</p>
+
+<ul>
+  <li>The <em>Compare</em> button in the toolbar.</li>
+  <li>The <em>Compare side-by-side</em> button inside a peek popover.</li>
+  <li>The command palette: <kbd>⌘K</kbd>, then type "compare".</li>
+</ul>
+
+<p>Once it's open, here's what you can do:</p>
+
+<ul>
+  <li>Pick the two scenarios you want to compare on each side. Or, if you'd rather, pick two specific notes.</li>
+  <li>Choose how the differences get shown: <em>summary</em>, <em>track-changes</em>, <em>split</em>, <em>cards</em>, or <em>marginalia</em>. They all show the same information; some people find one easier on the eyes than another. Try a couple; pick your favourite.</li>
+  <li>If you like keyboard navigation:
+    <ul>
+      <li><kbd>j</kbd> / <kbd>k</kbd> — move down or up through the changes, one chunk at a time.</li>
+      <li><kbd>←</kbd> / <kbd>→</kbd> — flip between the five different views.</li>
+      <li><kbd>Esc</kbd> — close it when you're done.</li>
+    </ul>
+  </li>
+</ul>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     12 — DRAFTS
+     ─────────────────────────────────────────────────────────── -->
+<section id="drafts" class="lesson-card" hidden>
+<h2><span class="num">12</span>Drafts and scenarios — when to reach for which</h2>
+
+<p>These two tools sound similar, and they kind of are — both are ways of trying out a different version. The difference is one of <em>scale</em>. A scenario is for a whole world; a draft is for a single sentence's worth of indecision. Here's how that shakes out:</p>
+
+<table class="matrix" style="font-size:14px;">
+  <thead>
+    <tr><th></th><th>Drafts</th><th>Scenarios</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="row-title">What it covers</td>
+      <td>Just one note</td>
+      <td>Many notes, all moving together</td>
+    </tr>
+    <tr>
+      <td class="row-title">Where you find it</td>
+      <td>A small tab strip above the note's title</td>
+      <td>The Scenarios pane on the rail</td>
+    </tr>
+    <tr>
+      <td class="row-title">Goes into history?</td>
+      <td>Not yet — only when you say "keep this one"</td>
+      <td>Yes — saves are normal checkpoints</td>
+    </tr>
+    <tr>
+      <td class="row-title">Syncs to your other devices?</td>
+      <td>No, it's like the scratchpad</td>
+      <td>Yes</td>
+    </tr>
+    <tr>
+      <td class="row-title">Use it when…</td>
+      <td>"I want to try a paragraph two ways."</td>
+      <td>"I want to see this whole project in a different shape."</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The draft tab strip is small and sits right above the note's title — easy to forget about until you need it:</p>
+
+<div class="mock">
+  <div class="tabstrip">
+    <button class="tab">main</button>
+    <button class="tab draft active">rough</button>
+    <button class="tab draft">darker take</button>
+    <button class="tab add">+ draft</button>
+  </div>
+  <div class="title">A letter I'm not sure I'll send</div>
+  <div class="body" style="color:var(--t2);font-style:italic;font-size:14px;">Editing a draft. Saves stay here until you keep it.</div>
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     13 — ARCHIVE
+     ─────────────────────────────────────────────────────────── -->
+<section id="archive" class="lesson-card" hidden>
+<h2><span class="num">13</span>"I'm done thinking about this one for now" — set it aside</h2>
+
+<p>Sometimes a scenario served its purpose and you've moved on, but deleting it feels too final — what if you change your mind? Yarrow has a softer option for exactly this feeling: <strong>set it aside</strong>. It's the equivalent of putting a notebook on a high shelf instead of in the recycling.</p>
+
+<ol class="steps">
+  <li>Open the Scenarios pane and click the card for the scenario.</li>
+  <li>In the detail panel that opens on the right, click <strong>Set this scenario aside</strong>.</li>
+  <li>Confirm.</li>
+</ol>
+
+<p>Nothing actually leaves your computer. All the notes are still there. All your edits, all the history, all of it. The scenario just shows up <em>dimmed</em> in the graph and cards view, with a small "set aside" label, so you can see at a glance that it's resting and not part of your active work right now.</p>
+
+<div class="card-mock archived">
+  <div class="row">
+    <span class="swatch-dot" style="background:var(--rose);"></span>
+    <h4>winter-fallback</h4>
+    <span class="pill set-aside">set aside</span>
+    <span class="meta" style="margin-left:auto;">4 notes</span>
+  </div>
+  <div class="condition">If we couldn't go in summer</div>
+</div>
+
+<p>Want it back? Click the same button again — it now says <strong>Bring it back</strong> — and you're right where you were. Always reversible. Nothing lost.</p>
+
+<p>This is different from <em>Delete</em>, which actually does take a scenario out for good. The general rule: if there's any chance you'll want to look at it later, <em>set aside</em>. Reach for <em>delete</em> only when you're sure, and if you're not sure, you don't have to be.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     14 — ADOPT
+     ─────────────────────────────────────────────────────────── -->
+<section id="adopt" class="lesson-card" hidden>
+<h2><span class="num">14</span>"Okay, I've decided" — making a scenario the real one</h2>
+
+<p>Picture this: you've been writing in <code>solo-version</code> for the last two weeks, and somewhere along the way it stopped feeling like a "what if" and started feeling like the actual plan. You don't want to keep mentally swapping between "what's in main" and "what's in this scenario" — you just want this one to <em>be</em> main.</p>
+
+<p>That moment has its own button. From the scenario's detail panel, click <strong>Promote</strong>. Yarrow asks for a confirmation (because this one's a real decision), and then:</p>
+
+<ul>
+  <li>Your scenario becomes the new trunk — the new <code>main</code>.</li>
+  <li>Other scenarios that were branching from the old trunk gracefully re-anchor to the new one.</li>
+  <li>The old trunk doesn't disappear. It stays in the graph, gently dimmed, like a scenario that's been set aside.</li>
+</ul>
+
+<p>This is genuinely the moment Yarrow was built for. Read the button as: <em>"I've thought about it. This is the version I'm going with."</em></p>
+
+<div class="aside">
+<h3>You can change your mind, always</h3>
+<p>Even after you've promoted a scenario, the old main is still in the graph (just dimmed), and every old version of every note still lives in history. If a week later you decide you preferred the original, or you want to promote a different scenario instead, you can. Yarrow's quiet promise: the version you didn't pick is still on the shelf, exactly as you left it.</p>
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     15 — DECISION MATRIX
+     ─────────────────────────────────────────────────────────── -->
+<section id="matrix" class="lesson-card" hidden>
+<h2><span class="num">15</span>When you're ready to decide — the decision matrix</h2>
+
+<p>If you've been using scenarios for a real, weighty decision — which apartment, which job, which trip — there's a screen built specifically to help you compare them all at once and feel okay about choosing. It's called the <strong>Decision Matrix</strong>, and it tries to be the friendliest version of "let's pick" you've ever met.</p>
+
+<p>Open it from the top of the Scenarios pane, or hit <kbd>⌘K</kbd> and type "decision matrix". What you'll see is a grid: each row is a note, each column is a scenario. Star the notes that really matter to you — the things you can't compromise on. Then every cell in the grid tells you something useful at a glance:</p>
+
+<table class="matrix">
+  <thead>
+    <tr>
+      <th></th>
+      <th class="cell">main</th>
+      <th class="cell">solo</th>
+      <th class="cell">couples</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="star">
+      <td class="row-title">★ Flights to Madrid</td>
+      <td class="cell"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--yel)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 L8.5 15 L16 6"/></svg></td>
+      <td class="cell"><svg width="18" height="18" viewBox="0 0 20 20" aria-label="differs"><circle cx="10" cy="10" r="6.5" fill="none" stroke="var(--yel)" stroke-width="2.5"/><path d="M10 3.5 A6.5 6.5 0 0 1 10 16.5 Z" fill="var(--yel)"/></svg></td>
+      <td class="cell"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--yel)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 L8.5 15 L16 6"/></svg></td>
+    </tr>
+    <tr class="star">
+      <td class="row-title">★ Where to stay</td>
+      <td class="cell"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--yel)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 L8.5 15 L16 6"/></svg></td>
+      <td class="cell"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--rose)" stroke-width="3" stroke-linecap="round"><path d="M5 5 L15 15 M15 5 L5 15"/></svg></td>
+      <td class="cell"><svg width="18" height="18" viewBox="0 0 20 20" aria-label="differs"><circle cx="10" cy="10" r="6.5" fill="none" stroke="var(--yel)" stroke-width="2.5"/><path d="M10 3.5 A6.5 6.5 0 0 1 10 16.5 Z" fill="var(--yel)"/></svg></td>
+    </tr>
+    <tr>
+      <td class="row-title">Packing list</td>
+      <td class="cell"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--t2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 L8.5 15 L16 6"/></svg></td>
+      <td class="cell"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bd2);"></span></td>
+      <td class="cell"><svg width="18" height="18" viewBox="0 0 20 20" aria-label="differs"><circle cx="10" cy="10" r="6.5" fill="none" stroke="var(--t2)" stroke-width="1.8"/><path d="M10 3.5 A6.5 6.5 0 0 1 10 16.5 Z" fill="var(--t2)"/></svg></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="legend">
+  <div>
+    <span class="glyph"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="var(--t2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 L8.5 15 L16 6"/></svg></span>
+    <span><strong>A check</strong> — yes, this note's there, and it reads the same as the main version.</span>
+  </div>
+  <div>
+    <span class="glyph"><svg width="16" height="16" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5" fill="none" stroke="var(--t2)" stroke-width="1.8"/><path d="M10 3.5 A6.5 6.5 0 0 1 10 16.5 Z" fill="var(--t2)"/></svg></span>
+    <span><strong>A half-filled circle</strong> — yes, it's there, but the content has shifted in this scenario.</span>
+  </div>
+  <div>
+    <span class="glyph"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bd2);"></span></span>
+    <span><strong>A small dot</strong> — this note doesn't exist in this scenario at all.</span>
+  </div>
+  <div>
+    <span class="glyph"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="var(--rose)" stroke-width="3" stroke-linecap="round"><path d="M5 5 L15 15 M15 5 L5 15"/></svg></span>
+    <span><strong>A red ✗</strong> — uh-oh: a must-have you starred is missing here.</span>
+  </div>
+</div>
+
+<p>The half-filled circle is the symbol that does the most work for you. It's the answer to a question you'd otherwise have to click around to find — <em>"and has this version changed, or not?"</em> Now, in one glance, you can see which scenarios actually shifted your packing list and which ones quietly left it alone.</p>
+</section>
+
+<hr class="soft">
+
+<!-- ───────────────────────────────────────────────────────────
+     16 — WIKILINKS
+     ─────────────────────────────────────────────────────────── -->
+<section id="wikilinks" class="lesson-card" hidden>
+<h2><span class="num">16</span>Wikilinks &amp; backlinks — letting your notes find each other</h2>
+
+<p>The second big idea in Yarrow, after scenarios, is letting your notes <strong>link to each other by name</strong>. While you're writing, type two square brackets — <code>[[</code> — and a small picker quietly appears. Start typing the title of any note in your workspace, and when you see the one you want, press <kbd>Enter</kbd> to drop in the link. Done.</p>
+
+<div class="mock">
+  <div class="title">A weekend in Lisbon</div>
+  <div class="body">We're flying out from <em>[[Madrid]]</em> on the high-speed train, which lines up with what's already in <em>[[Flights to Madrid]]</em>. Going to want to revisit <em>[[Where to stay]]</em> with the Lisbon dates locked in.</div>
+</div>
+
+<p>Three nice things happen the moment you do this, and you don't have to think about any of them:</p>
+
+<ul>
+  <li><strong>The link works both directions.</strong> If your "A weekend in Lisbon" note links to "Flights to Madrid," then "Flights to Madrid" automatically shows "A weekend in Lisbon" in its <strong>Backlinks</strong> panel on the right. You don't have to keep that in sync — Yarrow does it quietly for you.</li>
+  <li><strong>Renaming a note doesn't break anything.</strong> If you rename "Madrid" to "Madrid (April 2026)," every <code>[[Madrid]]</code> elsewhere in your workspace updates to point at the new name. No broken links, no manual cleanup.</li>
+  <li><strong>Hover to peek.</strong> Hover over any wikilink for a moment and a small preview pops up with the linked note's title and first few lines, so you can see what's there without leaving where you are.</li>
+</ul>
+
+<h3>Saying what kind of link it is</h3>
+<p>If you want to be more specific, you can label the kind of connection a link represents. Right-click any wikilink and you get four options: <em>supports</em>, <em>challenges</em>, <em>came-from</em>, or <em>open-question</em>. Each one shows up with its own colour and line style in the Connections graph — so when you zoom out and look at the whole web of your notes, you can see the shape of your thinking, not just a tangle of arrows.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     17 — OPEN QUESTIONS
+     ─────────────────────────────────────────────────────────── -->
+<section id="open-questions" class="lesson-card" hidden>
+<h2><span class="num">17</span>Open questions — what to do with the things you don't know yet</h2>
+
+<p>Writing is full of moments where you hit something you don't have answers to. A fact you need to look up later. A decision you're not ready to make. A name you'll invent in a different sitting. Most tools force you to either pause and figure it out, or write a TODO and lose track of it. Yarrow has a gentler answer: just type a literal <code>??</code> next to the thought, and keep going. Yarrow notices it and gathers it up for you as an <strong>open question</strong>.</p>
+
+<div class="mock">
+  <div class="title">Train Madrid → Lisbon</div>
+  <div class="body">High-speed AVE, three hours each way. Departures in the morning. <em>?? what's the price band for second-class — is it under €60 or are we already past that?</em> Book direct or via Trainline?</div>
+</div>
+
+<p>The <code>??</code> shows up softly highlighted in the text, and every open question across your whole workspace is collected, automatically, into one place: the <strong>Open Questions</strong> pane on the right rail. Click any entry there to jump straight to the line in the note that asked it.</p>
+
+<p class="pull">Think of <code>??</code> as a polite way of saying, <em>"I don't know yet — I'll come back to this."</em> The panel is your come-back-to list, doing the remembering so you don't have to.</p>
+
+<p>If you've picked the <em>Researcher</em> persona, the rail gives you a small bonus: a one-click button that filters the open-questions list to just the note you're currently reading. Helpful when you're elbow-deep in one paper and you don't need to see questions from anywhere else.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     18 — TAGS
+     ─────────────────────────────────────────────────────────── -->
+<section id="tags" class="lesson-card" hidden>
+<h2><span class="num">18</span>Tags — the gentlest way to organise</h2>
+
+<p>Tags are the most low-key tool Yarrow gives you. Anywhere in a note — the body, the YAML frontmatter, anywhere — type <code>#tagname</code>, and that's it. The tag is indexed. Click any tag inside the editor to filter your notes list to everything else that uses it.</p>
+
+<p>Most tags are just whatever you decide to call them. But Yarrow does recognise seven <strong>special tag names</strong> as a kind of shared vocabulary, each with its own colour. The point isn't to be strict — it's so that everyone using Yarrow can read each other's notes. Your <code>#review</code> always means "this needs attention," in the same warm amber, in every note.</p>
+
+<div class="tag-strip">
+  <span class="tag-pill sensitive">#clinical</span>
+  <span class="tag-pill attention">#review</span>
+  <span class="tag-pill mature">#evergreen</span>
+  <span class="tag-pill question">#question</span>
+  <span class="tag-pill decision">#decision</span>
+  <span class="tag-pill draft">#draft</span>
+  <span class="tag-pill archived">#archived</span>
+</div>
+
+<ul>
+  <li><strong>Sensitive</strong> (<code>#clinical</code> / <code>#private</code> / <code>#phi</code> / <code>#confidential</code>) — rose. Yarrow keeps these notes out of autocomplete previews and search snippets, so private things don't peek out unexpectedly.</li>
+  <li><strong>Attention</strong> (<code>#review</code> / <code>#followup</code> / <code>#todo</code> / <code>#wip</code>) — amber. Things you'll come back to. The Clinician persona surfaces these in its <em>Follow-ups</em> list.</li>
+  <li><strong>Mature</strong> (<code>#evergreen</code> / <code>#permanent</code> / <code>#canonical</code>) — emerald. Notes you trust. "Settled thinking; safe to link to from anywhere."</li>
+  <li><strong>Question</strong> (<code>#question</code> / <code>#q</code> / <code>#open</code>) — cyan. Something you're genuinely asking, not telling.</li>
+  <li><strong>Decision</strong> (<code>#decision</code> / <code>#decided</code> / <code>#resolved</code>) — indigo. The kind of note you'll want to find again when someone asks "wait, why did we do it that way?" The Developer persona collects these into its <em>Decision log</em>.</li>
+  <li><strong>Draft</strong> (<code>#draft</code> / <code>#sketch</code> / <code>#raw</code> / <code>#seedling</code>) — faded italic yellow. Half-formed; not yet ready for other notes to lean on it.</li>
+  <li><strong>Archived</strong> (<code>#archived</code> / <code>#dead</code> / <code>#deprecated</code>) — struck-through grey. Old, kept for reference, no longer in use.</li>
+</ul>
+
+<p>To see every tag you have, open the <strong>Tag Browser</strong> from the rail (the tag icon, between Outline and Kits). It lists every tag in your workspace with how many notes use it, and there's a small legend at the top in case you want a refresher on the seven special kinds.</p>
+
+<div class="aside">
+<h3>Your own tags are perfectly fine, too</h3>
+<p>Those seven names are the only ones Yarrow recognises specially (and only when they match exactly, ignoring case). Every other tag — <code>#travel</code>, <code>#family</code>, <code>#may-2026</code>, <code>#thingsmygrandmasaid</code> — gets a neutral pill and means whatever you want it to. Yarrow doesn't try to guess. It's your notebook.</p>
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     19 — HISTORY
+     ─────────────────────────────────────────────────────────── -->
+<section id="history" class="lesson-card" hidden>
+<h2><span class="num">19</span>History — the part that quietly remembers everything</h2>
+
+<p>Whenever you pause writing for a few seconds, Yarrow tucks away a tiny snapshot of the note. These are called <strong>checkpoints</strong>, and the lovely part is that you do absolutely nothing to make them happen. No commit messages. No "save now?" prompts. No agonising about whether this version was good enough to keep. Yarrow just remembers.</p>
+
+<p>When you want to look back, click the <strong>History</strong> icon on the rail (or hit <kbd>⌘K</kbd> and type "history"). You can scrub through every past version of the note you're currently in.</p>
+
+<ul>
+  <li>The left side is a timeline, gently grouped by recency — Today, Yesterday, This Week, Older.</li>
+  <li>The right side shows the version your cursor is currently on, with the changes highlighted (additions in green, removals in red), so you can see what shifted.</li>
+  <li>Use <kbd>↑</kbd> / <kbd>↓</kbd> (or <kbd>j</kbd> / <kbd>k</kbd>) to scrub through. Press <kbd>Enter</kbd> to restore that version.</li>
+</ul>
+
+<p class="pull">Restoring an old version never deletes the version you have now. Yarrow just adds a new checkpoint with the older content on top — your timeline keeps moving forward, and your "current" version goes into history alongside everything else.</p>
+
+<div class="aside warm">
+<h3>If a checkpoint really matters — pin it</h3>
+<p>Some checkpoints are worth marking. A finished draft you're proud of. The version of a note from right before a big rewrite. The thought you had at 2am that turned out to be the good one. Click the small star next to a checkpoint to <em>pin</em> it — pinned checkpoints get a star, and they're never pruned even if you tidy history later. They'll be there when you need them.</p>
+</div>
+</section>
+
+<hr class="soft">
+
+<!-- ───────────────────────────────────────────────────────────
+     20 — CHEAT SHEET
+     ─────────────────────────────────────────────────────────── -->
+<section id="cheatsheet" class="lesson-card" hidden>
+<h2><span class="num">20</span>The little cheat sheet</h2>
+
+<p>If you skim everything else, this is the page to keep. The vocabulary, the buttons, the keys.</p>
+
+<div class="aside">
+<h3>Words you'll hear a lot</h3>
+<ul>
+  <li><strong>Mode</strong> — the overall shape of the app. Either <em>Basic</em> (quieter) or <em>Path-Based</em> (the full toolkit).</li>
+  <li><strong>Persona</strong> — an optional little group of buttons that nudges Path-Based mode toward a specific kind of work. <em>Writer / Researcher / Developer / Clinician / Cooking / None.</em></li>
+  <li><strong>Trunk</strong> (also called <code>main</code>) — your default version of things. Where edits go unless you've branched off.</li>
+  <li><strong>Scenario</strong> — a named "what if" version of your notes. (Yarrow 2.x called this a "path".)</li>
+  <li><strong>Borrow</strong> — copy one note's version from one scenario into another. The source stays untouched.</li>
+  <li><strong>Adopt</strong> (sometimes called <em>Promote</em>) — make a scenario the new main.</li>
+  <li><strong>Set aside</strong> — gently retire a scenario from your active view, without deleting it.</li>
+  <li><strong>Differs</strong> — a quiet word meaning "this note's body isn't the same as the version on main."</li>
+  <li><strong>Draft</strong> — a private alternative body for a single note. Lives in a small tab above the title.</li>
+  <li><strong>Checkpoint</strong> — a tiny snapshot Yarrow saves automatically whenever you pause.</li>
+</ul>
+</div>
+
+<div class="aside">
+<h3>The buttons that'll get you through most days</h3>
+<ul>
+  <li><strong>Scenarios icon on the right rail</strong> — opens the Scenarios pane.</li>
+  <li><strong>+ New scenario from main</strong> — start a new "what if".</li>
+  <li><strong>Click any scenario card</strong> — opens the detail panel on the right.</li>
+  <li><strong>Click any chip</strong> in a note's "also exists on…" strip — peek at that other version.</li>
+  <li><strong>⇠ Borrow this whole version</strong> in a peek — take that version.</li>
+  <li><strong>Compare side-by-side</strong> in a peek (or in the toolbar) — see the differences in full.</li>
+  <li><strong>+ draft</strong> above any note's title — try out a private alternative for just this one note.</li>
+  <li><strong>Tag icon on the rail</strong> — open the workspace-wide Tag Browser.</li>
+</ul>
+</div>
+
+<div class="aside">
+<h3>Keys you might actually remember</h3>
+<ul>
+  <li><kbd>⌘K</kbd> — the command palette. Search anything, run anything.</li>
+  <li><kbd>⌘N</kbd> — a new, empty note.</li>
+  <li><kbd>⌘⇧N</kbd> — start a new scenario.</li>
+  <li><kbd>⌘⇧B</kbd> — branch off from whatever note you're in.</li>
+  <li><kbd>⌘T</kbd> — jump straight to today's journal.</li>
+  <li><kbd>⌘\</kbd> — turn focus mode on or off.</li>
+  <li><kbd>⌘,</kbd> — open Settings (where Modes &amp; Personas live).</li>
+  <li><kbd>⌘⇧S</kbd> — toggle the scratchpad.</li>
+  <li><kbd>j</kbd> / <kbd>k</kbd> — scroll through changes in Compare; scrub the timeline in History.</li>
+  <li><kbd>Esc</kbd> — close any modal, dismiss any popover. Always works.</li>
+</ul>
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     21 — FAQ
+     ─────────────────────────────────────────────────────────── -->
+<section id="faq" class="lesson-card" hidden>
+<h2><span class="num">21</span>Questions you might be sitting with</h2>
+
+<p>If something's been quietly bugging you, this is where we try to answer it. Don't see your question here? It's a real one, and you can <a href="https://github.com/neuralpunk/yarrow/issues" rel="noopener">add it</a>; we'd genuinely like to hear it.</p>
+
+<div class="qa">
+  <details>
+    <summary>Am I locked into a mode or persona once I pick one?</summary>
+    <div class="ans">
+      <p>Not at all. Switching takes a second, and absolutely nothing gets deleted or moved. You can be in Writer mode in the morning and Developer in the afternoon if your work shifts that way. Your notes stay exactly where they are; only the rail and a couple of shortcuts change shape. There is no penalty for changing your mind.</p>
+    </div>
+  </details>
+  <details>
+    <summary>If I share my notes with a friend, will they see my scenarios?</summary>
+    <div class="ans">
+      <p>If you sync the whole workspace with someone, then yes — scenarios travel with it, since they're part of the workspace's history. Drafts (the small per-note tab strip) are different: those stay on your machine and aren't shared. So if there's a half-finished alternative version of a single note that's still personal, drafts are the right place for it.</p>
+    </div>
+  </details>
+  <details>
+    <summary>If I delete a scenario, do I lose all my notes?</summary>
+    <div class="ans">
+      <p>No — the original (trunk) versions of your notes are always safe. Deleting a scenario only removes that <em>scenario's</em> divergent copies of those notes; it never touches the trunk. If you're at all unsure, use <em>Set aside</em> instead — it's fully reversible. Delete is for "I am sure I'll never want this again," and even then, scenarios don't usually take up enough space to be worth the worry.</p>
+    </div>
+  </details>
+  <details>
+    <summary>What if I just want to try out a single paragraph two ways? Is that a scenario?</summary>
+    <div class="ans">
+      <p>No, that's a <strong>draft</strong>, and drafts are perfect for exactly this. Use the small <em>+ draft</em> tab that sits above any note's title. Drafts only apply to one note, they don't sync, and they don't enter your formal history until you decide to keep one. Use them whenever you want to try a sentence two ways without committing.</p>
+    </div>
+  </details>
+  <details>
+    <summary>I built up a scenario and now it's the plan. How do I make it official?</summary>
+    <div class="ans">
+      <p>Open that scenario's detail panel and click <strong>Promote</strong>. Yarrow asks you to confirm (because this <em>is</em> a real decision), and once you do, your scenario becomes the new main. Other scenarios re-anchor to it. And don't worry: the previous main and everything else are still in history if you want to look back, or even change your mind a week from now.</p>
+    </div>
+  </details>
+  <details>
+    <summary>Why is it called "borrow" instead of "merge"?</summary>
+    <div class="ans">
+      <p>Honestly, because "merge" doesn't describe what's actually happening. Merging implies two histories getting smashed together, with awkward conflicts to resolve. What you're doing here is much smaller and friendlier: you read another version, decided you liked it, and copied it over to where you wanted it. The other scenario keeps its version. There's no conflict, no special dialog, no markers in your file. It really is just borrowing.</p>
+    </div>
+  </details>
+  <details>
+    <summary>How many scenarios is too many?</summary>
+    <div class="ans">
+      <p>A good rule: if you can't remember what a scenario is for without opening it, that's the line. A useful scenario answers a question you could say out loud. <em>"What if we went solo?"</em> — yes, great scenario. <em>"misc-2"</em> — your future self won't thank you. Don't be precious about deleting or setting aside the ones that have stopped being useful.</p>
+    </div>
+  </details>
+  <details>
+    <summary>I'm coming from Yarrow 2.x — what's actually different?</summary>
+    <div class="ans">
+      <p>Three things, none of which break your existing notes: (1) "Paths" is now called "Scenarios" — same feature, friendlier name. (2) Modes &amp; Personas is new; you'll start in <em>Path-Based</em> mode by default, which is exactly the rail you knew, and you can opt into a Persona if you want a tinted button group on top. (3) There are now six themes, with the new <em>Vellum</em> and <em>Workshop</em> as the defaults, plus Linen, Graphite, Ashrose, and Dracula. Your notes, scenarios, history, and tags are completely untouched.</p>
+    </div>
+  </details>
+  <details>
+    <summary>Okay — where should I go from here?</summary>
+    <div class="ans">
+      <p>Wherever feels right. If you haven't installed Yarrow yet, the <a href="index.html#download">Download page</a> is the next step. If you have it open and want the deep, feature-by-feature reference, that's the <a href="user-guide.html">User Guide</a>. If you ran into something weird or you have an idea for us, drop a note in the <a href="https://github.com/neuralpunk/yarrow/issues" rel="noopener">issues tracker</a> — real humans read those. And if you just want to close this tab and start writing, that's a great choice too.</p>
+    </div>
+  </details>
+</div>
+</section>
+
+<!-- ═══ end-of-page CTA ═══ -->
+<div class="learn-cta">
+  <h2>And that's the whole tour. Thanks for reading.</h2>
+  <p>If you'd like the deeper, feature-by-feature reference next, the User Guide picks up where this leaves off — settings, kits, sync, encryption, every shortcut. Or you can close this tab and just start writing. Both are great.</p>
+  <div class="row">
+    <a class="primary" href="user-guide.html">
+      Open the User Guide
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
+    <a href="index.html">← Back to the home page</a>
+    <a href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+      Download 3.0
+    </a>
+  </div>
+</div>
+
+</main>
+
+<!-- Prev / Next navigation under the active lesson card. Arrow keys
+     ← → also walk through lessons; the progress bar fills as the
+     reader advances. -->
+<nav class="lesson-nav" aria-label="Lesson controls">
+  <button type="button" data-lesson-prev aria-label="Previous lesson">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+    Previous
+  </button>
+  <div class="lesson-progress">
+    <span data-lesson-progress-label>Lesson 1 of 21</span>
+    <span class="lesson-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="21" aria-valuenow="1"></span>
+  </div>
+  <button type="button" data-lesson-next aria-label="Next lesson">
+    Next
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+  </button>
+</nav>
+
+</div><!-- /.learn-shell -->
+
+<!-- ═══ footer ═══ -->
+<footer class="foot">
+  <div class="page foot-inner">
+    <div class="foot-brand">Yarrow</div>
+    <p class="foot-lede">Local-first, git-backed, plain-text notes for non-linear thinking.</p>
+    <div class="foot-links">
+      <a href="index.html">Home</a>
+      <a href="learn.html">Learn</a>
+      <a href="user-guide.html">User Guide</a>
+      <a href="https://github.com/neuralpunk/yarrow" rel="noopener">GitHub</a>
+      <a href="https://github.com/neuralpunk/yarrow/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/neuralpunk/yarrow/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+      <a href="https://github.com/neuralpunk/yarrow/issues" rel="noopener">Issues</a>
+    </div>
+  </div>
+</footer>
+
+<button id="to-top" class="to-top" type="button" aria-label="Back to top" title="Back to top">
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M10 16V4"/>
+    <path d="m4 10 6-6 6 6"/>
+  </svg>
+</button>
+
+<script>
+  // Theme toggle — same shape as user-guide.html.
+  (function () {
+    var buttons = document.querySelectorAll('[data-theme-value]');
+    var KEY = 'yarrow.docs.theme';
+    function set(mode) {
+      if (mode !== 'vellum' && mode !== 'workshop') mode = 'vellum';
+      document.documentElement.setAttribute('data-theme', mode);
+      try { localStorage.setItem(KEY, mode); } catch (_) {}
+      buttons.forEach(function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-theme-value') === mode ? 'true' : 'false');
+      });
+    }
+    buttons.forEach(function (b) {
+      b.addEventListener('click', function () { set(b.getAttribute('data-theme-value')); });
+    });
+    set(document.documentElement.getAttribute('data-theme') || 'vellum');
+  })();
+
+  // Back-to-top: appears after the user scrolls past the hero, scrolls
+  // smoothly back to the top of the document. Respects prefers-reduced-motion.
+  (function () {
+    var btn = document.getElementById('to-top');
+    if (!btn) return;
+    var threshold = 600;
+    var ticking = false;
+    function update() {
+      ticking = false;
+      var y = window.scrollY || window.pageYOffset || 0;
+      btn.classList.toggle('visible', y > threshold);
+    }
+    window.addEventListener('scroll', function () {
+      if (!ticking) {
+        window.requestAnimationFrame(update);
+        ticking = true;
+      }
+    }, { passive: true });
+    btn.addEventListener('click', function () {
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+      var hero = document.querySelector('.learn-hero h1');
+      if (hero && typeof hero.focus === 'function') {
+        hero.setAttribute('tabindex', '-1');
+        setTimeout(function () { hero.focus({ preventScroll: true }); }, reduce ? 0 : 480);
+      }
+    });
+    update();
+  })();
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Lesson stepper — show one card at a time
+  // ───────────────────────────────────────────────────────────────────
+  // The chip strip at the top of the lesson frame is wired up so that
+  // clicking a chip swaps the active <section class="lesson-card">,
+  // and the Prev / Next buttons walk through them in declared order.
+  // The URL hash mirrors the active card's id so deep-links and
+  // back/forward navigation continue to work. ← → arrow keys are also
+  // wired (skipped when focus is in an input/textarea).
+  // ═══════════════════════════════════════════════════════════════════
+  (function () {
+    var cards = Array.prototype.slice.call(
+      document.querySelectorAll('.lesson-card')
+    );
+    if (cards.length === 0) return;
+    var chipButtons = Array.prototype.slice.call(
+      document.querySelectorAll('[data-lesson-step]')
+    );
+    var prevBtn = document.querySelector('[data-lesson-prev]');
+    var nextBtn = document.querySelector('[data-lesson-next]');
+    var numLabel = document.querySelector('[data-lesson-num]');
+    var titleLabel = document.querySelector('[data-lesson-title]');
+    var progressLabel = document.querySelector('[data-lesson-progress-label]');
+    var progressBar = document.querySelector('.lesson-progress-bar');
+    var stepperFrame = document.querySelector('.lessons-stepper');
+    var total = cards.length;
+
+    // Source-of-truth for chip titles: read the chip's own label so
+    // we don't have to keep a parallel array in sync.
+    var titles = chipButtons.map(function (b) {
+      var span = b.querySelector('span:not(.n)');
+      return span ? span.textContent.trim() : (b.getAttribute('aria-label') || '');
+    });
+
+    var idx = 0;
+    var visited = new Set();
+
+    function pad2(n) { return n < 10 ? '0' + n : String(n); }
+
+    function show(i, opts) {
+      opts = opts || {};
+      if (i < 0) i = 0;
+      if (i > total - 1) i = total - 1;
+      idx = i;
+      visited.add(i);
+
+      cards.forEach(function (c, k) {
+        if (k === i) {
+          c.hidden = false;
+          c.classList.remove('is-entering');
+          // Force reflow so the entry animation re-runs each time.
+          /* eslint-disable no-unused-expressions */
+          c.offsetWidth;
+          c.classList.add('is-entering');
+        } else {
+          c.hidden = true;
+        }
+      });
+
+      chipButtons.forEach(function (b, k) {
+        b.classList.toggle('is-active', k === i);
+        b.classList.toggle('is-visited', visited.has(k) && k !== i);
+        if (k === i) b.setAttribute('aria-current', 'step');
+        else b.removeAttribute('aria-current');
+      });
+
+      if (prevBtn) prevBtn.disabled = i === 0;
+      if (nextBtn) nextBtn.disabled = i === total - 1;
+
+      if (numLabel) numLabel.textContent = pad2(i + 1) + ' / ' + total;
+      if (titleLabel) titleLabel.textContent = titles[i] || '';
+      if (progressLabel) progressLabel.textContent = 'Lesson ' + (i + 1) + ' of ' + total;
+      if (progressBar) {
+        progressBar.style.setProperty('--progress', ((i + 1) / total * 100).toFixed(1) + '%');
+        progressBar.setAttribute('aria-valuenow', String(i + 1));
+      }
+
+      // Mirror to URL hash so bookmarks / share-links work, but only
+      // when the change was driven by user interaction (not the
+      // initial hash read).
+      if (!opts.fromHash) {
+        var id = cards[i].id;
+        if (id) {
+          try {
+            history.replaceState(null, '', '#' + id);
+          } catch (_) {
+            window.location.hash = id;
+          }
+        }
+      }
+
+      // Scroll the lesson frame into view (top of stepper) — but only
+      // when this was a user-driven swap, not the initial render.
+      if (opts.scroll && stepperFrame) {
+        var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var rect = stepperFrame.getBoundingClientRect();
+        var top = window.pageYOffset + rect.top - 16;
+        window.scrollTo({ top: top, behavior: reduce ? 'auto' : 'smooth' });
+      }
+    }
+
+    function indexFromHash() {
+      var hash = window.location.hash || '';
+      if (hash && hash.charAt(0) === '#') hash = hash.slice(1);
+      if (!hash) return 0;
+      for (var i = 0; i < cards.length; i++) {
+        if (cards[i].id === hash) return i;
+      }
+      return 0;
+    }
+
+    chipButtons.forEach(function (b, i) {
+      b.addEventListener('click', function () { show(i, { scroll: true }); });
+    });
+    if (prevBtn) prevBtn.addEventListener('click', function () { show(idx - 1, { scroll: true }); });
+    if (nextBtn) nextBtn.addEventListener('click', function () { show(idx + 1, { scroll: true }); });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      var t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' ||
+                t.isContentEditable)) return;
+      if (e.key === 'ArrowLeft' && idx > 0) {
+        e.preventDefault();
+        show(idx - 1, { scroll: true });
+      } else if (e.key === 'ArrowRight' && idx < total - 1) {
+        e.preventDefault();
+        show(idx + 1, { scroll: true });
+      }
+    });
+
+    // React to hash changes (in-card anchor links, browser back/forward,
+    // people copy-pasting a deep link into the address bar).
+    window.addEventListener('hashchange', function () {
+      show(indexFromHash(), { fromHash: true, scroll: true });
+    });
+
+    // Initial render — no scroll, no hash mutation.
+    show(indexFromHash(), { fromHash: true, scroll: false });
+  })();
+</script>
+
+</body>
+</html>

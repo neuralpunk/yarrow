@@ -14,10 +14,10 @@
 //             to show. Use for persistent, contextual hand-holding
 //             (the "you're on a try path" ribbon).
 
-import type { ComponentType } from "react";
-import PathCreateIllustration from "../components/Guidance/illustrations/PathCreateIllustration";
-import WikilinkIllustration from "../components/Guidance/illustrations/WikilinkIllustration";
-import CompareIllustration from "../components/Guidance/illustrations/CompareIllustration";
+import type { Component } from "svelte";
+import PathCreateIllustration from "../components/Guidance/illustrations/PathCreateIllustration.svelte";
+import WikilinkIllustration from "../components/Guidance/illustrations/WikilinkIllustration.svelte";
+import CompareIllustration from "../components/Guidance/illustrations/CompareIllustration.svelte";
 // PathStepIntoIllustration is available for future step-into modals; the
 // current v1 uses it only via the PathRibbon coach card (no illustration).
 
@@ -40,7 +40,7 @@ export interface GuidanceDef {
   title: string;
   /** Body text. Supports two markdown-ish inlines: **bold** and *italic*. */
   body: string;
-  illustration?: ComponentType;
+  illustration?: Component;
   /** Shown after body, more muted. Optional examples or follow-ups. */
   aside?: string;
   primary?: GuidanceAction;

@@ -7,6 +7,32 @@ export const appearanceEN = {
   "settings.appearance.theme": "Theme",
   "settings.appearance.themeHint":
     "Auto follows your system light/dark preference.",
+  "settings.appearance.modeLabel": "Theme mode",
+  "settings.appearance.modeAuto": "Auto",
+  "settings.appearance.modeLight": "Light",
+  "settings.appearance.modeDark": "Dark",
+  "settings.appearance.lightLabel": "Light theme",
+  "settings.appearance.lightLabelAuto": "Light theme (when system is light)",
+  "settings.appearance.darkLabel": "Dark theme",
+  "settings.appearance.darkLabelAuto": "Dark theme (when system is dark)",
+  "settings.appearance.theme.vellum.name": "Vellum",
+  "settings.appearance.theme.vellum.desc":
+    "Cool bone and slate — the default.",
+  "settings.appearance.theme.linen.name": "Linen",
+  "settings.appearance.theme.linen.desc":
+    "Warm cream and olive — soft and domestic.",
+  "settings.appearance.theme.ashrose.name": "Ashrose",
+  "settings.appearance.theme.ashrose.desc":
+    "Rose and pink — gentle warmth.",
+  "settings.appearance.theme.workshop.name": "Workshop",
+  "settings.appearance.theme.workshop.desc":
+    "Deep ink and bronze — the default.",
+  "settings.appearance.theme.graphite.name": "Graphite",
+  "settings.appearance.theme.graphite.desc":
+    "Quiet neutral grays — restrained.",
+  "settings.appearance.theme.dracula.name": "Dracula",
+  "settings.appearance.theme.dracula.desc":
+    "Purple on navy — the cult classic.",
   "settings.appearance.language": "Language",
   "settings.appearance.languageHint":
     "The language Yarrow's interface is shown in. Notes themselves aren't translated.",
@@ -19,13 +45,13 @@ export const appearanceEN = {
   "settings.appearance.macFudge.none.label": "None",
   "settings.appearance.macFudge.none.sub": "0 px",
   "settings.appearance.macFudge.small.label": "Small",
-  "settings.appearance.macFudge.small.sub": "80 px",
+  "settings.appearance.macFudge.small.sub": "90 px",
   "settings.appearance.macFudge.medium.label": "Medium",
-  "settings.appearance.macFudge.medium.sub": "150 px · default",
+  "settings.appearance.macFudge.medium.sub": "100 px · default",
   "settings.appearance.macFudge.large.label": "Large",
-  "settings.appearance.macFudge.large.sub": "220 px",
+  "settings.appearance.macFudge.large.sub": "150 px",
   "settings.appearance.macFudge.xlarge.label": "X-Large",
-  "settings.appearance.macFudge.xlarge.sub": "300 px",
+  "settings.appearance.macFudge.xlarge.sub": "220 px",
 } as const;
 
 export type AppearanceKey = keyof typeof appearanceEN;
@@ -37,6 +63,34 @@ export const appearanceES: Record<AppearanceKey, string> = {
   "settings.appearance.theme": "Tema",
   "settings.appearance.themeHint":
     "Auto sigue la preferencia de claro/oscuro de tu sistema.",
+  "settings.appearance.modeLabel": "Modo de tema",
+  "settings.appearance.modeAuto": "Auto",
+  "settings.appearance.modeLight": "Claro",
+  "settings.appearance.modeDark": "Oscuro",
+  "settings.appearance.lightLabel": "Tema claro",
+  "settings.appearance.lightLabelAuto":
+    "Tema claro (cuando el sistema está en claro)",
+  "settings.appearance.darkLabel": "Tema oscuro",
+  "settings.appearance.darkLabelAuto":
+    "Tema oscuro (cuando el sistema está en oscuro)",
+  "settings.appearance.theme.vellum.name": "Vellum",
+  "settings.appearance.theme.vellum.desc":
+    "Hueso frío y pizarra — el predeterminado.",
+  "settings.appearance.theme.linen.name": "Linen",
+  "settings.appearance.theme.linen.desc":
+    "Crema cálida y olivo — suave y hogareño.",
+  "settings.appearance.theme.ashrose.name": "Ashrose",
+  "settings.appearance.theme.ashrose.desc":
+    "Rosa y rosado — calidez suave.",
+  "settings.appearance.theme.workshop.name": "Workshop",
+  "settings.appearance.theme.workshop.desc":
+    "Tinta profunda y bronce — el predeterminado.",
+  "settings.appearance.theme.graphite.name": "Graphite",
+  "settings.appearance.theme.graphite.desc":
+    "Grises neutros sobrios — discretos.",
+  "settings.appearance.theme.dracula.name": "Dracula",
+  "settings.appearance.theme.dracula.desc":
+    "Púrpura sobre azul marino — el clásico de culto.",
   "settings.appearance.language": "Idioma",
   "settings.appearance.languageHint":
     "El idioma en el que se muestra la interfaz de Yarrow. Las notas en sí no se traducen.",
@@ -49,13 +103,13 @@ export const appearanceES: Record<AppearanceKey, string> = {
   "settings.appearance.macFudge.none.label": "Ninguno",
   "settings.appearance.macFudge.none.sub": "0 px",
   "settings.appearance.macFudge.small.label": "Pequeño",
-  "settings.appearance.macFudge.small.sub": "80 px",
+  "settings.appearance.macFudge.small.sub": "90 px",
   "settings.appearance.macFudge.medium.label": "Mediano",
-  "settings.appearance.macFudge.medium.sub": "150 px · predeterminado",
+  "settings.appearance.macFudge.medium.sub": "100 px · predeterminado",
   "settings.appearance.macFudge.large.label": "Grande",
-  "settings.appearance.macFudge.large.sub": "220 px",
+  "settings.appearance.macFudge.large.sub": "150 px",
   "settings.appearance.macFudge.xlarge.label": "Extra grande",
-  "settings.appearance.macFudge.xlarge.sub": "300 px",
+  "settings.appearance.macFudge.xlarge.sub": "220 px",
 };
 
 export const appearanceSV: Record<AppearanceKey, string> = {
@@ -65,6 +119,34 @@ export const appearanceSV: Record<AppearanceKey, string> = {
   "settings.appearance.theme": "Tema",
   "settings.appearance.themeHint":
     "Auto följer ditt systems ljus/mörker-inställning.",
+  "settings.appearance.modeLabel": "Temaläge",
+  "settings.appearance.modeAuto": "Auto",
+  "settings.appearance.modeLight": "Ljust",
+  "settings.appearance.modeDark": "Mörkt",
+  "settings.appearance.lightLabel": "Ljust tema",
+  "settings.appearance.lightLabelAuto":
+    "Ljust tema (när systemet är ljust)",
+  "settings.appearance.darkLabel": "Mörkt tema",
+  "settings.appearance.darkLabelAuto":
+    "Mörkt tema (när systemet är mörkt)",
+  "settings.appearance.theme.vellum.name": "Vellum",
+  "settings.appearance.theme.vellum.desc":
+    "Sval ben och skiffer — standard.",
+  "settings.appearance.theme.linen.name": "Linen",
+  "settings.appearance.theme.linen.desc":
+    "Varm grädde och olivgrönt — mjukt och hemtrevligt.",
+  "settings.appearance.theme.ashrose.name": "Ashrose",
+  "settings.appearance.theme.ashrose.desc":
+    "Ros och rosa — mild värme.",
+  "settings.appearance.theme.workshop.name": "Workshop",
+  "settings.appearance.theme.workshop.desc":
+    "Djupt bläck och brons — standard.",
+  "settings.appearance.theme.graphite.name": "Graphite",
+  "settings.appearance.theme.graphite.desc":
+    "Lugna neutrala gråtoner — återhållsamt.",
+  "settings.appearance.theme.dracula.name": "Dracula",
+  "settings.appearance.theme.dracula.desc":
+    "Lila på marinblått — kultklassikern.",
   "settings.appearance.language": "Språk",
   "settings.appearance.languageHint":
     "Språket Yarrows gränssnitt visas på. Själva anteckningarna översätts inte.",
@@ -77,11 +159,11 @@ export const appearanceSV: Record<AppearanceKey, string> = {
   "settings.appearance.macFudge.none.label": "Ingen",
   "settings.appearance.macFudge.none.sub": "0 px",
   "settings.appearance.macFudge.small.label": "Liten",
-  "settings.appearance.macFudge.small.sub": "80 px",
+  "settings.appearance.macFudge.small.sub": "90 px",
   "settings.appearance.macFudge.medium.label": "Mellan",
-  "settings.appearance.macFudge.medium.sub": "150 px · standard",
+  "settings.appearance.macFudge.medium.sub": "100 px · standard",
   "settings.appearance.macFudge.large.label": "Stor",
-  "settings.appearance.macFudge.large.sub": "220 px",
+  "settings.appearance.macFudge.large.sub": "150 px",
   "settings.appearance.macFudge.xlarge.label": "Extra stor",
-  "settings.appearance.macFudge.xlarge.sub": "300 px",
+  "settings.appearance.macFudge.xlarge.sub": "220 px",
 };

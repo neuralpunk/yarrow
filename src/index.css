@@ -14,9 +14,125 @@
  * the rest of this file until the request resolved, making the visible
  * font-swap window longer (and "fuzzier" perceptually as the fallback
  * gives way to the webface). */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-bg: var(--bg);
+  --color-bg-soft: var(--bg-soft);
+  --color-s1: var(--s1);
+  --color-s2: var(--s2);
+  --color-s3: var(--s3);
+  --color-yel: var(--yel);
+  --color-yel2: var(--yel2);
+  --color-yelp: var(--yelp);
+  --color-yeld: var(--yeld);
+  --color-char: var(--char);
+  --color-ch2: var(--ch2);
+  --color-t2: var(--t2);
+  --color-t3: var(--t3);
+  --color-bd: var(--bd);
+  --color-bd2: var(--bd2);
+  --color-danger: var(--danger);
+  --color-accent2: var(--accent2);
+  --color-accent2-dim: var(--accent2-dim);
+  --color-on-yel: var(--on-yel);
+  --color-link: var(--link);
+
+  --font-serif: var(--ui-font-family), Newsreader, ui-serif, Georgia, serif;
+  --font-sans:
+    var(--ui-font-family), Inter Tight, Inter, ui-sans-serif, system-ui,
+    sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --font-editor:
+    var(--editor-font-family), Newsreader, ui-serif, Georgia, serif;
+
+  --text-2xs: 12px;
+  --text-2xs--line-height: 16px;
+  --text-xs: 13px;
+  --text-xs--line-height: 18px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-base: 17px;
+  --text-base--line-height: 28px;
+
+  --animate-fadeIn: fadeIn 200ms ease-out;
+  --animate-slideUp: slideUp 220ms ease-out;
+  --animate-forkSplit: forkSplit 900ms ease-out forwards;
+  --animate-pulse2: pulse2 1.6s ease-in-out infinite;
+  --animate-slideInRight: slideInRight 180ms ease-out;
+
+  @keyframes fadeIn {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes slideUp {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes forkSplit {
+    0% {
+      transform: scaleY(0);
+      opacity: 0;
+    }
+    50% {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+    100% {
+      transform: scaleY(1);
+      opacity: 0.4;
+    }
+  }
+  @keyframes pulse2 {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+  @keyframes slideInRight {
+    0% {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 /* ─────────────────────────────────────────────────────────────
    2.2.0 — Reduced motion (a11y, especially common on macOS)
@@ -67,7 +183,8 @@
    ───────────────────────────────────────────────────────────── */
 
 :root,
-html[data-theme="light"] {
+html[data-theme="light"],
+html[data-theme="linen"] {
   color-scheme: light;
 
   /* ── surfaces ──────────────────────────────────────────── */
@@ -96,8 +213,8 @@ html[data-theme="light"] {
   --char:      #1C1812;   /* primary — warm near-black */
   --ch2:       #2F2A20;   /* secondary headings */
   --t1:        #4A4337;   /* senior muted */
-  --t2:        #6A6154;   /* muted body */
-  --t3:        #978E7E;   /* tertiary — timestamps, labels */
+  --t2:        #6A6154;   /* muted body — 5.46:1 on bg, AA */
+  --t3:        #756B5A;   /* tertiary — timestamps, labels — 4.86:1 on bg, AA. Was #978E7E (2.86:1, fail). */
 
   /* ── lines ────────────────────────────────────────────── */
   --bd:        rgba(28, 22, 14, 0.09);
@@ -110,7 +227,7 @@ html[data-theme="light"] {
   --accent2:       #5B7A5E;   /* == --sage, aliased for back-compat */
   --accent2-dim:   #D9E0DA;
 
-  --on-yel:    #FFFFFF;       /* white text on gold — 4.55:1, WCAG AA */
+  --on-yel:    #1C1812;       /* char on gold — 5.13:1 on yel, AA. Was #FFFFFF (3.4:1, fail). Mirrors the dark theme's "ink on accent" choice and reads as antique-label rather than highlighter. */
   --link:      #6E4D1A;       /* == --yeld */
 
   /* ── shadows ──────────────────────────────────────────── */
@@ -136,7 +253,8 @@ html[data-theme="light"] {
 }
 
 html.dark,
-html[data-theme="dark"] {
+html[data-theme="dark"],
+html[data-theme="graphite"] {
   color-scheme: dark;
 
   /* ── surfaces (revised 2.1 — cool charcoal, not warm graphite) ─
@@ -171,7 +289,7 @@ html[data-theme="dark"] {
   --ch2:       #CFD1CA;   /* secondary headings */
   --t1:        #A8AAA4;   /* senior muted */
   --t2:        #878985;   /* muted body */
-  --t3:        #5E6060;   /* tertiary — timestamps, labels */
+  --t3:        #898B8A;   /* tertiary — timestamps, labels — 5.18:1 on bg, AA. Was #5E6060 (2.77:1, fail). */
 
   /* ── lines ────────────────────────────────────────────── */
   --bd:        rgba(255, 255, 255, 0.07);
@@ -203,6 +321,209 @@ html[data-theme="dark"] {
 
   /* ── home-node ring ──────────────────────────────────── */
   --home-ring: var(--gold);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   VELLUM (3.1 — new default light). "A drafting table by the window —
+   cool morning light, warm pencil shadows." Cool bone canvas with
+   slate-blue primary accent and warm tan-leather secondary. Designed
+   by Priya Vasanth per the theme system spec. Maps the doc's
+   semantic tokens (--bg-base, --text-primary, --accent-primary…)
+   onto Yarrow's existing token names so all components pick it up
+   without a codebase-wide rename.
+   ───────────────────────────────────────────────────────────── */
+html[data-theme="vellum"] {
+  color-scheme: light;
+
+  /* ── surfaces ──────────────────────────────────────────── */
+  --bg:        #EFEDE7;   /* bg-base */
+  --bg-soft:   #FAFAF6;   /* bg-elevated — modals, popovers */
+  --bg-bone:   #F4F2EC;   /* bg-surface — quieter reading band */
+  --s1:        #F4F2EC;   /* sidebar — bg-surface */
+  --s2:        #E5E2D9;   /* raised — bg-hover */
+  --s3:        #DCDDD3;   /* hover on raised — bg-selection */
+  --ink-wash:  rgba(44, 51, 64, 0.04);
+
+  /* ── slate-blue primary accent ────────────────────────── */
+  --yel:       #45627A;   /* accent-primary slate */
+  --yel2:      #6B8AA5;   /* accent-cool — hover */
+  --yelp:      #DCE3EB;   /* pale slate — active-row tint */
+  --yeld:      #2C3340;   /* dark slate — text on yelp */
+
+  /* ── supporting accents ───────────────────────────────── */
+  --gold:      #B89968;   /* accent-warm tan leather */
+  --goldp:     #F0EAD9;   /* pale tan bg */
+  --plum:      #8C5C7A;   /* mauve — section dividers */
+  --plump:     #EFE2EA;   /* pale mauve */
+  --sage:      #4A7350;   /* semantic-add */
+  --rose:      #A04848;   /* semantic-cut */
+  --stone:     #8C95A1;   /* came-from edges */
+
+  /* ── type ─────────────────────────────────────────────── */
+  --char:      #2C3340;   /* text-primary */
+  --ch2:       #3E4554;   /* secondary headings */
+  --t1:        #4A5363;   /* senior muted */
+  --t2:        #5A6473;   /* text-secondary */
+  --t3:        #8C95A1;   /* text-tertiary */
+
+  /* ── lines ────────────────────────────────────────────── */
+  --bd:        rgba(44, 51, 64, 0.08);
+  --bd2:       rgba(44, 51, 64, 0.15);
+  --bd3:       rgba(44, 51, 64, 0.28);
+  --rule:      rgba(44, 51, 64, 0.14);
+
+  /* ── semantic ─────────────────────────────────────────── */
+  --danger:    #A04848;
+  --accent2:       #B89968;   /* tan leather — secondary accent */
+  --accent2-dim:   #E5DDC9;
+
+  --on-yel:    #FAFAF6;       /* text-inverse — light text on slate fill */
+  --link:      #45627A;
+
+  /* ── shadows — warm-tinted, multi-layer per spec ──────── */
+  --shadow-lift: 0 1px 2px rgba(44, 51, 64, 0.06),
+                 0 8px 24px -12px rgba(44, 51, 64, 0.12),
+                 0 28px 60px -36px rgba(44, 51, 64, 0.18);
+  --shadow-hero: 0 4px 8px rgba(44, 51, 64, 0.08),
+                 0 16px 32px -14px rgba(44, 51, 64, 0.18),
+                 0 48px 100px -50px rgba(44, 51, 64, 0.24);
+
+  /* ── typed-connection edges ───────────────────────────── */
+  --link-supports:      var(--sage);
+  --link-challenges:    #A04848;
+  --link-came-from:     var(--stone);
+  --link-open-question: var(--plum);
+
+  /* ── home-node ring ──────────────────────────────────── */
+  --home-ring: var(--yel);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   WORKSHOP (3.1 — new default dark). "A long evening at the desk
+   where the real work gets made." Deep ink-blue ground with bronze
+   primary accent. Designed by Mara Lindqvist per the theme system
+   spec. Per Section 3.3: text is paper-warm cream, never clinical
+   white; shadows are pure-black-with-alpha (warm-tinted shadows on
+   dark bg read as muddy).
+   ───────────────────────────────────────────────────────────── */
+html[data-theme="workshop"] {
+  color-scheme: dark;
+
+  /* ── surfaces ──────────────────────────────────────────── */
+  --bg:        #14202E;   /* deep ink blue — bg-base */
+  --bg-soft:   #243449;   /* bg-elevated — modals */
+  --bg-bone:   #1B2A3D;   /* quieter reading band */
+  --s1:        #1B2A3D;   /* sidebar — bg-surface */
+  --s2:        #243449;   /* raised — bg-elevated */
+  --s3:        #2C3D54;   /* hover — bg-hover */
+  --ink-wash:  rgba(232, 221, 196, 0.04);
+
+  /* ── bronze primary accent ────────────────────────────── */
+  --yel:       #C18F3E;   /* accent-primary bronze */
+  --yel2:      #D4A55A;   /* accent-warm — hover */
+  --yelp:      #34516B;   /* bg-selection — slate undertone */
+  --yeld:      #D4A55A;   /* text on yelp */
+
+  /* ── supporting accents ───────────────────────────────── */
+  --gold:      #C18F3E;   /* == yel for home-node ring continuity */
+  --goldp:     #2A1F0F;   /* dark bronze pale bg */
+  --plum:      #9C7BA7;   /* plum — workshop scenario palette */
+  --plump:     #2E2435;   /* pale plum bg */
+  --sage:      #7FA77A;   /* semantic-add */
+  --rose:      #B85C57;   /* semantic-cut */
+  --stone:     #A8A089;   /* warm gray */
+
+  /* ── type — paper-warm, never clinical white (Section 3.3) ─ */
+  --char:      #E8DDC4;   /* text-primary paper-warm cream */
+  --ch2:       #CFC5B0;   /* secondary headings */
+  --t1:        #B5A98C;   /* senior muted */
+  --t2:        #B5A98C;   /* text-secondary */
+  --t3:        #7E7560;   /* text-tertiary */
+
+  /* ── lines ────────────────────────────────────────────── */
+  --bd:        rgba(232, 221, 196, 0.08);
+  --bd2:       rgba(232, 221, 196, 0.15);
+  --bd3:       rgba(232, 221, 196, 0.28);
+  --rule:      rgba(232, 221, 196, 0.12);
+
+  /* ── semantic ─────────────────────────────────────────── */
+  --danger:    #B85C57;
+  --accent2:       #5B7E9C;   /* dusk blue — secondary accent */
+  --accent2-dim:   #1F2F40;
+
+  --on-yel:    #14202E;       /* dark ink on bronze button */
+  --link:      #D4A55A;
+
+  /* ── shadows — pure-black, no warm tint per Section 3.3 ── */
+  --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.42),
+                 0 14px 40px -18px rgba(0, 0, 0, 0.55),
+                 0 40px 100px -50px rgba(0, 0, 0, 0.5);
+  --shadow-hero: 0 4px 10px rgba(0, 0, 0, 0.5),
+                 0 24px 64px -22px rgba(0, 0, 0, 0.62),
+                 0 70px 160px -64px rgba(0, 0, 0, 0.55);
+
+  /* ── typed-connection edges ───────────────────────────── */
+  --link-supports:      var(--sage);
+  --link-challenges:    var(--rose);
+  --link-came-from:     var(--stone);
+  --link-open-question: var(--gold);
+
+  /* ── home-node ring ──────────────────────────────────── */
+  --home-ring: var(--yel);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   OKLCH progressive enhancement (per spec §2.2 / §3.2).
+
+   Modern macOS and Linux laptops with P3 displays render OKLCH
+   meaningfully differently from sRGB — the palette goes *deeper*
+   on wide-gamut hardware rather than *brighter*. The @supports
+   block makes the override conditional, so older WebKit/WebKitGTK
+   builds stay on the sRGB hex above. Only the role-mapped tokens
+   that drive surfaces / text / accents switch to OKLCH; the
+   alpha-based borders and shadows stay as written, since OKLCH
+   carries no benefit there.
+   ───────────────────────────────────────────────────────────── */
+@supports (color: oklch(0% 0 0)) {
+  html[data-theme="vellum"] {
+    --bg:      oklch(0.928 0.008 85);
+    --bg-bone: oklch(0.945 0.008 85);
+    --s1:      oklch(0.945 0.008 85);
+    --bg-soft: oklch(0.978 0.005 85);
+    --s2:      oklch(0.886 0.010 85);
+    --s3:      oklch(0.860 0.012 95);
+
+    --char: oklch(0.295 0.022 255);
+    --ch2:  oklch(0.355 0.022 255);
+    --t1:   oklch(0.420 0.020 250);
+    --t2:   oklch(0.485 0.020 248);
+    --t3:   oklch(0.640 0.018 245);
+
+    --yel:  oklch(0.475 0.055 245);
+    --yel2: oklch(0.585 0.052 245);
+    --gold: oklch(0.660 0.060 75);
+    --accent2: oklch(0.660 0.060 75);
+  }
+
+  html[data-theme="workshop"] {
+    --bg:      oklch(0.198 0.040 245);
+    --bg-bone: oklch(0.225 0.043 245);
+    --s1:      oklch(0.245 0.045 245);
+    --bg-soft: oklch(0.295 0.048 245);
+    --s2:      oklch(0.345 0.050 245);
+    --s3:      oklch(0.430 0.062 245);
+
+    --char: oklch(0.892 0.045 85);
+    --ch2:  oklch(0.830 0.045 85);
+    --t1:   oklch(0.780 0.045 85);
+    --t2:   oklch(0.728 0.045 85);
+    --t3:   oklch(0.530 0.040 85);
+
+    --yel:  oklch(0.660 0.115 75);
+    --yel2: oklch(0.730 0.115 78);
+    --gold: oklch(0.730 0.115 78);
+    --accent2: oklch(0.730 0.115 78);
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -255,7 +576,7 @@ html[data-theme="ashrose"] {
   --ch2:       #2D1F25;   /* secondary headings */
   --t1:        #3F2E33;   /* senior muted */
   --t2:        #564047;   /* muted body */
-  --t3:        #7B6A6F;   /* tertiary */
+  --t3:        #6F5E63;   /* tertiary — 5.08:1 on rose bg, AA. Was #7B6A6F (4.24:1, marginal fail). */
 
   /* ── lines ────────────────────────────────────────────── */
   --bd:        rgba(35, 24, 30, 0.10);
@@ -290,6 +611,87 @@ html[data-theme="ashrose"] {
 }
 
 /* ─────────────────────────────────────────────────────────────
+   Dracula (3.0). The canonical Dracula palette from
+   draculatheme.com — purple primary on a near-black canvas, with
+   pink / cyan / green / orange / yellow / red as supporting accents.
+   Declared *after* `html.dark` so it wins for selectors of equal
+   specificity (the `.dark` class is also applied to <html> on this
+   theme so dark-only overrides — special tag colours, etc. — light
+   up correctly). Tokens map back to the same Yarrow vocabulary so
+   no component needs to know which theme is active.
+   ───────────────────────────────────────────────────────────── */
+html[data-theme="dracula"] {
+  color-scheme: dark;
+
+  /* ── surfaces ──────────────────────────────────────────── */
+  --bg:        #282A36;   /* Dracula background — primary canvas */
+  --bg-soft:   #1E1F29;   /* sidebar wash — slightly darker */
+  --bg-bone:   #21222C;   /* quieter reading band */
+  --s1:        #21222C;   /* sidebar — Dracula "background lighter" */
+  --s2:        #44475A;   /* current line / raised */
+  --s3:        #565973;   /* hover on raised */
+  --ink-wash:  rgba(248, 248, 242, 0.04);
+
+  /* ── purple (primary accent) ────────────────────────────
+     Dracula's signature purple. Pale wash + same-purple text
+     so the wikilink / active-row pill reads on the canvas. */
+  --yel:       #BD93F9;   /* active paths, pills, icons */
+  --yel2:      #D6B4FB;   /* hover — lifted purple */
+  --yelp:      rgba(189, 147, 249, 0.18); /* pale-accent — active-row bg */
+  --yeld:      #BD93F9;   /* dark-accent — text on yelp wash */
+
+  /* ── supporting accents (Dracula vocabulary) ──────────── */
+  --plum:      #FF79C6;   /* pink — section dividers, open-question dashes */
+  --plump:     rgba(255, 121, 198, 0.18);
+  --sage:      #50FA7B;   /* green — "supports" edges */
+  --rose:      #FF5555;   /* red — "challenges" edges / danger-adjacent */
+  --stone:     #6272A4;   /* comment-blue — "came-from" edges */
+
+  /* ── yellow (kept for journal-kit highlights) ─────────── */
+  --gold:      #F1FA8C;
+  --goldp:     rgba(241, 250, 140, 0.18);
+
+  /* ── type ─────────────────────────────────────────────── */
+  --char:      #F8F8F2;   /* Dracula foreground */
+  --ch2:       #F8F8F2;
+  --t1:        #D8D8D2;
+  --t2:        #B5B5AB;
+  --t3:        #6272A4;   /* Dracula comment — feels right for tertiary */
+
+  /* ── lines ────────────────────────────────────────────── */
+  --bd:        rgba(248, 248, 242, 0.07);
+  --bd2:       rgba(248, 248, 242, 0.14);
+  --bd3:       rgba(248, 248, 242, 0.22);
+  --rule:      rgba(248, 248, 242, 0.10);
+
+  /* ── semantic ─────────────────────────────────────────── */
+  --danger:    #FF5555;
+  --accent2:       #8BE9FD;   /* cyan */
+  --accent2-dim:   rgba(139, 233, 253, 0.18);
+
+  --on-yel:    #282A36;       /* canvas-dark text on lavender — AAA */
+  --link:      #8BE9FD;       /* cyan reads as a link in Dracula */
+
+  /* ── shadows — slightly deeper than the default dark to
+        lean into the Dracula colourway feel ──────────── */
+  --shadow-lift: 0 1px 2px rgba(0,0,0,0.20),
+                 0 8px 24px -12px rgba(0,0,0,0.42),
+                 0 28px 60px -36px rgba(0,0,0,0.52);
+  --shadow-hero: 0 2px 4px rgba(0,0,0,0.24),
+                 0 16px 44px -18px rgba(0,0,0,0.50),
+                 0 48px 120px -54px rgba(0,0,0,0.62);
+
+  /* ── typed-connection edges ───────────────────────────── */
+  --link-supports:      var(--sage);
+  --link-challenges:    var(--rose);
+  --link-came-from:     var(--stone);
+  --link-open-question: var(--plum);
+
+  /* ── home-node ring ──────────────────────────────────── */
+  --home-ring: var(--gold);
+}
+
+/* ─────────────────────────────────────────────────────────────
    Type families (2.1 revised). Declared once in :root — fonts
    don't vary by theme. The --ui-font-family and --editor-font-family
    overrides still win when set by the Settings → Appearance pickers;
@@ -301,16 +703,475 @@ html[data-theme="ashrose"] {
    reads --serif.
    ───────────────────────────────────────────────────────────── */
 :root {
-  --display: 'Fraunces', 'Source Serif 4', 'Newsreader', ui-serif, Georgia, serif;
-  --serif:   'Newsreader', 'Source Serif 4', 'Lora', ui-serif, Georgia, 'Times New Roman', serif;
-  --sans:    'Inter Tight', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  /* 3.1: every chrome-facing font token now prepends --ui-font-family
+     so the user's Settings → Appearance → Interface font choice
+     reaches the entire UI — sidebar, toolbar, status bar, modals,
+     buttons, tooltips. The token-specific defaults (Fraunces /
+     Newsreader / Inter Tight) follow as fallbacks for the case where
+     no explicit pick is made or the var is unset.
+     --mono is deliberately NOT prepended; code blocks, keyboard
+     chips, and version pills stay JetBrains Mono regardless. The
+     editor reads its own --editor-font-family chain so it stays
+     independent of the chrome font, exactly as the picker promises. */
+  --display: var(--ui-font-family), 'Fraunces', 'Source Serif 4', 'Newsreader', ui-serif, Georgia, serif;
+  --serif:   var(--ui-font-family), 'Newsreader', 'Source Serif 4', 'Lora', ui-serif, Georgia, 'Times New Roman', serif;
+  --sans:    var(--ui-font-family), 'Inter Tight', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
   --mono:    'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* GNOME 46+ ships Adwaita Sans as the platform's editorial sans —
+   honouring it in the chrome fallback chain (before the generic
+   `system-ui` family) is a small but visible sign of platform
+   respect that GNOME users notice. The webfont loader still
+   provides Inter Tight as the primary, but if the font hasn't
+   landed yet (or the user has disabled webfonts) the fallback
+   reads in Adwaita Sans rather than the generic sans-serif default
+   that webkit2gtk would otherwise pick. KDE / XFCE / others fall
+   through to the existing chain unchanged. */
+html[data-de="gnome"] {
+  --sans: var(--ui-font-family), 'Inter Tight', 'Inter', 'Adwaita Sans', ui-sans-serif, system-ui, -apple-system, 'Cantarell', 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Design system tokens — Phase 1 foundation (3.0 visual polish)
+
+   These tokens layer on top of the existing palette tokens
+   (--bg, --char, --yel, …) rather than replacing them — every
+   existing component continues to render. New code should reach
+   for these tokens first; older code can adopt them in passes
+   as it's touched.
+
+   • Spacing scale — 4-pt grid (--space-1 = 4px through --space-24 = 96px).
+     All paddings, margins, gaps should reference these.
+   • Radius scale — five rungs from chip (4px) to pill (9999px).
+   • Easing catalog — three curves used consistently:
+       --ease-standard   most UI transitions (Apple-native)
+       --ease-out        elements entering the viewport
+       --ease-in         elements leaving the viewport
+   • Duration scale — five rungs from 75ms to 480ms.
+   • Typography feature tokens — `--feat-prose` for body
+     (old-style figures, ligatures), `--feat-tabular` for
+     numeric data (tabular figures), `--feat-mono` for code
+     (slashed zero, ligatures).
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* ── Spacing scale (4-pt grid) ───────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* ── Radius scale ────────────────────────────────────────── */
+  --radius-sm:   4px;     /* tags, chips, small buttons */
+  --radius-md:   8px;     /* cards, form fields, primary buttons */
+  --radius-lg:   12px;    /* modals, large surfaces */
+  --radius-xl:   16px;    /* hero surfaces (Quick Hand modal) */
+  --radius-full: 9999px;  /* pills, fully-rounded badges */
+
+  /* ── Easing curves ────────────────────────────────────────
+     --ease-standard mirrors Apple's native curve used throughout
+     iOS/macOS — defaulting to it gives motion an unforced feel
+     that custom curves struggle to match. */
+  --ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:       cubic-bezier(0.7, 0, 0.84, 0);
+
+  /* ── Duration scale ──────────────────────────────────────── */
+  --duration-instant: 75ms;   /* hover state changes, color shifts */
+  --duration-fast:    150ms;  /* button presses, small UI changes */
+  --duration-normal:  240ms;  /* panel slides, view transitions */
+  --duration-slow:    320ms;  /* modal enter/exit */
+  --duration-slower:  480ms;  /* major layout shifts, page transitions */
+
+  /* ── Typography feature tokens ────────────────────────────
+     Three numeral / OpenType contexts in Yarrow:
+       1. Prose      — old-style figures (varying heights,
+          match lowercase x-height) + standard ligatures.
+       2. Tabular    — equal-width figures (timestamps, word
+          counts, version pills) + lining figures.
+       3. Mono       — slashed zero + tabular + ligatures.
+     Apply via `font-feature-settings: var(--feat-prose);` etc. */
+  --feat-prose:   "kern", "liga", "calt", "onum";
+  --feat-tabular: "kern", "tnum", "lnum";
+  --feat-mono:    "kern", "tnum", "zero", "calt";
+  --feat-display: "kern", "liga", "ss01", "lnum";
+
+  /* ── Letter-spacing scale ────────────────────────────────
+     At display sizes, letterforms read tighter; at small
+     all-caps sizes, they need extra air to avoid collision. */
+  --tracking-display-large:  -0.02em;  /* ≥ 32px display */
+  --tracking-display-medium: -0.01em;  /* 22-30px headings */
+  --tracking-body:            0;
+  --tracking-label:           0.01em;
+  --tracking-small-caps:      0.08em;  /* ≤ 12px uppercase */
+
+  /* ── OKLCH palette (perceptually uniform; wider gamut than sRGB)
+     These tokens sit alongside the existing hex palette so a
+     component can opt in to OKLCH precision while the rest of
+     the app continues to render via the legacy tokens. The
+     hue scaffolding mirrors the active light theme; dark theme
+     overrides ride on `html.dark` below. */
+  --cream-50:  oklch(0.985 0.012 88);
+  --cream-100: oklch(0.97  0.014 86);
+  --cream-200: oklch(0.94  0.018 84);
+  --cream-300: oklch(0.90  0.022 82);
+
+  --olive-300: oklch(0.65  0.060 95);
+  --olive-500: oklch(0.45  0.080 95);
+  --olive-700: oklch(0.30  0.090 95);
+  --olive-900: oklch(0.18  0.060 95);
+
+  --accent-300: oklch(0.88  0.130 92);
+  --accent-500: oklch(0.78  0.180 92);
+  --accent-700: oklch(0.55  0.160 88);
+
+  --semantic-destructive: oklch(0.55 0.180 28);
+  --semantic-success:     oklch(0.65 0.140 145);
+  --semantic-info:        oklch(0.65 0.130 240);
+
+  /* ── Tinted borders (warm, hue-related to the cream surface;
+     never gray, which on cream reads as dirt). */
+  --border-subtle:  oklch(0.90 0.015 84 / 0.6);
+  --border-default: oklch(0.85 0.020 84 / 0.8);
+  --border-strong:  oklch(0.70 0.030 84);
+  --border-focus:   var(--accent-700);
+
+  /* ── Tinted shadow stack — three layered drops per rung,
+     warm-tinted so they ground rather than dirty the palette. */
+  --shadow-sm:
+    0 1px 2px oklch(0.30 0.060 85 / 0.06),
+    0 1px 1px oklch(0.30 0.060 85 / 0.04);
+  --shadow-md:
+    0 4px 8px oklch(0.30 0.060 85 / 0.08),
+    0 2px 4px oklch(0.30 0.060 85 / 0.06),
+    0 1px 2px oklch(0.30 0.060 85 / 0.04);
+  --shadow-lg:
+    0 16px 32px oklch(0.30 0.060 85 / 0.12),
+    0 8px 16px oklch(0.30 0.060 85 / 0.08),
+    0 4px 8px oklch(0.30 0.060 85 / 0.06),
+    0 2px 4px oklch(0.30 0.060 85 / 0.04);
+}
+
+/* Dark theme overrides for the OKLCH palette and tinted shadows
+   — same hue family at low lightness so palette identity is
+   preserved rather than inverted. */
+html.dark,
+html[data-theme="dark"],
+html[data-theme="graphite"] {
+  --cream-50:  oklch(0.18 0.020 85);
+  --cream-100: oklch(0.22 0.022 85);
+  --cream-200: oklch(0.27 0.022 85);
+  --cream-300: oklch(0.32 0.022 85);
+
+  --olive-300: oklch(0.62 0.040 88);
+  --olive-500: oklch(0.78 0.040 88);
+  --olive-700: oklch(0.92 0.020 88);
+  --olive-900: oklch(0.98 0.010 88);
+
+  --accent-500: oklch(0.72 0.150 92);
+  --accent-700: oklch(0.82 0.140 92);
+
+  /* Borders shift to white-alpha at lower opacities — same
+     "tinted, not gray" principle, just inverted for dark. */
+  --border-subtle:  oklch(0.92 0.020 88 / 0.07);
+  --border-default: oklch(0.92 0.020 88 / 0.14);
+  --border-strong:  oklch(0.92 0.020 88 / 0.28);
+
+  /* Dark shadows get deeper and pure-black-leaning — on a near-
+     black canvas, tinted shadows just disappear. */
+  --shadow-sm:
+    0 1px 2px rgba(0, 0, 0, 0.30),
+    0 1px 1px rgba(0, 0, 0, 0.20);
+  --shadow-md:
+    0 4px 10px rgba(0, 0, 0, 0.42),
+    0 2px 4px rgba(0, 0, 0, 0.30),
+    0 1px 2px rgba(0, 0, 0, 0.20);
+  --shadow-lg:
+    0 24px 48px rgba(0, 0, 0, 0.52),
+    0 12px 24px rgba(0, 0, 0, 0.42),
+    0 4px 10px rgba(0, 0, 0, 0.30),
+    0 2px 4px rgba(0, 0, 0, 0.20);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   macOS sidebar vibrancy (3.0 visual polish)
+
+   When the Rust setup callback successfully attaches the
+   NSVisualEffectView (Sidebar material) to the main window, it
+   sets `data-mac-vibrancy="true"` on <html> via `eval`. CSS
+   then drops the sidebar's flat background to a light tint so
+   the native vibrancy material shows through — picking up the
+   wallpaper colour and providing the translucent depth that
+   distinguishes Mac-native apps from generic webview ports.
+
+   Belt-and-suspenders fallback: if the Rust path fails (older
+   macOS, sandbox quirk, future Tauri regression) the attribute
+   is never set, the sidebar keeps its existing opaque bg-s1, and
+   the app still looks correct — just without vibrancy.
+
+   The Reduce Transparency accessibility setting strips the
+   transparency on top of platform vibrancy, restoring the
+   opaque sidebar. WCAG-driven; users who set this preference
+   need to read against a stable background.
+   ───────────────────────────────────────────────────────────── */
+html[data-mac-vibrancy="true"] .yarrow-vibrancy-pane {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+html[data-mac-vibrancy="true"].dark .yarrow-vibrancy-pane,
+html[data-mac-vibrancy="true"][data-theme="dark"] .yarrow-vibrancy-pane,
+html[data-mac-vibrancy="true"][data-theme="graphite"] .yarrow-vibrancy-pane,
+html[data-mac-vibrancy="true"][data-theme="workshop"] .yarrow-vibrancy-pane,
+html[data-mac-vibrancy="true"][data-theme="dracula"] .yarrow-vibrancy-pane {
+  background-color: rgba(0, 0, 0, 0.10);
+}
+html.a11y-reduce-transparency[data-mac-vibrancy="true"] .yarrow-vibrancy-pane {
+  background-color: var(--s1) !important;
 }
 
 /* Universal selection color: accent-pale background, accent-deep text.
    Applies to every surface so the selection feels like a consistent
    piece of "this app," not a different OS style on each view. */
 ::selection { background: var(--yelp); color: var(--yeld); }
+
+/* ─────────────────────────────────────────────────────────────
+   Frontispiece (3.0 intro page)
+
+   The intro is a self-contained surface — the rest of the app's
+   palette doesn't apply, so we scope all of its tokens to a single
+   `.yarrow-intro` parent. Dark variants ride the existing `.dark`
+   class set by theme.ts. Token names are prefixed `--i-*` to keep
+   them visibly distinct from the app's tokens; nothing outside the
+   intro should ever read these.
+   ───────────────────────────────────────────────────────────── */
+/* 3.1 — the Frontispiece (intro page + new-workspace wizard) now
+   honours the user's saved theme. Pre-3.1 it was locked to the
+   cream/gold "frontispiece" palette regardless; that left a
+   Workshop / Vellum user staring at a brown-and-amber wordmark on
+   their first paint of every launch, which read as a bug. The
+   `--i-*` tokens below are now thin aliases over the active theme's
+   real tokens (--bg / --char / --yel / etc.), so the intro picks
+   up whichever palette the theme store last applied. */
+.yarrow-intro {
+  --i-paper:        var(--bg);
+  --i-ink:          var(--char);
+  --i-ink-2:        var(--ch2);
+  --i-ink-on-btn:   var(--on-yel);
+  --i-char:         var(--t1, var(--ch2));
+  --i-mute:         var(--t2);
+  --i-rule:         var(--bd);
+  --i-rule-strong:  var(--bd2);
+  --i-accent:       var(--yel);
+  --i-accent-soft:  var(--yel2);
+  --i-key-bg:       var(--s2);
+  --i-row-selected: var(--yelp);
+}
+
+/* Page-level reset. The body already sets --ui-font-family for
+   chrome; we don't touch that — every text style on the intro
+   declares its own font-family explicitly so picker changes
+   elsewhere can't leak in. */
+.yarrow-intro {
+  background: var(--i-paper);
+  color: var(--i-ink);
+}
+
+/* Wordmark — Oranienbaum, with Fraunces as a pre-load fallback so
+   the page never flashes Newsreader when the webfont is still in
+   transit. The `--i-mark` size is set inline by the component so
+   the responsive ladder (§9 of the spec) doesn't need a CSS-side
+   media query stack. */
+.yarrow-intro-mark {
+  font-family: 'Oranienbaum', 'Fraunces', 'Newsreader', ui-serif, Georgia, serif;
+  letter-spacing: -0.012em;
+  line-height: 1;
+  color: var(--i-ink);
+}
+
+/* Dedication italic — uses the same family as the wordmark, in
+   italic. Oranienbaum has no italic cut, so we synthesise via
+   `font-style: italic` and the browser obliques the upright. The
+   line wraps to ~22ch (set inline). */
+.yarrow-intro-dedication {
+  font-family: 'Oranienbaum', 'Fraunces', 'Newsreader', ui-serif, Georgia, serif;
+  font-style: italic;
+  color: var(--i-char);
+  line-height: 1.35;
+}
+
+/* Recent-list workspace name — uses Inter Tight (the chrome sans)
+   instead of the display Oranienbaum so the list scans cleanly at
+   small sizes. The display serif is reserved for the wordmark + the
+   dedication line above it; once a returning user is reading their
+   list of workspaces, legibility wins over editorial flourish. */
+.yarrow-intro-name {
+  font-family: 'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--i-ink);
+  line-height: 1.2;
+}
+
+/* Buttons + secondary actions + timestamps + recent-list metadata.
+   Inter Tight is the primary sans for chrome — clean, neutral, and
+   already loaded by the rest of the app. Figtree is kept as a fallback
+   only because some legacy preview environments may still cache it. */
+.yarrow-intro-figtree {
+  font-family: 'Inter Tight', 'Inter', 'Figtree', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Eyebrows / paths / version pill / kbd labels. */
+.yarrow-intro-mono {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* Wizard inputs — explicit affordance that the field is editable.
+   The default value (e.g. "My notebook") could otherwise read as
+   static caption text, since the cream paper bg has so little
+   contrast with the rest of the modal. A border + subtle hover lift
+   + clear focus ring make "type here" unambiguous. */
+.yarrow-intro-input {
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.yarrow-intro-input:hover {
+  border-color: var(--i-accent-soft) !important;
+}
+.yarrow-intro-input:focus,
+.yarrow-intro-input:focus-visible {
+  border-color: var(--i-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--i-accent) 20%, transparent);
+}
+.yarrow-intro-input::placeholder {
+  color: var(--i-mute);
+  opacity: 0.7;
+  font-style: italic;
+}
+
+/* Welcome stats row + Continue line (3.0). Three quiet figures
+   below the dedication, then a one-tap return path to the most
+   recently modified note. The whole block sits between the
+   tagline and the action buttons inside the left intro column.
+   `tnum` on the figures is non-negotiable — without it "128" and
+   "14,290" sit next to each other with subtly inconsistent
+   character widths and the row reads as wrong without the user
+   being able to articulate why. */
+.welcome-stats {
+  display: flex;
+  gap: 36px;
+  align-items: flex-start;
+  margin: 0 0 24px;
+}
+.welcome-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.welcome-stat-figure {
+  font-family: 'Oranienbaum', 'Newsreader', 'Fraunces', ui-serif, Georgia, serif;
+  font-size: 28px;
+  font-weight: 400;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--i-ink);
+  margin-bottom: 6px;
+}
+.welcome-stat-label {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--i-mute);
+  line-height: 1.3;
+  max-width: 110px;
+}
+
+.welcome-continue {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 440px;
+  padding: 12px 4px;
+  border: none;
+  border-top: 1px solid var(--i-rule);
+  border-bottom: 1px solid var(--i-rule);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  margin: 0 0 8px;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.welcome-continue:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--i-accent) 6%, transparent);
+  border-top-color: var(--i-accent-soft);
+  border-bottom-color: var(--i-accent-soft);
+}
+.welcome-continue:focus-visible {
+  outline: 2px solid var(--i-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.welcome-continue:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.welcome-continue-arrow {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-size: 14px;
+  color: var(--i-accent);
+  flex-shrink: 0;
+}
+.welcome-continue-verb {
+  font-family: 'Oranienbaum', 'Newsreader', 'Fraunces', ui-serif, Georgia, serif;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--i-mute);
+  flex-shrink: 0;
+}
+.welcome-continue-name {
+  font-family: 'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--i-ink);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.005em;
+}
+.welcome-continue-time {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: 0.02em;
+  color: var(--i-mute);
+  flex-shrink: 0;
+}
+
+/* Stats first to disappear when the column gets cramped, Continue
+   second. Below 640px the screen falls back to its pre-3.0 minimal
+   state (tagline → action buttons). */
+@media (max-width: 880px) {
+  .welcome-stats {
+    display: none;
+  }
+}
+@media (max-width: 640px) {
+  .welcome-continue {
+    display: none;
+  }
+}
 
 /* Paper & Warmth (2.1, scoped). The texture is a property of the
    *writing canvas* — not of the whole app. Settings, modals, the
@@ -468,6 +1329,137 @@ html {
   font-optical-sizing: auto;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Linux / webkit2gtk text-rendering tuning.
+
+   The macOS pipeline uses CoreText with `-webkit-font-smoothing:
+   antialiased`, which yields the thin-but-crisp look most web fonts
+   are designed against. Linux/webkit2gtk uses FreeType with
+   fontconfig — a completely different pipeline that ignores the
+   webkit smoothing knob entirely and (on most distros) renders with
+   subpixel hinting that fights the thinned-stem look the rest of
+   the UI is calibrated for.
+
+   Net effect on Linux without these tweaks: thin serif strokes
+   shimmer, sans body looks anaemic, and dark-mode text has visible
+   colour fringes. The rules below — applied only when
+   `data-platform="linux"` — restore subpixel-friendly defaults and
+   bump the body weight half a step so glyphs hold up against
+   FreeType's thinner rendering.
+   ───────────────────────────────────────────────────────────── */
+html[data-platform="linux"] {
+  /* Drop the macOS-flavoured smoothing override. webkit2gtk respects
+     the system fontconfig stack — let the user's distro defaults
+     drive instead of forcing a pipeline they aren't tuned for. */
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  /* `geometricPrecision` keeps glyph metrics consistent at small
+     pixel sizes; `optimizeLegibility` (the macOS default) over-applies
+     kerning under FreeType and produces uneven spacing. */
+  text-rendering: geometricPrecision;
+}
+/* Bump body weight by half a step on Linux. webkit2gtk renders
+   weight 400 noticeably thinner than the same font on macOS, so the
+   chrome and editor body both lose presence. 425 is a "synthesised"
+   weight when the variable axis isn't defined, but variable Inter /
+   Newsreader ship the whole 100..900 range so it lands cleanly. */
+html[data-platform="linux"] body,
+html[data-platform="linux"] .cm-content,
+html[data-platform="linux"] [data-yarrow-prose] {
+  font-weight: 425;
+}
+/* Headlines and serif display text don't need the bump — at 18px+ the
+   FreeType render holds its own. Pinning 400 prevents the .font-serif
+   weight-500 rule (defined just below for general chrome) from
+   compounding with the body bump on hero titles. */
+html[data-platform="linux"] .font-serif.text-base,
+html[data-platform="linux"] .font-serif.text-lg,
+html[data-platform="linux"] .font-serif.text-xl,
+html[data-platform="linux"] .font-serif.text-2xl,
+html[data-platform="linux"] .font-serif.text-3xl,
+html[data-platform="linux"] .font-serif.text-4xl,
+html[data-platform="linux"] .font-serif.text-5xl {
+  font-weight: 400;
+}
+/* Dark-mode text on Linux: a subpixel rendering stack tuned for light
+   backgrounds produces visible R/G/B fringes on dark, especially with
+   thin serif strokes. Force grayscale antialiasing on the whole tree
+   when in dark theme — strictly Linux-scoped so light-mode/macOS users
+   don't lose their crisp subpixel look. */
+html[data-platform="linux"].dark {
+  -webkit-font-smoothing: antialiased;
+}
+/* Dark-mode glyphs always read thinner than the same weight on light
+   because the human eye's irradiance bias eats stem width on dark
+   backgrounds (the irradiation illusion). On webkit2gtk this is more
+   pronounced than on CoreText. Bump body weight from 425 → 450 in
+   dark mode so the apparent stroke matches the light-mode read. */
+html[data-platform="linux"].dark body,
+html[data-platform="linux"].dark .cm-content,
+html[data-platform="linux"].dark [data-yarrow-prose] {
+  font-weight: 450;
+}
+
+/* Variable-font axes — the variable cuts of Inter, Newsreader, and
+   Fraunces ship with optical-size, slant, and weight axes that
+   webkit2gtk doesn't always activate from `font-weight` alone (it
+   prefers the static masters when both are present in the CSS
+   stack). Explicit `font-variation-settings` forces the variable
+   master to be selected, which gives FreeType a proper optical-
+   size hinted glyph at the rendered pixel size — thin strokes
+   widen automatically as the size shrinks, exactly what Linux
+   needs at 11–14 px UI text. */
+html[data-platform="linux"] {
+  font-variation-settings: "opsz" auto;
+}
+html[data-platform="linux"] .font-serif {
+  /* Serif body chrome — sit between regular (400) and medium (500)
+     so the optical-size axis can pick a master with sturdier stems
+     for small sizes. */
+  font-variation-settings: "opsz" auto, "wght" 480;
+}
+
+/* Small UI text on Linux: at 11–12 px FreeType packs glyphs tighter
+   than CoreText, so labels like "yesterday" or chip strings can
+   look cramped. A hair of positive letter-spacing restores breathing
+   room without disturbing the macOS look. */
+html[data-platform="linux"] .text-xs,
+html[data-platform="linux"] .text-2xs {
+  letter-spacing: 0.012em;
+}
+
+/* Monospace — JetBrains Mono renders crisply but slightly thin under
+   FreeType. Bump weight half a step for inline code and metadata
+   so it carries weight against the body text it sits next to. */
+html[data-platform="linux"] code,
+html[data-platform="linux"] kbd,
+html[data-platform="linux"] pre,
+html[data-platform="linux"] .font-mono {
+  font-weight: 450;
+}
+
+/* Disable contextual alternates on the editor body — webkit2gtk's
+   FreeType build occasionally swaps in alternate glyphs mid-line
+   that don't align with the first cut, producing a visible ink
+   mismatch. We keep `kern` and `liga` (standard ligatures) because
+   they're well-supported and improve readability; `calt` is the
+   one that misbehaves. */
+html[data-platform="linux"] .cm-content,
+html[data-platform="linux"] [data-yarrow-prose] {
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 0;
+}
+
+/* Italic serif — Fraunces and Newsreader's italic masters have a
+   measurably brighter appearance than upright. On Linux they read
+   *too* light at body sizes. Slightly heavier weight in italic
+   matches the visual mass of the upright text. */
+html[data-platform="linux"] em,
+html[data-platform="linux"] i,
+html[data-platform="linux"] .font-serif em,
+html[data-platform="linux"] .font-serif i {
+  font-weight: 460;
+}
+
 /* Serif UI chrome (path pills, workspace chip, note titles in the
    sidebar, tiny italic labels) needs a touch more presence to survive
    subpixel antialiasing on Linux/webkit2gtk — weight 500 thickens the
@@ -531,6 +1523,25 @@ html[data-paper-warmth-active="true"] body {
 }
 html[data-ui-zoom-active="true"] body {
   zoom: var(--ui-zoom, 1);
+  /* Counter-zoom the layout host. CSS `zoom` scales both rendered size
+     AND claimed layout space, so a `height: 100vh` body at zoom 1.1
+     renders at 110vh of physical screen — the bottom 10% gets clipped
+     below the visible viewport (which on the IntroPage hides the
+     action buttons, and on the AppShell can clip the right-rail
+     settings cog or the status bar). Dividing the host width/height
+     by the zoom factor brings the rendered size back to exactly the
+     viewport. Note: this is applied to `body` ONLY — `#root` inherits
+     the corrected size via its `width: 100%` against the now-shrunk
+     body, so applying the calc to `#root` too would double-shrink it. */
+  width: calc(100% / var(--ui-zoom, 1));
+  height: calc(var(--vp-h, 100dvh) / var(--ui-zoom, 1));
+}
+html[data-ui-zoom-active="true"] #root {
+  /* `#root` is `position: fixed` with `height: var(--vp-h)` — that
+     absolute height bypasses body's now-shrunk size, so we still need
+     to counter-zoom it explicitly. Width stays at 100% (inherits the
+     body's already-counter-zoomed width, so don't double-divide). */
+  height: calc(var(--vp-h, 100dvh) / var(--ui-zoom, 1));
 }
 html[data-ui-zoom-active="true"] .cm-editor {
   zoom: var(--ui-zoom-inv, 1);
@@ -610,6 +1621,61 @@ html.theme-transitioning .note-row {
      this class for that reason. */
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Animation hygiene utilities (3.0 visual polish §8)
+
+   `will-change` and GPU layer promotion buy frame-rate stability for
+   elements that *will* animate, but cost layer-budget if applied
+   unconditionally. The rule is: opt in for the duration of the
+   animation, opt back out when it settles. JS toggles the
+   `.yarrow-anim-active` class for the lifetime of an animation;
+   while it's on, the element promotes to its own compositor layer
+   and hints `transform / opacity` to the renderer.
+
+   Apply to surfaces that animate: modal enter/exit, Quick Hand
+   summon, radial menu wedges, connection-graph nodes during
+   physics settle.
+
+   Tied to prefers-reduced-motion at the top of this file — when the
+   user prefers reduced motion, animations resolve in 0.01ms so the
+   `.yarrow-anim-active` class is set and cleared in the same frame
+   and never produces a perceptible animation. */
+.yarrow-anim-promote {
+  /* Persistent promotion for surfaces that animate frequently
+     (e.g. always-mounted toast container). Use sparingly. */
+  transform: translateZ(0);
+  will-change: transform, opacity;
+}
+.yarrow-anim-active {
+  /* Transient promotion. Components add this class on animation
+     start and remove it on `animationend` / promise resolution. */
+  will-change: transform, opacity;
+}
+
+/* prefers-reduced-transparency — drop backdrop-filter app-wide so
+   the OS-level user preference is respected even where the
+   per-app accessibility setting (Settings → Accessibility →
+   Visualizations) hasn't been touched. The class-based override
+   `.a11y-reduce-transparency` (set by accessibilityPrefs.ts)
+   already handles the in-app toggle; this media query catches
+   users who prefer reduced transparency at the OS level without
+   ever opening Settings. */
+@media (prefers-reduced-transparency: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* Important — overrides the @supports block lower in this file
+       which conditionally enables modal backdrop blur. */
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  /* Modal backdrops fall back to a flat tinted overlay rather than
+     blurred glass — same darkening intent, no blur cost. */
+  [class*="bg-char/"] {
+    background-image: none !important;
+  }
+}
+
 button, input, select, textarea {
   font-family: inherit;
   font-size: inherit;
@@ -625,6 +1691,86 @@ button, input, select, textarea {
 .font-mono { font-feature-settings: "ss01", "ss02"; }
 .font-mono.text-2xs { font-size: 12px; line-height: 16px; }
 .font-mono.text-xs  { font-size: 13px; line-height: 18px; }
+
+/* ─────────────────────────────────────────────────────────────
+   Typography helpers — three numeral/feature contexts and a
+   letter-spacing scale for display vs. small-caps. Apply by
+   class to opt in:
+
+     .y-prose         — body prose. Old-style figures + ligatures.
+     .y-tabular       — numeric data that aligns vertically
+                        (timestamps, word counts, version pills).
+                        Tabular figures + lining figures.
+     .y-mono          — code / metadata. Slashed zero +
+                        tabular figures (already kebab-cased
+                        in the existing `.font-mono` rule, but
+                        this token-driven alias makes intent
+                        explicit at call sites).
+     .y-display-large — ≥ 32px display headings. Negative tracking.
+     .y-display-medium — 22–30px headings.
+     .y-label-caps    — ≤ 12px ALL-CAPS labels (settings nav,
+                        section eyebrows). Increased tracking.
+     .y-hanging-punct — opt-in hanging punctuation; lets
+                        leading quotes / dashes hang outside the
+                        measure column for optical alignment. */
+.y-prose         { font-feature-settings: var(--feat-prose); }
+.y-tabular       { font-feature-settings: var(--feat-tabular); }
+.y-mono          { font-feature-settings: var(--feat-mono); }
+.y-display-large {
+  font-feature-settings: var(--feat-display);
+  letter-spacing: var(--tracking-display-large);
+}
+.y-display-medium {
+  font-feature-settings: var(--feat-display);
+  letter-spacing: var(--tracking-display-medium);
+}
+.y-label-caps {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-small-caps);
+  font-weight: 500;
+  font-feature-settings: var(--feat-tabular);
+}
+.y-hanging-punct {
+  /* Browser support: WebKit/WebKitGTK yes (Tauri's stack on macOS
+     and Linux); Chromium not yet. Property is silently ignored
+     where unsupported — safe progressive enhancement. */
+  hanging-punctuation: first last;
+}
+
+/* Numerals in the editor body should use old-style figures —
+   "30 days" and "September 12, 2026" sit visually with lowercase
+   letterforms instead of standing taller than the surrounding
+   prose. CodeMirror exposes the writing surface via .cm-content;
+   we add `onum` while preserving the existing kern/liga/calt mix
+   that the Linux pipeline already overrides on its own. */
+.cm-content {
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "onum" 1;
+}
+html[data-platform="linux"] .cm-content {
+  /* Linux override (line ~945 above) drops `calt` to dodge a
+     webkit2gtk glyph-swap bug. Keep that, but still get old-style
+     figures so the editorial numeral rhythm holds across platforms. */
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 0, "onum" 1;
+}
+
+/* Status-bar pills, version chips, "9 checkpoints" — anywhere the
+   number changes in place. Tabular figures keep the column from
+   dancing as digits update. We tag the chrome via the `tnum`
+   utility (mapped to a Tailwind class in tailwind.config.js if
+   added there too; until then, components opt in by class). */
+.tabular-nums-y {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: var(--feat-tabular);
+}
+
+/* Hanging punctuation on the editor body by default — opening
+   quotes and em-dashes hang into the gutter so the visual left
+   edge of paragraphs aligns optically. Browser-gated; WKWebView
+   on macOS and webkit2gtk on Linux both support this. */
+.cm-content,
+[data-yarrow-prose] {
+  hanging-punctuation: first last;
+}
 
 /* ─────────────────────────────────────────────────────────────
    On-yellow button text — always dark regardless of theme
@@ -657,8 +1803,17 @@ button, input, select, textarea {
 .cm-editor .cm-content {
   padding: 8px 0;
   caret-color: var(--yel);
+  /* 3.0: pin the editor font on the inner content/line nodes too.
+     CodeMirror's own internal styles can set font on cm-content with
+     equal specificity to .cm-editor; calling out the descendant here
+     guarantees the user's editor-font choice wins regardless of which
+     CM extension lands later. */
+  font-family: var(--editor-font-family, var(--serif));
 }
-.cm-editor .cm-line { padding: 0 4px; }
+.cm-editor .cm-line {
+  padding: 0 4px;
+  font-family: var(--editor-font-family, var(--serif));
+}
 .cm-cursor {
   border-left-color: var(--yel) !important;
   border-left-width: 2px !important;
@@ -1300,6 +2455,72 @@ body.yarrow-cook-mode a[href^="timer:"] {
   background: color-mix(in srgb, var(--rose) 18%, transparent);
 }
 
+/* 2.2.2 — special-meaning tag pills. Each kind has its own visual
+   register so a list of tags can be triaged without reading every
+   label. Colours are picked direct (not from --tokens) because the
+   theme palette only defines `--yel` and `--rose`; introducing six
+   more theme tokens for tag-only colours would inflate the design
+   surface. Light + dark variants pair carefully — light backgrounds
+   use a deeper saturation so the wash reads, dark backgrounds use
+   a lighter chroma so the pill stays legible against `--bg`.
+   See `lib/tagStyles.ts` for the alias → kind mapping; the Tag
+   Browser modal teaches users which name triggers which colour. */
+.yarrow-tag-attention {
+  background: color-mix(in srgb, #b45309 18%, transparent);
+  color: #92400e;
+}
+.dark .yarrow-tag-attention {
+  background: color-mix(in srgb, #fbbf24 16%, transparent);
+  color: #fde68a;
+}
+
+.yarrow-tag-mature {
+  background: color-mix(in srgb, #047857 16%, transparent);
+  color: #065f46;
+}
+.dark .yarrow-tag-mature {
+  background: color-mix(in srgb, #34d399 14%, transparent);
+  color: #a7f3d0;
+}
+
+.yarrow-tag-archived {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: var(--t3);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  /* `from-font` lets the line ride at the typeface's recommended
+     baseline offset rather than the default crossing the mid-glyph
+     awkwardly at small sizes. */
+  text-underline-offset: 0;
+}
+
+.yarrow-tag-draft {
+  background: color-mix(in srgb, var(--yel) 12%, transparent);
+  color: var(--yeld);
+  opacity: 0.72;
+  /* `font-style: italic` reads as "still being shaped" without
+     adding a new colour to the palette. */
+  font-style: italic;
+}
+
+.yarrow-tag-question {
+  background: color-mix(in srgb, #0e7490 18%, transparent);
+  color: #155e75;
+}
+.dark .yarrow-tag-question {
+  background: color-mix(in srgb, #22d3ee 14%, transparent);
+  color: #a5f3fc;
+}
+
+.yarrow-tag-decision {
+  background: color-mix(in srgb, #4338ca 16%, transparent);
+  color: #3730a3;
+}
+.dark .yarrow-tag-decision {
+  background: color-mix(in srgb, #a5b4fc 16%, transparent);
+  color: #c7d2fe;
+}
+
 /* 2.1 PHI / de-identification highlighter. Subtle warm-amber wash on
    the run plus a wavy underline in the same hue — present enough that
    the writer can't miss it on a glance over a finished note, quiet
@@ -1389,21 +2610,28 @@ body.yarrow-cook-mode a[href^="timer:"] {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   text-align: center;
-  color: var(--ch2);
+  color: var(--char);
   user-select: none;
   pointer-events: none;
   font-family: var(--ui-font-family, Figtree, ui-sans-serif, system-ui);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.15;
+  /* Bumped 12 → 13.5 px and weight 500 → 600 — at the previous size
+     labels read faintly at small UI scale, especially against the
+     beige `--s2` wedge fill. */
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.18;
+  /* Soft text-shadow lifts the label off the wedge fill without
+     muddying it. Helps in low-contrast palettes where var(--char) on
+     var(--s2) lands close to the WCAG threshold. */
+  text-shadow: 0 1px 0 var(--bg);
 }
 .radial-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--t2);
+  color: var(--ch2);
   transition: color 120ms ease;
 }
 .radial-wedge:hover .radial-icon,
@@ -1414,16 +2642,18 @@ body.yarrow-cook-mode a[href^="timer:"] {
 }
 .radial-wedge.is-disabled .radial-label {
   color: var(--t3);
+  text-shadow: none;
 }
 .radial-text {
-  color: var(--ch2);
+  color: var(--char);
   transition: color 120ms ease;
 }
 .radial-sub {
-  font-size: 10px;
-  color: var(--t3);
+  font-size: 10.5px;
+  color: var(--t2);
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-weight: 400;
+  font-weight: 500;
+  text-shadow: none;
 }
 .radial-center {
   fill: var(--s1);
@@ -1514,13 +2744,31 @@ g:has(> .radial-center:hover) .radial-still-ghost,
   fill: var(--yeld);
   opacity: 0.45;
 }
-/* Radial wrapper — holds the box-shadow that gives the menu depth.
-   Using a box-shadow on a DOM element (not a filter on the SVG) means
-   the shadow is rasterized once by the compositor and stays crisp
-   during the zoom-in animation. The SVG itself stays a vector layer,
-   edges untouched. */
+/* Radial wrapper — the shadow used to live on the wrapper itself with
+   `border-radius: 50%`, which made the shadow's inner edge follow the
+   wrapper's bounding circle (radius = SVG_SIZE/2 = 142) rather than
+   the wedge outer ring (radius = OUTER = 134). The 8 px gap between
+   the wedge edge and the shadow's inner edge read as a faint
+   "extended overlay" hovering past the menu — particularly visible
+   on dark themes. We now paint the shadow on a ::before pseudo-
+   element sized to the wedge ring exactly (inset 8px on each side),
+   so the halo hugs the wedge silhouette instead of an invisible
+   outer boundary. */
 .radial-menu-wrapper {
+  position: absolute;
+}
+.radial-menu-wrapper::before {
+  content: "";
+  position: absolute;
+  /* (SVG_SIZE - 2*OUTER) / 2 = (284 - 268) / 2 = 8 */
+  inset: 8px;
   border-radius: 50%;
+  pointer-events: none;
+  /* Place the shadow behind the SVG content so wedges paint on top.
+     Stacking context is created by the wrapper's own transform so
+     z-index: -1 stays scoped to the wrapper rather than escaping
+     under unrelated DOM. */
+  z-index: -1;
   box-shadow:
     0 6px 14px rgba(0, 0, 0, 0.18),
     0 18px 44px -12px rgba(0, 0, 0, 0.34),
@@ -1770,6 +3018,18 @@ button, a {
 .rail-btn {
   transition: background-color 180ms ease, color 140ms ease, transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+
+/* Writer-persona rail tone — uses the theme's muted `--rose` token
+   (light: #B06074, dark: #D98A9C) instead of Tailwind's saturated
+   rose-600. Matches the Writer plugin's accent (rose) without
+   colliding visually with the destructive-action red the rest of
+   the app uses. */
+.writer-rail-tone {
+  color: var(--rose);
+}
+.writer-rail-tone:hover {
+  color: var(--char);
+}
 .rail-btn[data-active="true"] {
   animation: railPop 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -1777,6 +3037,87 @@ button, a {
   0%   { transform: scale(0.88); }
   60%  { transform: scale(1.06); }
   100% { transform: scale(1);    }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Right rail expand/collapse (3.0 review §3.2)
+
+   When the user toggles the rail from icon-only into expanded
+   mode, the shell grows from 52 → 180 px and every button shifts
+   from a circular icon into a left-aligned pill with its label
+   inline-right. The label is read out of `data-tip` so each
+   button (including persona-supplied buttons in plugins/<persona>/
+   Rail.tsx) picks up its label automatically — no plugin code
+   has to know about the expanded state. Keyboard shortcuts that
+   are interpolated into data-tip (e.g. "Scratchpad ({shortcut})")
+   come along for free.
+
+   The hover tooltip (`.y-tip::after`) is suppressed in expanded
+   mode so we don't show the same text twice. We use `::before`
+   for the inline label rather than `::after` because `::after`
+   is owned by `y-tip` for the hover popover.
+   ───────────────────────────────────────────────────────────── */
+.rail-shell {
+  transition: width 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rail-shell.rail-expanded {
+  align-items: stretch;
+}
+.rail-shell.rail-expanded .rail-btn {
+  /* Stack the icon and label vertically so the expanded rail reads as
+     a column of "tile" buttons rather than a row of pill buttons.
+     Width pulls in slightly from 100% so the tiles don't kiss the
+     rail's outer border, height grows to fit icon + caption + a hair
+     of vertical breathing room. */
+  width: calc(100% - 8px);
+  margin: 0 4px;
+  height: auto;
+  min-height: 56px;
+  border-radius: 10px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 6px 7px;
+  gap: 4px;
+}
+.rail-shell.rail-expanded .rail-btn::before {
+  /* Read the short, name-only version of the label that each rail
+     button stamps via `data-tip-short` (computed by `shortRailLabel`
+     from the full `data-tip` text). The full label is still used by
+     the hover tooltip and `aria-label` — only the inline caption
+     under the icon reads from this attribute, so the expanded rail
+     stays uncluttered ("Reading", "Map", "Outline", "Scratchpad")
+     while the tooltip retains the keyboard shortcut and any
+     descriptive suffix. */
+  content: attr(data-tip-short);
+  /* `order: 1` so the label flows AFTER the icon — under it now that
+     the button is `flex-direction: column`. Icons are the button's
+     intrinsic children with default order 0. */
+  order: 1;
+  font-family: var(--ui-font-family, "Inter Tight", system-ui, sans-serif);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-align: center;
+  color: inherit;
+  opacity: 0.85;
+  /* No flex-grow — the label is a fixed-height caption, not a stretch
+     fill. Keeps the icon visually centered above its description. */
+}
+/* Dividers: 20 px wide line in collapsed mode, span the full
+   rail width when expanded so the visual rhythm survives. */
+.rail-shell.rail-expanded > div.bg-bd.h-px {
+  width: 100%;
+}
+/* Hide the hover popover in expanded mode — the inline label
+   already shows the same text, so popping it again on hover would
+   look broken. */
+.rail-shell.rail-expanded .y-tip:hover::after {
+  opacity: 0 !important;
 }
 
 /* Crossfade the editor when the note changes — gives the new note a
@@ -2466,3 +3807,526 @@ html:not([data-platform="mac"]) *::-webkit-scrollbar-thumb:hover {
 .yarrow-reader .callout-question .yarrow-callout-icon,
 .yarrow-reader .callout-todo .yarrow-callout-icon { background: #4a8dc2; color: #fff; }
 
+/* ─────────────────────────────────────────────────────────────
+   2.2.1 — macOS visual polish
+
+   Every rule in this block is scoped to `[data-platform="mac"]`
+   so Linux and Windows are completely unaffected, and each rule
+   is purely additive — overrides one custom-property value or
+   adds an animation, never touches layout structure. Listed
+   in order from most → least visible.
+   ───────────────────────────────────────────────────────────── */
+
+/* Native font stack on chrome. macOS gets the same Apple system
+   font that Settings, Mail, Finder, and every other built-in app
+   use, instead of Inter — feels less like a ported web app. The
+   tail of the chain is unchanged from the cross-platform `--sans`
+   so a macOS version that doesn't expose SF Pro by name still
+   falls back through Inter Tight / Inter / system-ui exactly as
+   before. The editor font (`--editor-font-family`) is independent
+   and unaffected — only chrome shifts. */
+html[data-platform="mac"] {
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro",
+          "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* macOS sheet entrance — Modal panel slides down from above with
+   a touch of scale, matching the way `NSWindow.beginSheet(_:)`
+   presents document modals on macOS. Centred positioning is
+   unchanged; only the opening animation is platform-specific.
+   Gated on `prefers-reduced-motion: no-preference` so users with
+   motion sensitivity get the existing instant appearance, and on
+   `[data-platform="mac"]` so Linux and Windows keep their fade-in.
+   The `.mac-sheet` class is applied by `components/Modal.tsx`. */
+@keyframes mac-sheet-enter {
+  from { transform: translateY(-12px) scale(0.985); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html[data-platform="mac"] .mac-sheet {
+    animation: mac-sheet-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+
+/* macOS focus ring. Replaces the brand-yellow outline with the
+   user's chosen system accent (System Settings → Appearance →
+   Accent colour) on focused buttons and links — matches every
+   other macOS app. Inputs / textareas keep their existing
+   border-tint focus treatment (the parent rule sets
+   `outline: none` on inputs). The `@supports` fallback handles
+   webkit builds that don't recognise the `AccentColor` keyword
+   yet — `Highlight` is the legacy CSS system colour. */
+html[data-platform="mac"] :focus-visible {
+  outline-color: AccentColor;
+}
+@supports not (outline-color: AccentColor) {
+  html[data-platform="mac"] :focus-visible {
+    outline-color: Highlight;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Accessibility prefs (3.1)
+
+   `accessibilityPrefs.ts` writes a class or data-attribute on
+   <html> for each setting. The CSS below is the only place these
+   classes are *consumed* — components don't need to know about a11y
+   prefs at all, they get the new look automatically.
+
+   Conventions:
+   • `--a11y-text-scale` is multiplied into editor + chrome font sizes.
+   • `.a11y-*` classes are boolean flags.
+   • `[data-motion]` / `[data-spellcheck-tone]` / `[data-focus-ring]`
+     are enums, since their CSS depends on which value is set.
+────────────────────────────────────────────────────────────── */
+
+:root {
+  --a11y-text-scale: 1;
+}
+
+/* Text scale — apply via font-size on the root so everything scales
+   together. The editor's own --editor-fz still works on top. */
+html {
+  font-size: calc(16px * var(--a11y-text-scale, 1));
+}
+
+/* High and Maximum contrast — bump foreground / border contrast and
+   strip background textures that compete with text legibility. */
+html.a11y-contrast-high {
+  --t2: var(--char);
+  --t3: var(--char);
+  --bd: var(--char);
+}
+
+/* Per-theme High contrast (theme system spec §8.3).
+   Each theme keeps its identity hue but pushes the bg/text/accent
+   pair to AAA-clear contrast. The base `html.a11y-contrast-high`
+   rule above already collapses metadata text; these per-theme
+   overrides raise the canvas + accent themselves so the palette
+   identity survives the contrast bump.
+   ───────────────────────────────────────────────────────────── */
+html.a11y-contrast-high[data-theme="vellum"] {
+  --bg:   #FFFFFF;
+  --char: #000000;
+  --t1:   #1A2030;
+  --t2:   #2C3340;
+  --yel:  #1A3A5A;
+  --yeld: #0E2740;
+  --link: #0E2740;
+  --on-yel: #FFFFFF;
+}
+html.a11y-contrast-high[data-theme="linen"] {
+  --bg:   #FBF5E6;
+  --char: #000000;
+  --t1:   #2A1F0E;
+  --t2:   #3A2E15;
+  --yel:  #6E4D1A;
+  --yeld: #4A3308;
+  --link: #4A3308;
+}
+html.a11y-contrast-high[data-theme="ashrose"] {
+  --bg:   #FFF1F4;
+  --char: #1A0410;
+  --t1:   #2A0F1C;
+  --t2:   #3A1F2C;
+  --yel:  #3F0E1B;
+  --yeld: #2A050F;
+  --link: #2A050F;
+}
+html.a11y-contrast-high[data-theme="workshop"] {
+  --bg:   #000000;
+  --char: #FFFFFF;
+  --t1:   #F5EFD9;
+  --t2:   #E8DDC4;
+  --yel:  #FFB84D;
+  --yeld: #FFD68A;
+  --link: #FFD68A;
+  --on-yel: #000000;
+}
+html.a11y-contrast-high[data-theme="graphite"] {
+  --bg:   #000000;
+  --char: #FFFFFF;
+  --t1:   #E8E8E8;
+  --t2:   #D8D8D8;
+  --yel:  #E8B8D2;
+  --yeld: #FFE0EE;
+  --link: #FFE0EE;
+}
+html.a11y-contrast-high[data-theme="dracula"] {
+  --bg:   #14151E;
+  --char: #FFFFFF;
+  --t1:   #F5F0FF;
+  --t2:   #E0DAFF;
+  --yel:  #DCC2FF;
+  --yeld: #F0E5FF;
+  --link: #F0E5FF;
+}
+html.a11y-contrast-maximum {
+  --bg: #ffffff;
+  --char: #000000;
+  --t1: #000000;
+  --t2: #000000;
+  --t3: #000000;
+  --bd: #000000;
+  --bd2: #000000;
+  --s1: #ffffff;
+  --s2: #f0f0f0;
+  --s3: #e0e0e0;
+}
+html.a11y-contrast-maximum.dark {
+  --bg: #000000;
+  --char: #ffffff;
+  --t1: #ffffff;
+  --t2: #ffffff;
+  --t3: #ffffff;
+  --bd: #ffffff;
+  --bd2: #ffffff;
+  --s1: #000000;
+  --s2: #1a1a1a;
+  --s3: #2a2a2a;
+}
+
+/* Default modal backdrop — blur + dim, treated as one unified effect.
+   Every full-screen modal in Yarrow uses `bg-char/<alpha>` on its outer
+   wrapper as the dim layer (see Modal, PathCompare, ConflictResolver,
+   command palette etc.). The Tailwind `bg-char/X` rule alone produces
+   a tint coloured by the theme's foreground (`--char`) — that's near-
+   black in light themes (correctly darkens the editor) but near-white
+   in dark themes (which would *lighten* the editor, wrong). We layer
+   a true-black wash on top via `background-image` so the dim reads as
+   genuinely dark in any palette, and pair it with a 6 px backdrop-blur
+   so the editor behind reads as out of focus.
+
+   Treat blur and dim as one effect: both turn on together, both turn
+   off together when the user picks reduce-transparency. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [class*="bg-char/"] {
+    backdrop-filter: blur(6px) saturate(0.92);
+    -webkit-backdrop-filter: blur(6px) saturate(0.92);
+    /* Stacked black wash — sits on top of the theme-coloured bg so we
+       darken in *every* theme. ~28% reads as a clear "the page behind
+       went quiet" without making the editor unreadable. */
+    background-image:
+      linear-gradient(rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.28));
+  }
+}
+
+/* Reduce transparency — turn off the unified backdrop effect entirely.
+   The user has asked for blur AND dim to be coupled to a single
+   "modal backdrop" gesture; if the effect is off, neither layer
+   should remain. Backdrop-filter goes, the black wash goes, and the
+   theme-coloured tint goes — leaving the dim wrapper fully clear, so
+   the modal panel itself carries the visual weight via its own border
+   and shadow rather than via an environmental fade.
+
+   Implementation note: never set `opacity` on the wrapper element —
+   that fades the entire dialog (panel + content) which is the
+   opposite of what we want. Strip background-color and background-
+   image so only the dim layer disappears. */
+html.a11y-reduce-transparency .mac-sheet,
+html.a11y-reduce-transparency [class*="bg-char/"],
+html.a11y-reduce-transparency [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-image: none !important;
+}
+html.a11y-reduce-transparency .bg-char\/10,
+html.a11y-reduce-transparency .bg-char\/20,
+html.a11y-reduce-transparency .bg-char\/25,
+html.a11y-reduce-transparency .bg-char\/30,
+html.a11y-reduce-transparency .bg-char\/40 {
+  background-color: transparent !important;
+}
+
+/* Diff annotations alongside color (Visualizations a11y).
+   Default behavior: every diff view (Compare, history, conflicts)
+   carries strikethrough on removed segments + underline on added
+   ones in addition to red/green. The toggle in Accessibility →
+   Visualizations defaults true, applying `html.a11y-diff-patterns`.
+   When the user turns it OFF, the class disappears and the rules
+   below strip the decorations so colour alone carries the signal —
+   useful only on a colour-perfect display where patterns feel like
+   visual noise. */
+html:not(.a11y-diff-patterns) .line-through,
+html:not(.a11y-diff-patterns) .underline.decoration-emerald-500,
+html:not(.a11y-diff-patterns) [class*="decoration-danger"],
+html:not(.a11y-diff-patterns) [class*="decoration-emerald"] {
+  text-decoration: none !important;
+}
+
+/* Larger cursor — widen the editor caret + applies a 28×28 SVG
+   pointer to the whole document (the OS cursor on Linux/macOS
+   honours url() cursors at any size; Windows scales them). The
+   text cursor (I-beam) keeps the OS default since users have
+   strong expectations there. */
+html.a11y-larger-cursor .cm-content {
+  caret-color: currentColor;
+}
+html.a11y-larger-cursor .cm-cursor,
+html.a11y-larger-cursor .cm-dropCursor {
+  border-left-width: 3px !important;
+}
+html.a11y-larger-cursor,
+html.a11y-larger-cursor body {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><polygon points='4,2 24,15 14,17 18,26 13,26 9,17 4,15' fill='black' stroke='white' stroke-width='1.5'/></svg>") 4 2, auto;
+}
+html.a11y-larger-cursor button,
+html.a11y-larger-cursor a,
+html.a11y-larger-cursor [role="button"] {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><path d='M9 4 L9 22 L13 18 L17 25 L20 24 L16 17 L21 17 Z' fill='black' stroke='white' stroke-width='1.5'/></svg>") 9 4, pointer;
+}
+
+/* Dyslexia-friendly font — swap editor body face. */
+html.a11y-dyslexia-font .cm-content,
+html.a11y-dyslexia-font [data-yarrow-prose] {
+  font-family: "Atkinson Hyperlegible", "OpenDyslexic", system-ui, sans-serif !important;
+  letter-spacing: 0.01em;
+  line-height: 1.7;
+}
+
+/* Reduce motion — explicit override (data-motion) wins, otherwise
+   we follow prefers-reduced-motion. */
+html[data-motion="off"] *,
+html[data-motion="off"] *::before,
+html[data-motion="off"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) *,
+  html:not([data-motion="on"]) *::before,
+  html:not([data-motion="on"]) *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Disable autoplay — pause CSS animations on graph-like containers
+   until a parent class explicitly opts back in. */
+html.a11y-disable-autoplay [data-autoplay="true"] {
+  animation-play-state: paused !important;
+}
+
+/* Larger hit targets — bump every interactive element to a 44×44
+   minimum (WCAG 2.5.5 AAA). Covers buttons, anchor links, inputs,
+   selects, role=button, role=tab, role=switch, role=menuitem,
+   role=link, role=checkbox, summary toggles, and `[tabindex]`-driven
+   click handlers. We also pad icon-only buttons so the box actually
+   *grows* visually, not just the click target — the inner SVG keeps
+   its natural size. The CodeMirror editor itself, the editor's
+   contenteditable surface, and tag chip cells inside grids are
+   excluded so the writing surface and dense list layouts don't go
+   to 44px-tall rows (which would make notes feel airless). */
+html.a11y-large-hit-targets button,
+html.a11y-large-hit-targets a[href],
+html.a11y-large-hit-targets [role="button"],
+html.a11y-large-hit-targets [role="tab"],
+html.a11y-large-hit-targets [role="switch"],
+html.a11y-large-hit-targets [role="menuitem"],
+html.a11y-large-hit-targets [role="link"],
+html.a11y-large-hit-targets [role="checkbox"],
+html.a11y-large-hit-targets [role="radio"],
+html.a11y-large-hit-targets summary,
+html.a11y-large-hit-targets input:not([type="hidden"]):not([type="text"]):not([type="search"]):not([type="email"]):not([type="password"]):not([type="number"]):not([type="url"]):not([type="tel"]),
+html.a11y-large-hit-targets select {
+  min-width: 44px;
+  min-height: 44px;
+}
+html.a11y-large-hit-targets button:not(.cm-button),
+html.a11y-large-hit-targets a[href][class*="rounded"],
+html.a11y-large-hit-targets [role="button"]:not(.cm-button) {
+  /* ensure the visible box actually fills the hit area — most icon
+     buttons in the codebase use `flex items-center justify-center`
+     so the SVG centres regardless of the bumped min size. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Don't widen text inputs or the editor — those want their original
+   layout widths. Min-height stays at the default for textareas / text
+   inputs since vertical comfort is set elsewhere by the writing pane. */
+html.a11y-large-hit-targets .cm-content,
+html.a11y-large-hit-targets .cm-editor,
+html.a11y-large-hit-targets [contenteditable="true"] {
+  min-height: 0;
+}
+
+/* Reading guide — a thin horizontal bar that follows the active
+   editor line. Powered entirely by CSS; the editor sets a
+   `--cm-active-line-y` variable when this is on. */
+html.a11y-reading-guide .cm-editor::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--cm-active-line-y, 0);
+  height: 1.6em;
+  background: var(--yel);
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Spell-check tone — switch how misspellings render. The decoration
+   class `.cm-yarrow-misspelled` is what the editor actually applies
+   (see `extensions/spell.ts`); the `::spelling-error` rules cover the
+   browser's native spellcheck on plain inputs. Both must be addressed
+   so the tone setting actually changes what the user sees. */
+html[data-spellcheck-tone="off"] .cm-content {
+  text-decoration-skip-ink: auto;
+}
+html[data-spellcheck-tone="off"] [spellcheck="true"]::spelling-error,
+html[data-spellcheck-tone="off"] .cm-content::spelling-error,
+html[data-spellcheck-tone="off"] .cm-yarrow-misspelled {
+  text-decoration: none !important;
+  background: transparent !important;
+}
+html[data-spellcheck-tone="highlight"] [spellcheck="true"]::spelling-error,
+html[data-spellcheck-tone="highlight"] .cm-content::spelling-error {
+  background: rgba(220, 80, 80, 0.18);
+  text-decoration: none;
+}
+html[data-spellcheck-tone="highlight"] .cm-yarrow-misspelled {
+  background: rgba(220, 80, 80, 0.18);
+  text-decoration: none !important;
+  border-radius: 2px;
+}
+
+/* Focus ring — three visibility levels, aligned to existing focus
+   styles in the codebase. */
+html[data-focus-ring="subtle"] :focus-visible {
+  outline-width: 1px;
+  outline-style: dotted;
+}
+html[data-focus-ring="high"] :focus-visible {
+  outline-width: 3px;
+  outline-style: solid;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* Color-blind safe mode — supplement colour-only signals with
+   a small marker character so meaning survives without colour. */
+html.a11y-color-blind-safe .border-yel::before,
+html.a11y-color-blind-safe .ring-yel::before {
+  content: "✓ ";
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Color-blind palette overlays.
+
+   Each `[data-cb-type=…]` block redefines the small set of accent
+   tokens that carry meaning by hue (gold, plum/rose, decision-status
+   colours, mode swatches, edge types). Themes still drive the surface
+   tokens (`--bg`, `--char`, `--s1..s3`) — we only shift hues that need
+   to remain *distinguishable* under the named dichromacy.
+
+   References:
+     · Deuteranopia (M-cone deficiency, ~5% of men): red/green confusion.
+       Compensate by warming reds toward orange and shifting greens
+       toward teal/blue. Yellow is fine.
+     · Protanopia (L-cone deficiency, ~1%): similar but reds appear
+       darker. Lift red luminance and use the same blue-green shift.
+     · Tritanopia (S-cone deficiency, very rare): blue/yellow confusion.
+       Shift blues toward purple and yellows toward beige/orange.
+     · Achromatopsia (no chromatic vision): hue can't carry meaning.
+       Apply a global desaturation so users see the structure at the
+       luminance level the design was painted at.
+   ───────────────────────────────────────────────────────────── */
+html[data-cb-type="deuteranopia"],
+html[data-cb-type="protanopia"] {
+  /* Gold accent — keep gold as gold, but bump the warmth so it doesn't
+     look "olive" against a light-cream surface for these viewers. */
+  --yel:   #C77A1F;
+  --yel2:  #DD8E2C;
+  --yelp:  #F2DEB6;
+  --yeld:  #6B3F0E;
+  /* Plum/Rose — these are the most-confused with red under
+     deutero/proto. Shift toward a high-luminance magenta-blue so it
+     can't be mistaken for the gold accent. */
+  --plum:  #4A4A8E;
+  --plump: #DDDFF2;
+  --rose:  #6B5BA8;
+  /* Edge types currently use red/green/yellow for challenges /
+     supports / refines. Re-key supports to a teal-blue so it parts
+     visually from challenges (deepened red) regardless of M/L cone. */
+  --edge-supports:   #1F7A95;
+  --edge-challenges: #B23A3A;
+  --edge-refines:    #C77A1F;
+}
+html[data-cb-type="protanopia"] {
+  /* Protans see reds as darker — lift the challenge red's luminance
+     so it doesn't disappear into the page against a dark theme. */
+  --edge-challenges: #D85F5F;
+}
+html[data-cb-type="tritanopia"] {
+  /* Tritans confuse blue with yellow. Shift the gold accent toward a
+     warm orange-brown (still clearly distinct from char) and re-key
+     blue accents to a violet so they don't vanish into yellow. */
+  --yel:   #C46A2C;
+  --yel2:  #DA7F3F;
+  --yelp:  #F1D9C2;
+  --yeld:  #5C2E0E;
+  --plum:  #3A2E72;
+  --plump: #D8D3EB;
+  --rose:  #87386F;
+  --edge-supports:   #2F5BAA;
+  --edge-challenges: #B23A3A;
+  --edge-refines:    #C46A2C;
+}
+html[data-cb-type="achromatopsia"] {
+  /* Hue is meaningless under monochromacy — push the entire UI
+     through a desaturating filter applied to body. We exempt the
+     editor canvas and any explicit `data-keep-color` opt-in (e.g.
+     a calendar heatmap that's *meant* to read by hue) so users can
+     still see colour where it's information-carrying. */
+}
+html[data-cb-type="achromatopsia"] body {
+  filter: grayscale(1) contrast(1.05);
+}
+html[data-cb-type="achromatopsia"] body [data-keep-color="true"] {
+  filter: grayscale(0) contrast(0.95);
+}
+
+/* Mode swatch override. The TS-side classes (`bg-rose-500`,
+   `bg-emerald-600`, etc.) hard-code Tailwind colours that bypass our
+   token system, so we restate the persona accents here per type. */
+html[data-cb-type="deuteranopia"] .bg-rose-500,
+html[data-cb-type="protanopia"] .bg-rose-500 {
+  background-color: #6B5BA8 !important;
+}
+html[data-cb-type="deuteranopia"] .bg-emerald-600,
+html[data-cb-type="protanopia"] .bg-emerald-600 {
+  background-color: #1F7A95 !important;
+}
+html[data-cb-type="deuteranopia"] .bg-sky-700,
+html[data-cb-type="protanopia"] .bg-sky-700 {
+  background-color: #2F4F8A !important;
+}
+html[data-cb-type="deuteranopia"] .bg-teal-700,
+html[data-cb-type="protanopia"] .bg-teal-700 {
+  background-color: #2C6B7A !important;
+}
+html[data-cb-type="deuteranopia"] .bg-orange-600,
+html[data-cb-type="protanopia"] .bg-orange-600 {
+  background-color: #B5701F !important;
+}
+html[data-cb-type="tritanopia"] .bg-rose-500 {
+  background-color: #87386F !important;
+}
+html[data-cb-type="tritanopia"] .bg-emerald-600 {
+  background-color: #386F3A !important;
+}
+html[data-cb-type="tritanopia"] .bg-sky-700 {
+  background-color: #3A2E72 !important;
+}
+html[data-cb-type="tritanopia"] .bg-teal-700 {
+  background-color: #6B3A6B !important;
+}
+html[data-cb-type="tritanopia"] .bg-orange-600 {
+  background-color: #C46A2C !important;
+}

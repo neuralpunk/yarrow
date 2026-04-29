@@ -29,8 +29,33 @@ struct Sidecar {
 }
 
 fn trash_root(root: &Path) -> PathBuf { root.join(TRASH_DIR) }
-fn body_path(root: &Path, slug: &str) -> PathBuf { trash_root(root).join(format!("{slug}.md")) }
-fn meta_path(root: &Path, slug: &str) -> PathBuf { trash_root(root).join(format!("{slug}.meta.json")) }
+
+/// Like [`notes::slug_is_filesystem_safe`] but accepts the `-deleted-<N>`
+/// suffix that trash storage slugs may carry on top of a regular or
+/// daily slug.
+fn trash_slug_is_safe(slug: &str) -> bool {
+    let core = slug
+        .rsplit_once("-deleted-")
+        .and_then(|(base, n)| {
+            if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) {
+                Some(base)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(slug);
+    notes::slug_is_filesystem_safe(core)
+}
+
+fn body_path(root: &Path, slug: &str) -> PathBuf {
+    let safe = if trash_slug_is_safe(slug) { slug } else { notes::POISON_SLUG };
+    trash_root(root).join(format!("{safe}.md"))
+}
+
+fn meta_path(root: &Path, slug: &str) -> PathBuf {
+    let safe = if trash_slug_is_safe(slug) { slug } else { notes::POISON_SLUG };
+    trash_root(root).join(format!("{safe}.meta.json"))
+}
 
 /// Move a note's file into `.yarrow/trash/`. The caller is responsible for
 /// removing the live file from the working tree (and creating the checkpoint).

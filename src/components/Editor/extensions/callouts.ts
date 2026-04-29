@@ -2,11 +2,10 @@ import { RangeSetBuilder } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import {
   Decoration,
-  DecorationSet,
   EditorView,
   ViewPlugin,
-  ViewUpdate,
 } from "@codemirror/view";
+import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 
 // ────────────── Obsidian-style callouts ──────────────
 // A blockquote whose first line contains `[!type]` becomes a stylized
@@ -63,6 +62,13 @@ function calloutsPlugin(): Extension {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
+      // Callout block detection is purely structural — depends only on
+      // the doc text, not viewport or selection. Cache by doc reference
+      // so a viewport scroll re-runs only the visibility filter, not the
+      // O(lines) scanCallouts walk. This was a measurable hit on long
+      // notes that contain only a handful of callouts.
+      cachedBlocks: CalloutBlock[] | null = null;
+      cachedDoc: unknown = null;
       constructor(view: EditorView) {
         this.decorations = this.build(view);
       }
@@ -73,7 +79,13 @@ function calloutsPlugin(): Extension {
       }
       build(view: EditorView): DecorationSet {
         const builder = new RangeSetBuilder<Decoration>();
-        const blocks = scanCallouts(view.state.doc);
+        const doc = view.state.doc;
+        let blocks = this.cachedDoc === doc ? this.cachedBlocks : null;
+        if (!blocks) {
+          blocks = scanCallouts(doc);
+          this.cachedBlocks = blocks;
+          this.cachedDoc = doc;
+        }
         for (const b of blocks) {
           const first = view.state.doc.line(b.startLine);
           const last = view.state.doc.line(b.endLine);

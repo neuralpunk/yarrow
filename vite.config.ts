@@ -1,12 +1,12 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react()],
+  plugins: [svelte()],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   clearScreen: false,
@@ -46,8 +46,14 @@ export default defineConfig(async () => ({
             id.includes("@lezer") ||
             id.includes("codemirror")
           ) return "vendor-codemirror";
-          if (id.includes("lucide-react")) return "vendor-icons";
+          if (id.includes("phosphor-svelte")) return "vendor-icons";
           if (id.includes("@tauri-apps")) return "vendor-tauri";
+          if (
+            id.includes("/sigma/") ||
+            id.includes("/graphology") ||
+            id.includes("/sigma-")
+          ) return "vendor-sigma";
+          if (id.includes("hunspell-asm")) return "vendor-hunspell";
         },
       },
     },

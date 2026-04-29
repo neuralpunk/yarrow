@@ -1,52 +1,56 @@
 /* ============================================================
-   Yarrow 2.0 — marketing site
-   Paper & plum, with more breathing room.
-   Fonts: Newsreader (display) · Source Serif 4 (editorial body)
+   Yarrow 3.0 — docs site
+   Vellum (light) & Workshop (dark) — the brand-identity pair.
+   Fonts: Newsreader (editorial body + display)
          · Inter (chrome) · JetBrains Mono (meta)
+
+   Token names (--bg / --char / --yel etc.) carry over from earlier
+   versions so component CSS stays unchanged; only the values shift
+   to the Vellum/Workshop palettes. Web ships only these two themes
+   per the web-design-system spec — Linen, Graphite, Ashrose, and
+   Dracula stay app-only.
    ============================================================ */
 
-:root {
+:root, html[data-theme="vellum"] {
   color-scheme: light;
 
-  /* ── surfaces ─────────────────────────────────────────── */
-  /* Three paper tones the page alternates between so it doesn't read
-     as one big block of plum-tinged cream. All three share the same
-     underlying warm-neutral hue, so tone variation never fights
-     the plum accent — the shift is value, not colour. */
-  --bg:        #F6F2EB;   /* "paper" — warm cream, the baseline */
-  --bg-soft:   #F0EADC;   /* "oatmeal" — a shade warmer, for band sections */
-  --bg-bone:   #EEEAE0;   /* "bone" — a shade cooler, for quieter reading bands */
-  --s1:        #E9E2D2;   /* sidebar / card tint */
-  --s2:        #E1D9C6;   /* pressed / hover */
-  --s3:        #D4CCB6;
-  --ink-wash:  rgba(26, 22, 18, 0.04);
+  /* ── Vellum surfaces ──────────────────────────────────── */
+  /* Cool bone canvas with three tonal steps. Cooler than the 2.x
+     cream — still warm enough to feel like paper, never clinical. */
+  --bg:        #EFEDE7;   /* bg-base — page canvas */
+  --bg-soft:   #F4F2EC;   /* bg-surface — sidebars, footer band */
+  --bg-bone:   #F4F2EC;   /* quieter reading band */
+  --s1:        #F4F2EC;   /* sidebar / card tint */
+  --s2:        #E5E2D9;   /* bg-hover — pressed / interactive hover */
+  --s3:        #DCDDD3;   /* bg-selection */
+  --ink-wash:  rgba(44, 51, 64, 0.04);
 
-  /* ── plum accent ──────────────────────────────────────── */
-  --yel:       #6F4363;   /* slightly deeper than 1.x → more premium */
-  --yel2:      #855278;
-  --yelp:      #ECDFE7;
-  --yeld:      #4F2E47;
+  /* ── slate accent (primary) ───────────────────────────── */
+  --yel:       #45627A;   /* accent-primary — slate blue */
+  --yel2:      #6B8AA5;   /* accent-cool — hover */
+  --yelp:      #DCE3EB;   /* pale slate — active row tint */
+  --yeld:      #2C3340;   /* dark slate — text on yelp */
 
   /* ── supporting accents ───────────────────────────────── */
-  --gold:      #C69747;
-  --goldp:     #F4E9CE;
-  --sage:      #5A7961;
-  --rose:      #B06074;
+  --gold:      #B89968;   /* accent-warm — tan leather */
+  --goldp:     #F0EAD9;
+  --sage:      #4A7350;   /* semantic-add */
+  --rose:      #A04848;   /* semantic-cut */
 
   /* ── type ─────────────────────────────────────────────── */
-  --char:      #1B1916;
-  --ch2:       #2E2A25;
-  --t1:        #49443C;   /* new — senior muted */
-  --t2:        #6A625A;
-  --t3:        #9A9287;
+  --char:      #2C3340;   /* text-primary */
+  --ch2:       #3E4554;
+  --t1:        #4A5363;   /* senior muted */
+  --t2:        #5A6473;   /* text-secondary */
+  --t3:        #8C95A1;   /* text-tertiary */
 
-  --bd:        rgba(27, 25, 22, 0.09);
-  --bd2:       rgba(27, 25, 22, 0.17);
-  --bd3:       rgba(27, 25, 22, 0.28);
-  --rule:      rgba(27, 25, 22, 0.14);
+  --bd:        rgba(44, 51, 64, 0.08);
+  --bd2:       rgba(44, 51, 64, 0.15);
+  --bd3:       rgba(44, 51, 64, 0.28);
+  --rule:      rgba(44, 51, 64, 0.14);
 
-  --danger:    #A0473C;
-  --on-yel:    #FFFFFF;
+  --danger:    #A04848;
+  --on-yel:    #FAFAF6;   /* text-inverse — light on slate fill */
 
   /* Display = Newsreader. Designed by Production Type / Google for
      long-form reading — opsz axis, warm open terminals, a true italic
@@ -63,58 +67,65 @@
   --maxw-narrow: 760px;
   --gutter: clamp(20px, 4vw, 64px);
 
-  /* layered shadows — subtler, more architectural */
-  --shadow-lift: 0 1px 2px rgba(0,0,0,0.03),
-                 0 8px 24px -12px rgba(27,25,22,0.14),
-                 0 28px 60px -36px rgba(27,25,22,0.18);
-  --shadow-hero: 0 2px 4px rgba(0,0,0,0.04),
-                 0 16px 44px -18px rgba(27,25,22,0.22),
-                 0 48px 120px -54px rgba(27,25,22,0.28);
+  /* Vellum shadows — warm-tinted, multi-layer per spec §1.1.
+     Tinted with the slate primary at low alpha so they feel grounded
+     in the palette rather than gray-on-cream (which reads as dirt). */
+  --shadow-lift: 0 1px 2px rgba(44, 51, 64, 0.06),
+                 0 8px 24px -12px rgba(44, 51, 64, 0.12),
+                 0 28px 60px -36px rgba(44, 51, 64, 0.18);
+  --shadow-hero: 0 4px 8px rgba(44, 51, 64, 0.08),
+                 0 16px 32px -14px rgba(44, 51, 64, 0.18),
+                 0 48px 100px -50px rgba(44, 51, 64, 0.24);
 
   --ease-out-smooth: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-html[data-theme="dark"] {
+/* Workshop — the dark brand-identity theme. "A long evening at the
+   desk where the real work gets made." Deep ink-blue ground, bronze
+   accents, paper-warm cream text (never clinical white per spec §3.3),
+   pure-black-with-alpha shadows (warm tint on dark reads as muddy). */
+html[data-theme="workshop"], html[data-theme="dark"] {
   color-scheme: dark;
-  --bg:        #1A1613;
-  --bg-soft:   #1F1A15;
-  --bg-bone:   #1C1714;
-  --s1:        #201C18;
-  --s2:        #272320;
-  --s3:        #322C27;
-  --ink-wash:  rgba(255, 255, 255, 0.03);
+  --bg:        #14202E;   /* bg-base — deep ink blue */
+  --bg-soft:   #1B2A3D;   /* bg-surface */
+  --bg-bone:   #1B2A3D;
+  --s1:        #1B2A3D;   /* sidebar */
+  --s2:        #243449;   /* bg-elevated */
+  --s3:        #2C3D54;   /* bg-hover */
+  --ink-wash:  rgba(232, 221, 196, 0.03);
 
-  --yel:       #C48FB0;   /* lift for dark — matches new app tint */
-  --yel2:      #D6A9C3;
-  --yelp:      #2A1F26;
-  --yeld:      #EDCFE0;
+  --yel:       #C18F3E;   /* bronze — primary accent */
+  --yel2:      #D4A55A;   /* warmer bronze — hover */
+  --yelp:      #34516B;   /* pale slate — selection ground */
+  --yeld:      #E8DDC4;   /* paper-warm cream — text on yelp */
 
-  --gold:      #E3BA68;
-  --goldp:     #3A2F1A;
-  --sage:      #9AB69C;
-  --rose:      #E09AAB;
+  --gold:      #D4A55A;
+  --goldp:     #2C3D54;
+  --sage:      #7FA77A;
+  --rose:      #B85C57;
 
-  --char:      #ECE4D5;
-  --ch2:       #D4CCBC;
-  --t1:        #B9B0A0;
-  --t2:        #968E80;
-  --t3:        #6B6459;
+  --char:      #E8DDC4;   /* text-primary — paper-warm, never #FFF */
+  --ch2:       #D9CDB0;
+  --t1:        #C5B89A;
+  --t2:        #B5A98C;   /* text-secondary */
+  --t3:        #7E7560;   /* text-tertiary */
 
-  --bd:        rgba(255, 255, 255, 0.07);
-  --bd2:       rgba(255, 255, 255, 0.14);
-  --bd3:       rgba(255, 255, 255, 0.22);
-  --rule:      rgba(255, 255, 255, 0.14);
+  --bd:        rgba(232, 221, 196, 0.08);
+  --bd2:       rgba(232, 221, 196, 0.15);
+  --bd3:       rgba(232, 221, 196, 0.28);
+  --rule:      rgba(232, 221, 196, 0.14);
 
-  --danger:    #E08B7A;
-  --on-yel:    #1A1613;
+  --danger:    #B85C57;
+  --on-yel:    #14202E;
 
-  --shadow-lift: 0 2px 4px rgba(0,0,0,0.45),
-                 0 14px 40px -18px rgba(0,0,0,0.6),
-                 0 40px 100px -50px rgba(0,0,0,0.55);
-  --shadow-hero: 0 4px 10px rgba(0,0,0,0.55),
-                 0 24px 64px -22px rgba(0,0,0,0.68),
-                 0 70px 160px -64px rgba(0,0,0,0.6);
+  /* Pure-black-with-alpha shadows on dark per spec §3.3. */
+  --shadow-lift: 0 1px 2px rgba(0,0,0,0.40),
+                 0 4px 12px rgba(0,0,0,0.42),
+                 0 16px 32px rgba(0,0,0,0.46);
+  --shadow-hero: 0 4px 12px rgba(0,0,0,0.50),
+                 0 16px 32px rgba(0,0,0,0.46),
+                 0 48px 96px rgba(0,0,0,0.52);
 }
 
 /* ── reset ────────────────────────────────────────────────── */
@@ -375,10 +386,14 @@ em { font-style: italic; }
   padding: 12px 16px;
 }
 .btn.quiet:hover { color: var(--char); }
+/* `.btn.plum` legacy class kept for any user-guide markup that still
+   references it; recoloured to the slate primary so it picks up the
+   Vellum identity. Shadow tinted with the slate primary at low alpha. */
 .btn.plum {
   background: var(--yel);
   color: var(--on-yel);
-  box-shadow: 0 2px 6px -1px rgba(111,67,99,0.3), 0 12px 28px -12px rgba(111,67,99,0.4);
+  box-shadow: 0 2px 6px -1px rgba(44, 51, 64, 0.18),
+              0 12px 28px -12px rgba(44, 51, 64, 0.32);
 }
 .btn.plum:hover {
   background: var(--yel2);

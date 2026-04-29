@@ -1,12 +1,16 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="vellum">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Yarrow 2.2 User Guide — every feature, explained from scratch</title>
-<meta name="description" content="A complete, no-prior-knowledge guide to Yarrow 2.2 — notes, links, paths, the map, history, sync, encryption, kits, configurable Still-Point gestures, Compare-notes mode, live-preview split, opt-in baking workflow with recipe URL clipper and inline timers, plus the 2.1 foundation (research, clinical, folders). With diagrams." />
+<title>Yarrow 3.0 User Guide — every feature, explained from scratch</title>
+<meta name="description" content="A complete, no-prior-knowledge guide to Yarrow 3.0 — Modes &amp; Personas, the React→Svelte 5 engine rewrite, the new six-theme system (Vellum, Workshop, Linen, Graphite, Ashrose, Dracula), the expanded accessibility surface, plus everything from 2.x: notes, links, scenarios, the map, history, sync, encryption, kits, configurable Still-Point gestures, Compare-notes mode, live-preview split, and the opt-in cooking workflow. With diagrams." />
 
-<meta id="meta-theme-color" name="theme-color" content="#F6F2EB" />
+<!-- Per spec §10: pair theme-color metas with prefers-color-scheme so
+     the OS chrome (mobile address bar, desktop title strip) matches
+     whichever palette the user lands on. -->
+<meta name="theme-color" content="#EFEDE7" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#14202E" media="(prefers-color-scheme: dark)" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -21,37 +25,44 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <symbol id="yarrow-mark" viewBox="0 0 64 64">
-      <line x1="32" y1="56" x2="32" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-      <path d="M 32 46 Q 32 43, 42 40" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-      <path d="M 32 36 Q 32 33, 20 30" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-      <path d="M 32 28 Q 32 25, 44 22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-      <path d="M 32 20 Q 32 17, 22 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-      <path d="M 32 20 Q 32 17, 42 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-      <circle cx="32" cy="56" r="3.2" fill="currentColor"/>
-      <circle cx="42" cy="40" r="3.2" fill="currentColor"/>
-      <circle cx="20" cy="30" r="3.2" fill="currentColor"/>
-      <circle cx="44" cy="22" r="3.2" fill="currentColor"/>
-      <circle cx="22" cy="14" r="3.0" fill="currentColor"/>
-      <circle cx="42" cy="14" r="3.0" fill="currentColor"/>
-      <circle cx="32" cy="12" r="3.6" fill="currentColor"/>
+      <!-- Yarrow plant glyph — three stalks fanning from a trunk node
+           at bottom-left to three buds on the right. Geometry ported
+           from icons/yarrow-mac.svg (the App icon) and rendered
+           monochrome so it picks up var(--accent) per theme. -->
+      <path d="M 19.4 41.6 C 32.4 39.8 32.4 21.3 45.3 19.4" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M 19.4 41.6 C 32.4 41.6 35.2 30.5 48.1 30.5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M 19.4 41.6 C 32.4 43.5 32.4 39.8 45.3 41.6" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <circle cx="45.3" cy="19.4" r="4.0" stroke="currentColor" stroke-width="2.6" fill="none"/>
+      <circle cx="48.1" cy="30.5" r="4.0" stroke="currentColor" stroke-width="2.6" fill="none"/>
+      <circle cx="45.3" cy="41.6" r="4.0" stroke="currentColor" stroke-width="2.6" fill="none"/>
+      <circle cx="19.4" cy="41.6" r="6.4" fill="currentColor"/>
     </symbol>
   </defs>
 </svg>
 
 <script>
-  // User Guide defaults to LIGHT theme — documentation reads best on paper.
-  // A reader who has explicitly picked a theme on the marketing site (via
-  // the toggle button, which writes `yarrow.site.theme` to localStorage)
-  // keeps their choice; everyone else, including visitors whose OS is in
-  // dark mode, gets light here. This differs from index.html, which
-  // honours the OS preference as its fallback.
+  // FOUC blocker (theme system spec §1.3). Resolves the user's stored
+  // preference (set by either docs page's toggle), then falls back to
+  // the system prefers-color-scheme. Applies before any stylesheet
+  // parses so first paint is the right palette.
+  //
+  // Web ships only Vellum + Workshop per spec §0; legacy "light"/"dark"
+  // values written by the pre-3.0 toggle migrate to Vellum/Workshop on
+  // read so returning users land on a sane default.
   (function () {
-    var valid = { light: 1, dark: 1 };
-    var mode = 'light';
+    var valid = { vellum: 1, workshop: 1 };
+    var mode;
     try {
-      var stored = localStorage.getItem('yarrow.site.theme');
+      var stored = localStorage.getItem('yarrow.docs.theme')
+        || localStorage.getItem('yarrow.site.theme');
+      if (stored === 'light') stored = 'vellum';
+      else if (stored === 'dark') stored = 'workshop';
       if (stored && valid[stored]) mode = stored;
     } catch (_) {}
+    if (!mode) {
+      mode = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'workshop' : 'vellum';
+    }
     document.documentElement.setAttribute('data-theme', mode);
   })();
 </script>
@@ -64,26 +75,27 @@
     <a class="wordmark" href="index.html">
       <span class="mark-svg"><svg><use href="#yarrow-mark"/></svg></span>
       Yarrow
-      <span class="version">User Guide · v2.1</span>
+      <span class="version">User Guide · v3.0</span>
     </a>
     <span></span>
     <div class="mast-nav">
       <a href="index.html#gallery">A look</a>
       <a href="#whats-new-2">What's new</a>
       <a href="index.html#features">Features</a>
+      <a href="learn.html">Learn</a>
       <a href="index.html#download">Download</a>
       <span class="sep">·</span>
       <div class="theme-toggle" role="radiogroup" aria-label="Theme">
-        <button type="button" data-theme-value="light" aria-pressed="false" aria-label="Light theme" title="Light">
+        <button type="button" data-theme-value="vellum" aria-pressed="false" aria-label="Vellum theme" title="Vellum — cool bone &amp; slate (light)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
         </button>
-        <button type="button" data-theme-value="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">
+        <button type="button" data-theme-value="workshop" aria-pressed="false" aria-label="Workshop theme" title="Workshop — deep ink &amp; bronze (dark)">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
         </button>
       </div>
       <a class="btn-mini" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-        Download 2.1
+        Download 3.0
       </a>
     </div>
   </div>
@@ -137,7 +149,9 @@
     <nav>
       <div class="toc-group">
         <span class="toc-group-h">Start here</span>
+        <a href="learn.html">Learn the basics →</a>
         <a href="#what-is-yarrow">What Yarrow is</a>
+        <a href="#whats-new-3-0">New in 3.0</a>
         <a href="#whats-new-2-1">New in 2.1</a>
         <a href="#whats-new-2">New in 2.0</a>
         <a href="#install">Installing</a>
@@ -159,7 +173,7 @@
         <a href="#typewriter">Typewriter mode</a>
         <a href="#margin-ink">Margin ink</a>
         <a href="#editorial">Editorial reading</a>
-        <a href="#caret-tint">Path-tinted caret</a>
+        <a href="#caret-tint">Scenario-tinted caret</a>
         <a href="#where-left-off">Where you left off</a>
         <a href="#keepsakes">Pinned keepsakes</a>
         <a href="#radial-menu">Radial right-click menu</a>
@@ -188,16 +202,16 @@
         <a href="#map">The Connections Map</a>
       </div>
       <div class="toc-group">
-        <span class="toc-group-h">Paths — the big idea</span>
-        <a href="#paths-intro">What a path is</a>
-        <a href="#starting-path">Starting a path</a>
+        <span class="toc-group-h">Scenarios — the big idea</span>
+        <a href="#paths-intro">What a scenario is</a>
+        <a href="#starting-path">Starting a scenario</a>
         <a href="#forking-road">The Forking Road</a>
-        <a href="#path-detail">Editing a path</a>
-        <a href="#promote">Promoting a side path</a>
-        <a href="#ghost">Ghost paths</a>
+        <a href="#path-detail">Editing a scenario</a>
+        <a href="#promote">Promoting a side scenario</a>
+        <a href="#ghost">Ghost scenarios</a>
         <a href="#decision-tools">Decision tools</a>
         <a href="#decision-matrix">The decision matrix</a>
-        <a href="#path-compare">Comparing two paths</a>
+        <a href="#path-compare">Comparing two scenarios</a>
       </div>
       <div class="toc-group">
         <span class="toc-group-h">Time travel</span>
@@ -237,18 +251,23 @@
   <main class="guide-main">
 
     <header class="guide-hero">
-      <div class="eyebrow"><span class="dot"></span> User Guide · Yarrow 2.1</div>
+      <div class="eyebrow"><span class="dot"></span> User Guide · Yarrow 3.0</div>
       <h1>Everything Yarrow does, <em>explained from scratch.</em></h1>
       <p class="lede">
         Welcome! This guide is for everyone — whether you've never used
         a notes app before, or you're already comfortable with computers
         and want to dig into the details. Read it from top to bottom if
         you're new, or use the menu on the left to jump to whatever
-        you're curious about. If you just updated to 2.1, the
-        <a href="#whats-new-2-1">New in 2.1</a> section up top sums up
-        what's different — kits, a research workflow, a privacy-first
-        clinical surface, optional folders, three UI languages, and
-        a much snappier feel.
+        you're curious about. If you just updated to 3.0, the right
+        rail and palette can now be biased toward how you work via
+        <strong>Settings → Mode &amp; Persona</strong>; the chrome
+        ships with two new default themes — <em>Vellum</em>
+        (cool bone &amp; slate) for light and <em>Workshop</em>
+        (deep ink &amp; bronze) for dark, with four alternative
+        palettes still in <strong>Settings → Appearance</strong>;
+        and Settings → Accessibility has a new <em>Visualizations</em>
+        subsection. Every feature below works the same way it did —
+        only the chrome and the engine underneath have been rebuilt.
       </p>
       <p class="callout">
         <strong>About the keys we mention.</strong> Mac uses the
@@ -265,8 +284,8 @@
         Yarrow is a desktop notebook for the kind of thinking that doesn't
         sit still. You write in plain text, you link your ideas to each
         other, and any time you want to try something a different way, you
-        can branch off into a <em>path</em> — a parallel "what if I went
-        this direction instead?" version of your notes that sits
+        can branch off into a <em>scenario</em> — a parallel "what if I
+        went this direction instead?" version of your notes that sits
         alongside the original. Nothing you write is ever lost; every
         pause becomes a checkpoint you can scroll back to.
       </p>
@@ -286,7 +305,95 @@
         </div>
         <div class="three-card">
           <h4>Remembers everything</h4>
-          <p>Yarrow saves every pause as a tiny snapshot, so you can always scroll back to an older version of a note. Try a different angle on something? Branch into a path; the original waits for you.</p>
+          <p>Yarrow saves every pause as a tiny snapshot, so you can always scroll back to an older version of a note. Try a different angle on something? Branch into a scenario; the original waits for you.</p>
+        </div>
+      </div>
+      <p style="margin-top: 28px; padding: 18px 22px; border: 1px solid var(--rule); border-left: 3px solid var(--yel); border-radius: 6px; background: var(--bg-soft, var(--bg)); font-family: var(--serif);">
+        <strong>New here?</strong> The User Guide is comprehensive — it's the long-form reference. If you want a friendlier walk-through that teaches Scenarios, Personas, wikilinks, tags, and history with examples, start at <a href="learn.html"><em>Learn the basics</em></a> and come back here when you want detail.
+      </p>
+    </section>
+
+    <!-- ════════════════════ NEW IN 3.0 ════════════════════ -->
+    <section id="whats-new-3-0" class="guide-section guide-whats-new">
+      <div class="whats-new-header">
+        <span class="whats-new-kicker">New in 3.0</span>
+        <h2>An architectural pivot, a faster engine, and a design system</h2>
+        <p class="lede">
+          3.0 is a comprehensive rewrite. Three big things land at once:
+          an architectural pivot to <strong>Modes &amp; Personas</strong>
+          that biases the right rail toward how you work, a complete
+          frontend rewrite from <strong>React 19 to Svelte 5</strong>
+          that makes interaction noticeably snappier on the same
+          hardware, and a <strong>design-system pass</strong> that
+          ships six themes (with the new <em>Vellum</em> and
+          <em>Workshop</em> defaults), an OKLCH palette, and a token
+          catalogue. Plus a much-expanded accessibility surface and
+          serious platform polish. Everything you knew from 2.x still
+          works — only the chrome and the foundations underneath it
+          have been rebuilt.
+        </p>
+      </div>
+
+      <div class="three-up">
+        <div class="three-card">
+          <h4>Modes &amp; Personas</h4>
+          <p>Settings → Mode lets you bias the surface to your work. <strong>Basic</strong> strips the rail to the essentials; <strong>Path-Based</strong> is the full Yarrow rail; on top of Path-Based, five personas (<em>Writer</em>, <em>Researcher</em>, <em>Developer</em>, <em>Clinician</em>, <em>Cooking</em>) add a tinted button group with persona-specific shortcuts. Switching is instant and non-destructive — every feature stays one ⌘K away regardless of mode.</p>
+        </div>
+        <div class="three-card">
+          <h4>Faster, by the engine</h4>
+          <p>Every UI surface ported from React to Svelte 5 (runes mode), 107 components end-to-end. Surgical compile-time updates replace virtual-DOM diffing, so typing in long notes, switching scenarios, and dragging through the connections graph all settle faster. Tailwind 3 → 4 (Lightning CSS) makes the production build a third faster too.</p>
+        </div>
+        <div class="three-card">
+          <h4>Bigger graphs, sharper spell-check</h4>
+          <p>The connection graph picks up a Sigma WebGL renderer for vaults past 50 notes, so dense graphs that used to hit SVG paint cliffs now run at 60fps. The spell checker swaps the JS-only nspell runtime for Hunspell-WASM — better morphology, plus you can finally remove a custom word once added.</p>
+        </div>
+        <div class="three-card">
+          <h4>Six themes, two new defaults</h4>
+          <p><strong>Vellum</strong> (cool bone canvas, slate-blue primary, tan-leather secondary) for light, and <strong>Workshop</strong> (deep ink-blue, bronze accents, paper-warm cream text) for dark. The previous Light and Dark palettes ship as <strong>Linen</strong> and <strong>Graphite</strong>; <strong>Ashrose</strong> and <strong>Dracula</strong> stay where they were. Auto can now pair any light theme with any dark theme.</p>
+        </div>
+        <div class="three-card">
+          <h4>Design tokens &amp; new icons</h4>
+          <p>An OKLCH palette layered alongside the existing tokens, a 4-pt spacing scale, a five-rung duration scale, and three easing curves mirroring Apple's native motion. <strong>Phosphor Light</strong> replaces Lucide for chrome icons (one weight, applied everywhere). The Kits picker uses 75 hand-drawn Doodle Icons in place of the previous emoji glyphs.</p>
+        </div>
+        <div class="three-card">
+          <h4>Theme-aware accents</h4>
+          <p>The Scenarios accent picker re-tunes its eight swatches to the active theme — slate / russet / leather / moss on Vellum, bronze / rust / sage / dusk-blue on Workshop — so your accent picks land in the right register without you having to think about it.</p>
+        </div>
+        <div class="three-card">
+          <h4>High-contrast variants</h4>
+          <p>Settings → Accessibility → Contrast: High now respects the active theme. Each palette ships its own AAA-clear bg/text/accent combination so the contrast bump preserves the palette's identity instead of flattening every theme to the same grey.</p>
+        </div>
+        <div class="three-card">
+          <h4>Visualizations subsection</h4>
+          <p>A new Settings → Accessibility → <strong>Visualizations</strong> subsection houses two new prefs. <em>Diff patterns alongside colour</em> (default on) layers strikethrough on removed segments and underline on added segments alongside red/green so colour isn't load-bearing in Compare. <em>Graph table-mode alternative</em> (default off) replaces the force-directed graph with a sortable table for users who can't parse the visualization.</p>
+        </div>
+        <div class="three-card">
+          <h4>Colour-blind-safe edges</h4>
+          <p>When a11y-color-blind-safe is on, the connections graph picks up distinct stroke patterns per edge kind: solid for <code>supports</code>, dash-dot for <code>challenges</code>, dotted for <code>came-from</code>, dashed for <code>open-question</code>. Colour alone no longer carries the edge-kind signal.</p>
+        </div>
+        <div class="three-card">
+          <h4>Reading-guide band</h4>
+          <p>Toggle <em>Settings → Accessibility → Reading guide band</em> and the editor surfaces a soft horizontal band that follows the cursor row, anchoring the reader's eye on the line being typed. Honours <code>prefers-reduced-motion</code>.</p>
+        </div>
+        <div class="three-card">
+          <h4>aria-live announcements</h4>
+          <p>Scenario created, scenario switched, checkpoint pinned, checkpoint restored, note created, and note deleted all fire <code>aria-live</code> updates so assistive tech narrates the workflow instead of leaving screen-reader users to infer what just happened.</p>
+        </div>
+        <div class="three-card">
+          <h4>macOS vibrancy &amp; native chrome</h4>
+          <p>The sidebar uses real <code>NSVisualEffectMaterial</code> vibrancy (Sidebar for the light family, HudWindow for the dark). Chrome switches to the Apple system font (<em>SF Pro Text</em>); focus rings use the system accent colour from System Settings → Appearance. Modals slide down with an <code>NSWindow.beginSheet</code>-style entrance; the About panel picks up © year, MIT licence, and a "Source on GitHub" link.</p>
+        </div>
+        <div class="three-card">
+          <h4>Linux desktop-environment polish</h4>
+          <p>Yarrow now detects the running desktop (GNOME / KDE / XFCE / Cinnamon / MATE / Unity / LXQt / LXDE) and stamps it on <code>&lt;html data-de=…&gt;</code>. On GNOME 46+, <strong>Adwaita Sans</strong> is layered into the chrome's fallback chain so Yarrow reads as a first-class GNOME app.</p>
+        </div>
+        <div class="three-card">
+          <h4>Special tag colours</h4>
+          <p>Seven recognised tag kinds get distinct visual treatments — <em>sensitive</em> in rose, <em>attention</em> in amber, <em>mature</em> in emerald, <em>question</em> in cyan, <em>decision</em> in indigo, <em>draft</em> in italic faded yellow, <em>archived</em> in strikethrough grey. A new <strong>Tag Browser</strong> icon in the right rail opens a workspace-wide tag list with usage counts plus a legend.</p>
+        </div>
+        <div class="three-card">
+          <h4>Paths are now Scenarios</h4>
+          <p>The "what if I tried it this way" feature you knew as <em>Paths</em> in 2.x is now called <strong>Scenarios</strong> across every surface — same idea, plainer English. The keyboard shortcuts, the Forking Road graph, ghost scenarios, decision tools, all unchanged in behaviour. Existing workspaces upgrade silently; nothing on disk has to move.</p>
         </div>
       </div>
     </section>
@@ -317,7 +424,7 @@
         </div>
         <div class="three-card">
           <h4>Compare two notes</h4>
-          <p>Open Compare and you'll land in <strong>Notes</strong> mode by default — pick two notes by title and you get a side-by-side diff. The original Paths mode is still there behind a toggle.</p>
+          <p>Open Compare and you'll land in <strong>Notes</strong> mode by default — pick two notes by title and you get a side-by-side diff. The original Scenarios mode is still there behind a toggle.</p>
         </div>
         <div class="three-card">
           <h4>Live-preview split</h4>
@@ -391,7 +498,7 @@
           If you just updated, this is the short version: seven new
           things, each with its own tiny illustration so you can see
           what they do before you turn them on. (There's also a whole
-          bunch more — callouts, tables, the connect-mode map, path
+          bunch more — callouts, tables, the connect-mode map, scenario
           colours, imports from Bear / Logseq / Notion — covered in
           the relevant sections later.) Everything old still works
           the same.
@@ -597,10 +704,10 @@
         </div>
       </div>
 
-      <!-- 2.0 · 4 — Path-tinted caret -->
+      <!-- 2.0 · 4 — Scenario-tinted caret -->
       <div class="v2-feature reverse" id="caret-tint">
         <div class="v2-feature-art">
-          <svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four lines of text, each with its blinking cursor shown in a different colour to match the name of the path — plum for main, rose for darker-ending, sage for rewrite-intro, gold for third-person.">
+          <svg viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four lines of text, each with its blinking cursor shown in a different colour to match the name of the scenario — plum for main, rose for darker-ending, sage for rewrite-intro, gold for third-person.">
             <rect x="18" y="20" width="324" height="240" rx="12" fill="var(--s1)" stroke="var(--bd)"/>
             <!-- row 1 main -->
             <g>
@@ -627,31 +734,33 @@
               <rect x="312" y="188" width="2" height="16" fill="#C69747"/>
             </g>
             <!-- caption -->
-            <text x="180" y="242" font-family="Newsreader, serif" font-style="italic" font-size="12" fill="var(--t2)" text-anchor="middle">Your cursor wears the path's colour.</text>
+            <text x="180" y="242" font-family="Newsreader, serif" font-style="italic" font-size="12" fill="var(--t2)" text-anchor="middle">Your cursor wears the scenario's colour.</text>
           </svg>
         </div>
         <div class="v2-feature-body">
           <div class="v2-feature-tag">Accessibility</div>
-          <h3>Path-tinted caret</h3>
+          <h3>Scenario-tinted caret</h3>
           <p>
-            When you branch into a side path to try a different version of a
-            note, your blinking cursor takes on that path's colour. You
-            always know at a glance <em>which</em> draft you're editing —
-            no need to check the path pill in the toolbar. Ambient
-            information, nothing to read.
+            When you branch into a side scenario to try a different
+            version of a note, your blinking cursor takes on that
+            scenario's colour. You always know at a glance <em>which</em>
+            draft you're editing — no need to check the scenario pill in
+            the toolbar. Ambient information, nothing to read.
           </p>
           <p>
-            <strong>Assigning a colour to a path:</strong> open the Paths
-            view (<kbd>⌘K</kbd> → <em>Paths</em>), click into any path,
-            pick a colour from the swatch at the top of the detail panel.
-            If you don't, Yarrow derives a calm hue from the path's name
-            automatically — so you get the feature for free.
+            <strong>Assigning a colour to a scenario:</strong> open the
+            Scenarios view (<kbd>⌘K</kbd> → <em>Scenarios</em>), click
+            into any scenario, pick a colour from the swatch at the top
+            of the detail panel. If you don't, Yarrow derives a calm hue
+            from the scenario's name automatically — so you get the
+            feature for free.
           </p>
           <p>
             <strong>Turning it off:</strong> if you prefer the default
             high-contrast caret (for readability or screen-reader use),
-            toggle <em>Path-tinted caret</em> off under Settings → Writing.
-            It stays on by default because most people find it helpful.
+            toggle <em>Scenario-tinted caret</em> off under Settings →
+            Writing. It stays on by default because most people find it
+            helpful.
           </p>
         </div>
       </div>
@@ -696,18 +805,19 @@
           <div class="v2-feature-tag">Comfort</div>
           <h3>Where you left off</h3>
           <p>
-            Coming back to a note after a break is a small cost every time —
-            you have to remember what you were thinking, which path you
-            were on, which sentence you were in the middle of.
+            Coming back to a note after a break is a small cost every
+            time — you have to remember what you were thinking, which
+            scenario you were on, which sentence you were in the middle
+            of.
           </p>
           <p>
             When you reopen a workspace you used in the last three days,
             Yarrow shows a one-line banner above the editor: the note you
-            paused in, the path you were on, and the line you were at
-            last. Three buttons, nothing complicated:
+            paused in, the scenario you were on, and the line you were
+            at last. Three buttons, nothing complicated:
           </p>
           <ul class="bullet-list">
-            <li><strong>pick up here →</strong> jumps to that note on that path, right where you were.</li>
+            <li><strong>pick up here →</strong> jumps to that note in that scenario, right where you were.</li>
             <li><strong>start somewhere else</strong> hides the banner for this session, without touching your bookmark.</li>
             <li><strong>hide next time</strong> turns the banner off forever for this workspace.</li>
           </ul>
@@ -877,7 +987,7 @@
           <h4>What's on the wedges</h4>
           <ul class="bullet-list">
             <li><strong>When no text is selected</strong> — inserts: <em>Wikilink</em>, <em>Table</em>, <em>Task</em>, <em>Code</em>, <em>Callout</em>, <em>Heading</em>.</li>
-            <li><strong>When text is selected</strong> — transforms: <em>Wikilink</em>, <em>New path</em>, <em>Bold</em>, <em>Italic</em>, <em>Annotate</em>, <em>Scratchpad</em>, <em>Copy</em>.</li>
+            <li><strong>When text is selected</strong> — transforms: <em>Wikilink</em>, <em>New scenario</em>, <em>Bold</em>, <em>Italic</em>, <em>Annotate</em>, <em>Scratchpad</em>, <em>Copy</em>.</li>
           </ul>
           <h4>The Still Point (the centre disc)</h4>
           <p>
@@ -1092,7 +1202,7 @@
             <text x="652" y="182" font-family="sans-serif" font-size="10" fill="var(--char)" text-anchor="middle">Browse…</text>
             <text x="400" y="208" font-family="mono" font-size="9" fill="var(--t3)">HOW WILL YOU USE IT?</text>
             <rect x="400" y="215" width="135" height="40" rx="6" fill="var(--yelp)" stroke="var(--yel)"/>
-            <text x="467" y="231" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">Branch path</text>
+            <text x="467" y="231" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">Scenario</text>
             <text x="467" y="246" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">mapping</text>
             <rect x="545" y="215" width="135" height="40" rx="6" fill="var(--bg)" stroke="var(--bd)"/>
             <text x="612" y="238" font-family="serif" font-size="11" fill="var(--char)" text-anchor="middle">Basic notes</text>
@@ -1110,7 +1220,7 @@
         Step 2 also asks how you want to use this workspace:
       </p>
       <ul class="bullet-list">
-        <li><strong>Branch path mapping</strong> (recommended) — the full Yarrow experience. Notes can link to each other, you can branch into paths, and a beautiful map shows how your ideas connect.</li>
+        <li><strong>Scenario mapping</strong> (recommended) — the full Yarrow experience. Notes can link to each other, you can branch into scenarios, and a beautiful map shows how your ideas connect.</li>
         <li><strong>Basic notes</strong> — a simple notebook with no extra moving parts. Just notes and folders, like a plain text journal. Pick this if you only want to jot things down.</li>
       </ul>
       <p class="callout">
@@ -1153,8 +1263,8 @@
       </p>
       <figure class="diagram screenshot">
         <div class="screenshot-frame">
-          <img src="editor-light.png" alt="A screenshot of the main Yarrow window — sidebar on the left, editor in the middle, tool-rail on the right." class="shot-light shown" />
-          <img src="editor-dark.png" alt="The same window in the dark theme." class="shot-dark hidden-shot" />
+          <img src="assets/main-light.png" alt="A screenshot of the main Yarrow window — sidebar on the left, editor in the middle, tool-rail on the right." class="shot-light shown" />
+          <img src="assets/main-dark.png" alt="The same window in the dark theme." class="shot-dark hidden-shot" />
           <!-- Callout overlay. Coords are percentages of the image so the
                numbered pins line up no matter the rendered size. -->
           <svg class="callouts" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -1182,18 +1292,18 @@
             note you've written lives here. The ★ on one of them marks
             your workspace's "starting" note — the heart of your
             collection. Below it you'll find your journal entries, your
-            paths (more on those later), and a button for the
+            scenarios (more on those later), and a button for the
             scratchpad and the trash.
           </div>
         </li>
         <li>
           <span class="callout-num">2</span>
           <div>
-            <strong>The top strip</strong> tells you which path you're
-            on (it'll usually say <em>main</em>, which is the trunk),
-            and gives you one-click buttons for branching off into a
-            new direction, opening the connections map, and the full
-            paths view.
+            <strong>The top strip</strong> tells you which scenario
+            you're on (it'll usually say <em>main</em>, which is the
+            trunk), and gives you one-click buttons for branching off
+            into a new direction, opening the connections map, and the
+            full Scenarios view.
           </div>
         </li>
         <li>
@@ -1211,8 +1321,9 @@
             <strong>The tool-rail</strong> on the right is a tiny column
             of icons. From top to bottom: flip between writing and
             reading mode, see the connections map, see what links to
-            this note, scrub the timeline, open the paths view,
-            scratchpad, and settings. Hover any icon for its name.
+            this note, scrub the timeline, open the Scenarios view,
+            tag browser, scratchpad, and settings. Hover any icon for
+            its name.
           </div>
         </li>
       </ol>
@@ -1221,8 +1332,8 @@
         <a href="#typewriter">Typewriter mode</a> keeps the line you're
         writing centered on screen. You can also annotate the body in a
         right-hand gutter with <a href="#margin-ink">Margin ink</a>, and
-        your cursor can wear the current path's colour via the
-        <a href="#caret-tint">Path-tinted caret</a>.
+        your cursor can wear the current scenario's colour via the
+        <a href="#caret-tint">Scenario-tinted caret</a>.
       </p>
     </section>
 
@@ -1435,7 +1546,7 @@ def hello():
         Hover the mouse over any link for a moment and a small preview
         appears with the linked note's title and the first few lines of
         what's inside. Move into the preview to keep it open and click
-        a button to "start a path here" if you want to branch from
+        a button to "start a scenario here" if you want to branch from
         that note.
       </p>
       <p>
@@ -1573,69 +1684,59 @@ def hello():
       </figure>
       <ul class="bullet-list">
         <li><strong>Nearby / All toggle</strong> — start with 1–2 hops to keep the picture readable; switch to All when you want the whole network.</li>
-        <li><strong>Open per path</strong> — from any path's detail panel, click <em>Open the map for this path</em> to filter the graph to only that path's notes.</li>
+        <li><strong>Open per scenario</strong> — from any scenario's detail panel, click <em>Open the map for this scenario</em> to filter the graph to only that scenario's notes.</li>
         <li><strong>Expand</strong> — the maximize icon opens the map full-screen.</li>
       </ul>
     </section>
 
-    <!-- ═══ paths intro ═══ -->
+    <!-- ═══ scenarios intro ═══ -->
     <section id="paths-intro" class="guide-section">
-      <h2>Paths — the big idea</h2>
+      <h2>Scenarios — the big idea</h2>
       <p>
-        A <strong>path</strong> is Yarrow's word for a different version
-        of your notes. Every workspace starts with one path called
+        A <strong>scenario</strong> is Yarrow's word for a different
+        version of your notes. <em>(In 2.x this feature was called a
+        "path"; the same idea, renamed for plain English in 3.0.)</em>
+        Every workspace starts with one scenario called
         <em>main</em> — the trunk of your thinking. When you want to
         try something a different way (a solo trip instead of a couples
         trip, an alternate research angle, a "what if we did this in
-        June instead?"), you start a new path. The original keeps
+        June instead?"), you start a new scenario. The original keeps
         going as-is; the new one branches off to the side.
       </p>
       <p>
-        Paths aren't copies of your notes — they're more like
-        playlists. The same note can be in many paths at once, and
-        editing it on one path affects every path it's on. Think of
-        paths as different ways of pointing at the same set of files,
-        not different files.
+        Scenarios aren't copies of your notes — they're more like
+        playlists. The same note can be in many scenarios at once, and
+        editing it on one scenario affects every scenario it's on. Think
+        of scenarios as different ways of pointing at the same set of
+        files, not different files.
       </p>
-      <figure class="diagram">
-        <svg viewBox="0 0 660 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A workspace with one main path and two side paths branching off it.">
-          <line x1="80" y1="120" x2="240" y2="120" stroke="var(--t3)" stroke-width="2"/>
-          <line x1="240" y1="120" x2="440" y2="60" stroke="var(--t3)" stroke-width="2"/>
-          <line x1="240" y1="120" x2="440" y2="180" stroke="var(--t3)" stroke-width="2"/>
-          <rect x="20" y="100" width="120" height="40" rx="6" fill="var(--bg)" stroke="var(--gold)" stroke-width="2"/>
-          <text x="80" y="118" font-family="serif" font-size="13" fill="var(--char)" text-anchor="middle">main</text>
-          <text x="80" y="132" font-family="mono" font-size="9" fill="var(--gold)" text-anchor="middle">★ MAIN</text>
-          <rect x="380" y="40" width="160" height="40" rx="6" fill="var(--bg)" stroke="var(--bd2)"/>
-          <text x="460" y="58" font-family="serif" font-size="13" fill="var(--char)" text-anchor="middle">solo trip</text>
-          <text x="460" y="72" font-family="serif" font-size="9" fill="var(--yeld)" text-anchor="middle" font-style="italic">"if I go alone"</text>
-          <rect x="380" y="160" width="160" height="40" rx="6" fill="var(--bg)" stroke="var(--bd2)"/>
-          <text x="460" y="178" font-family="serif" font-size="13" fill="var(--char)" text-anchor="middle">budget cut</text>
-          <text x="460" y="192" font-family="serif" font-size="9" fill="var(--yeld)" text-anchor="middle" font-style="italic">"if budget halves"</text>
-          <text x="80" y="180" font-family="mono" font-size="9" fill="var(--t3)" text-anchor="middle">12 notes</text>
-          <text x="460" y="100" font-family="mono" font-size="9" fill="var(--t3)" text-anchor="middle">9 notes</text>
-          <text x="460" y="220" font-family="mono" font-size="9" fill="var(--t3)" text-anchor="middle">7 notes</text>
-        </svg>
-        <figcaption>Main is the trunk; side paths branch off. Each side path is "asking a question" you can answer by working in it.</figcaption>
+      <figure class="diagram screenshot">
+        <div class="screenshot-frame">
+          <img src="assets/scenarios-light.png" alt="The Scenarios view — a trunk labelled main with side scenarios branching off it." class="shot-light shown" />
+          <img src="assets/scenarios-dark.png" alt="The same view in the dark theme." class="shot-dark hidden-shot" />
+        </div>
+        <figcaption>Main is the trunk; side scenarios branch off. Each side scenario is "asking a question" you can answer by working in it.</figcaption>
       </figure>
     </section>
 
-    <!-- ═══ starting a path ═══ -->
+    <!-- ═══ starting a scenario ═══ -->
     <section id="starting-path" class="guide-section">
-      <h2>Starting a path</h2>
+      <h2>Starting a scenario</h2>
       <p>
         Three ways:
       </p>
       <ol class="bullet-list">
-        <li>Press <kbd>⌘⇧B</kbd> from anywhere — opens the new-path modal seeded with the current note.</li>
+        <li>Press <kbd>⌘⇧B</kbd> from anywhere — opens the new-scenario modal seeded with the current note.</li>
         <li>Click <em>Branch this</em> in the toolbar above the editor.</li>
-        <li>Hover any wikilink → <em>Start a path from this note</em>.</li>
+        <li>Hover any wikilink → <em>Start a scenario from this note</em>.</li>
       </ol>
       <p>
         The modal asks for a <strong>condition</strong> — the
-        <em>"if…"</em> question this path is asking, like <em>"if I go
-        alone"</em> or <em>"if the Seattle job comes through."</em> The
-        condition becomes the path's display name. The note you were on
-        becomes the path's <strong>main note</strong> (its anchor).
+        <em>"if…"</em> question this scenario is asking, like <em>"if I
+        go alone"</em> or <em>"if the Seattle job comes through."</em>
+        The condition becomes the scenario's display name. The note you
+        were on becomes the scenario's <strong>main note</strong> (its
+        anchor).
       </p>
     </section>
 
@@ -1643,58 +1744,58 @@ def hello():
     <section id="forking-road" class="guide-section">
       <h2>The Forking Road graph</h2>
       <p>
-        Click the <strong>Paths</strong> icon on the tool-rail to open the
-        full Forking Road. It shows your workspace as a tree growing left
-        to right: the root (main) on the left, side paths fanning out to
-        the right.
+        Click the <strong>Scenarios</strong> icon on the tool-rail to
+        open the full Forking Road. It shows your workspace as a tree
+        growing left to right: the root (main) on the left, side
+        scenarios fanning out to the right.
       </p>
       <ul class="bullet-list">
         <li><strong>Drag</strong> the canvas to pan; <strong>scroll</strong> to zoom.</li>
         <li><strong>+ button</strong> on any card to start a sub-branch from there.</li>
         <li><strong>Click a card</strong> to select it and open the detail panel on the right.</li>
-        <li><strong>YOU ARE HERE</strong> labels the path you're currently editing in.</li>
-        <li><strong>+N / −M badge</strong> on every card shows what you'd gain or lose by switching to that path (more on this in <a href="#decision-tools">Decision tools</a>).</li>
+        <li><strong>YOU ARE HERE</strong> labels the scenario you're currently editing in.</li>
+        <li><strong>+N / −M badge</strong> on every card shows what you'd gain or lose by switching to that scenario (more on this in <a href="#decision-tools">Decision tools</a>).</li>
       </ul>
     </section>
 
-    <!-- ═══ path detail ═══ -->
+    <!-- ═══ scenario detail ═══ -->
     <section id="path-detail" class="guide-section">
-      <h2>Editing a path</h2>
+      <h2>Editing a scenario</h2>
       <p>
-        Selecting a path opens its detail panel:
+        Selecting a scenario opens its detail panel:
       </p>
       <ul class="bullet-list">
-        <li><strong>Header</strong> — the path's name, its <em>"if…"</em> condition (click to edit), and its parent path.</li>
-        <li><strong>If you take this path</strong> — the diff vs. your current path (covered in the next section).</li>
-        <li><strong>In this path</strong> — the member notes. Click any to open. Hover for actions: <em>mark main</em> (designate that note as the path's anchor), <em>branch</em> (spin it into a sub-path), <em>remove</em> (drop from this path; doesn't delete the note).</li>
-        <li><strong>+ add note</strong> — opens a small picker of every note not already on the path.</li>
-        <li><strong>Open the map for this path</strong> — opens the Connections Map filtered to this path's members only.</li>
-        <li><strong>Promote to main</strong> / <strong>Delete this path</strong> in the footer.</li>
+        <li><strong>Header</strong> — the scenario's name, its <em>"if…"</em> condition (click to edit), and its parent scenario.</li>
+        <li><strong>If you take this scenario</strong> — the diff vs. your current scenario (covered in the next section).</li>
+        <li><strong>In this scenario</strong> — the member notes. Click any to open. Hover for actions: <em>mark main</em> (designate that note as the scenario's anchor), <em>branch</em> (spin it into a sub-scenario), <em>remove</em> (drop from this scenario; doesn't delete the note).</li>
+        <li><strong>+ add note</strong> — opens a small picker of every note not already in the scenario.</li>
+        <li><strong>Open the map for this scenario</strong> — opens the Connections Map filtered to this scenario's members only.</li>
+        <li><strong>Promote to main</strong> / <strong>Delete this scenario</strong> in the footer.</li>
       </ul>
     </section>
 
     <!-- ═══ promote ═══ -->
     <section id="promote" class="guide-section">
-      <h2>Promoting a side path to main</h2>
+      <h2>Promoting a side scenario to main</h2>
       <p>
         You explored "solo trip" as an alternative; now you've decided to
-        go alone. Click <strong>★ Promote to main…</strong> in the path
-        detail footer. The side path becomes the new trunk, and the old
-        main moves to the <strong>ghost zone</strong> — preserved, faded,
-        on the left of the live tree.
+        go alone. Click <strong>★ Promote to main…</strong> in the
+        scenario detail footer. The side scenario becomes the new trunk,
+        and the old main moves to the <strong>ghost zone</strong> —
+        preserved, faded, on the left of the live tree.
       </p>
     </section>
 
     <!-- ═══ ghost ═══ -->
     <section id="ghost" class="guide-section">
-      <h2>Ghost paths</h2>
+      <h2>Ghost scenarios</h2>
       <p>
-        When you promote a side path to be the new main, the old main
-        doesn't disappear — it becomes a <strong>ghost path</strong>.
-        Ghost paths sit faded to the left of the live trunk, keeping
-        all their original neighbors intact. If you change your mind
-        later, you can promote a ghost back to main and its
-        neighborhood comes along with it. Yarrow's promise is that
+        When you promote a side scenario to be the new main, the old
+        main doesn't disappear — it becomes a <strong>ghost
+        scenario</strong>. Ghost scenarios sit faded to the left of the
+        live trunk, keeping all their original neighbors intact. If you
+        change your mind later, you can promote a ghost back to main and
+        its neighborhood comes along with it. Yarrow's promise is that
         nothing you ever made gets thrown away.
       </p>
     </section>
@@ -1703,29 +1804,30 @@ def hello():
     <section id="decision-tools" class="guide-section">
       <h2>Decision tools</h2>
       <p>
-        Once you have more than one path, the question becomes: <em>which
-        one?</em> Yarrow has four ways to answer that — without writing a
-        single side document.
+        Once you have more than one scenario, the question becomes:
+        <em>which one?</em> Yarrow has four ways to answer that —
+        without writing a single side document.
       </p>
 
-      <h3>1. The +N / −M badge on every path card</h3>
+      <h3>1. The +N / −M badge on every scenario card</h3>
       <p>
-        Every path card on the Forking Road shows a small badge in its
-        bottom-right corner: how many notes you'd <em>gain</em> (yellow
-        +) and how many you'd <em>lose</em> (red −) by switching to that
-        path from the one you're currently editing. Hover for a tooltip;
-        the badge disappears for the path you're already on.
+        Every scenario card on the Forking Road shows a small badge in
+        its bottom-right corner: how many notes you'd <em>gain</em>
+        (yellow +) and how many you'd <em>lose</em> (red −) by switching
+        to that scenario from the one you're currently editing. Hover
+        for a tooltip; the badge disappears for the scenario you're
+        already on.
       </p>
 
-      <h3>2. The "If you take this path…" diff panel</h3>
+      <h3>2. The "If you take this scenario…" diff panel</h3>
       <p>
-        Open any path's detail panel and the first section is a
-        three-state diff vs. your current path:
+        Open any scenario's detail panel and the first section is a
+        three-state diff vs. your current scenario:
       </p>
       <ul class="bullet-list">
-        <li><strong>+ you'd gain</strong> — notes present in this path that aren't in yours (yellow)</li>
-        <li><strong>~ present on both, but edited differently</strong> — same note slug, divergent body (amber)</li>
-        <li><strong>− you'd leave behind</strong> — notes you have that this path doesn't (red, struck through)</li>
+        <li><strong>+ you'd gain</strong> — notes in this scenario that aren't in yours (yellow)</li>
+        <li><strong>~ present in both, but edited differently</strong> — same note slug, divergent body (amber)</li>
+        <li><strong>− you'd leave behind</strong> — notes you have that this scenario doesn't (red, struck through)</li>
       </ul>
       <p>
         Click the small <strong>group by tag</strong> toggle to cluster
@@ -1735,18 +1837,19 @@ def hello():
 
       <h3>3. Hover to highlight</h3>
       <p>
-        Pointing at any path card lights up its slugs in the note-list
-        sidebar (yellow background) and dims the rest. Releasing the
-        hover brings everything back. Opening a path's detail panel keeps
-        the highlight on for as long as the panel is open.
+        Pointing at any scenario card lights up its slugs in the
+        note-list sidebar (yellow background) and dims the rest.
+        Releasing the hover brings everything back. Opening a scenario's
+        detail panel keeps the highlight on for as long as the panel is
+        open.
       </p>
 
       <h3>4. Drag to add</h3>
       <p>
-        Drag any note from the sidebar onto a path card on the graph (or
-        onto the "In this path" section of an open path). The card
-        highlights as a drop target; releasing adds the note. No menu
-        diving.
+        Drag any note from the sidebar onto a scenario card on the graph
+        (or onto the "In this scenario" section of an open scenario).
+        The card highlights as a drop target; releasing adds the note.
+        No menu diving.
       </p>
     </section>
 
@@ -1759,14 +1862,14 @@ def hello():
         <em>Decision matrix…</em>.
       </p>
       <p>
-        Rows are notes, columns are paths, cells are ✓ (the note is on
-        that path) or · (it isn't). Click the ☆ next to any row to mark
-        that note as <strong>must-have</strong>. Starred rows bubble to
-        the top; the cell turns into a red ✗ if a starred note is missing
-        from a path.
+        Rows are notes, columns are scenarios, cells are ✓ (the note is
+        in that scenario) or · (it isn't). Click the ☆ next to any row
+        to mark that note as <strong>must-have</strong>. Starred rows
+        bubble to the top; the cell turns into a red ✗ if a starred note
+        is missing from a scenario.
       </p>
       <figure class="diagram">
-        <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The decision matrix: notes as rows, paths as columns, checkmarks for membership, score per path.">
+        <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The decision matrix: notes as rows, scenarios as columns, checkmarks for membership, score per scenario.">
           <rect x="10" y="10" width="680" height="200" rx="8" fill="var(--bg)" stroke="var(--bd)"/>
           <line x1="10" y1="50" x2="690" y2="50" stroke="var(--bd)"/>
           <line x1="280" y1="10" x2="280" y2="210" stroke="var(--bd)"/>
@@ -1806,7 +1909,7 @@ def hello():
           <text x="490" y="190" font-family="sans-serif" font-size="14" fill="var(--bd2)" text-anchor="middle">·</text>
           <text x="625" y="190" font-family="sans-serif" font-size="14" fill="var(--t2)" text-anchor="middle">✓</text>
         </svg>
-        <figcaption>"Solo" is missing Rome — the red ✗ on a starred row catches the eye immediately. The score in each column header tells you how many must-haves a path satisfies.</figcaption>
+        <figcaption>"Solo" is missing Rome — the red ✗ on a starred row catches the eye immediately. The score in each column header tells you how many must-haves a scenario satisfies.</figcaption>
       </figure>
       <p>
         Top-row tools let you filter by tag, narrow by free text, or hide
@@ -1815,13 +1918,13 @@ def hello():
       </p>
     </section>
 
-    <!-- ═══ path compare ═══ -->
+    <!-- ═══ scenario compare ═══ -->
     <section id="path-compare" class="guide-section">
-      <h2>Comparing two paths side by side</h2>
+      <h2>Comparing two scenarios side by side</h2>
       <p>
-        <kbd>⌘K</kbd> → <em>Compare two paths…</em>. Pick any two paths
-        from the dropdowns. Yarrow lays them out in a two-column view
-        with every note that differs:
+        <kbd>⌘K</kbd> → <em>Compare two scenarios…</em>. Pick any two
+        scenarios from the dropdowns. Yarrow lays them out in a
+        two-column view with every note that differs:
         <span class="kw-add">added</span>,
         <span class="kw-rem">removed</span>,
         <span class="kw-mod">changed</span>, and (if you uncheck "Hide
@@ -1865,7 +1968,7 @@ def hello():
       <p>
         Restoring a checkpoint doesn't destroy what you have now — it
         creates a <em>new</em> checkpoint with the older content. Your
-        path forward continues; the old version is still in the timeline.
+        scenario continues; the old version is still in the timeline.
       </p>
       <p class="callout">
         <strong>New in 2.0:</strong> any checkpoint in the timeline can be
@@ -1899,14 +2002,14 @@ def hello():
       <p>
         Press <kbd>⌘K</kbd> any time to open Yarrow's command palette —
         one search box that does just about everything. Jump to a
-        note by typing its name, switch paths, run any of the menu
+        note by typing its name, switch scenarios, run any of the menu
         actions, all from your keyboard. Use the arrow keys to
         navigate the list and <kbd>Enter</kbd> to pick.
       </p>
       <p>
         Some things worth searching for in there: <em>New note</em>,
         <em>Jump to today's journal</em>, <em>Open trash</em>,
-        <em>Decision matrix</em>, <em>Compare two paths</em>,
+        <em>Decision matrix</em>, <em>Compare two scenarios</em>,
         <em>Find &amp; replace</em>, <em>Print or save as PDF</em>,
         <em>Open new window</em>, <em>Switch workspace</em>,
         <em>Import an Obsidian vault</em>, <em>Sync workspace</em>,
@@ -1925,7 +2028,7 @@ def hello():
       </p>
       <p>
         You can choose whether to search across your whole workspace
-        or just your current path. <strong>Replace all</strong> shows a
+        or just your current scenario. <strong>Replace all</strong> shows a
         confirmation step first. The whole change is recorded as a
         single edit, so if you change your mind you can roll the entire
         replace back from History on any of the changed notes.
@@ -2215,7 +2318,7 @@ def hello():
         language picker in the top-right of the welcome screen. Your
         choice is saved on your machine and applies instantly across
         every surface: toolbar, sidebars, all modals, status bar,
-        command palette, paths views.
+        command palette, Scenarios views.
       </p>
 
       <h3>What's not translated, on purpose</h3>
@@ -2233,10 +2336,10 @@ def hello():
       </ul>
       <p>
         The translation glossary keeps Yarrow's specific vocabulary
-        consistent across the whole UI. <em>Path</em> is "ruta" in
-        Spanish and "stig" in Swedish; <em>checkpoint</em> is "punto
-        de control" / "kontrollpunkt"; <em>bring together</em>
-        (Yarrow's word for merging two paths) is "unir" / "föra
+        consistent across the whole UI. <em>Scenario</em> is "escenario"
+        in Spanish and "scenario" in Swedish; <em>checkpoint</em> is
+        "punto de control" / "kontrollpunkt"; <em>bring together</em>
+        (Yarrow's word for merging two scenarios) is "unir" / "föra
         samman" — every surface uses the same word, so the language
         feels like one piece of writing rather than a patchwork.
       </p>
@@ -2265,7 +2368,7 @@ def hello():
       <h3>What got faster</h3>
       <ul class="bullet-list">
         <li><strong>Scrolling.</strong> Long lists — the note list, Settings — now skip rendering off-screen rows entirely until they scroll into view, and run on the GPU instead of the CPU.</li>
-        <li><strong>Modal opens.</strong> Every modal Yarrow can open (Command Palette, Settings, Trash, History, Find &amp; replace, the paths views, all the kits and importers) is now prefetched in the background as soon as the app finishes loading. First-open is instant rather than the small pause that used to precede the first appearance.</li>
+        <li><strong>Modal opens.</strong> Every modal Yarrow can open (Command Palette, Settings, Trash, History, Find &amp; replace, the Scenarios views, all the kits and importers) is now prefetched in the background as soon as the app finishes loading. First-open is instant rather than the small pause that used to precede the first appearance.</li>
         <li><strong>Hover state.</strong> Buttons, sidebar rows, and panel chrome no longer carry an inherited transition tail from a leftover global rule. Hover feels immediate.</li>
         <li><strong>Theme toggle.</strong> Switching between light, dark, and ashrose still crossfades — but the crossfade is now scoped to a 260ms window during the actual switch instead of being permanently armed.</li>
         <li><strong>Default settings stay flat.</strong> Yarrow's body element no longer carries a filter or a zoom layer when you're at neutral warmth and the default UI scale. Both only attach when you've actually moved them away from neutral.</li>
@@ -2293,7 +2396,7 @@ def hello():
         Press <kbd>⌘T</kbd> to jump to today's journal entry. If today
         doesn't exist, Yarrow creates it from the
         <code>daily.md</code> template. Daily notes always live on
-        <code>main</code> — opening one from a side path silently
+        <code>main</code> — opening one from a side scenario silently
         switches you back to main, with a small toast explaining why
         (the journal is one stream, not N parallel ones).
       </p>
@@ -2479,7 +2582,7 @@ def hello():
       </p>
       <ul class="bullet-list">
         <li><strong>Appearance</strong> — light / dark / auto theme; UI font picker; UI scale (compact / cozy / roomy).</li>
-        <li><strong>Writing</strong> — editor font and size; raw markdown vs reading mode default; debounce-save interval; "what were you thinking?" prompt on close; <strong>new in 2.0:</strong> <a href="#typewriter">Typewriter mode</a>, <a href="#editorial">Editorial reading</a>, and <a href="#caret-tint">Path-tinted caret</a>.</li>
+        <li><strong>Writing</strong> — editor font and size; raw markdown vs reading mode default; debounce-save interval; "what were you thinking?" prompt on close; <strong>new in 2.0:</strong> <a href="#typewriter">Typewriter mode</a>, <a href="#editorial">Editorial reading</a>, and <a href="#caret-tint">Scenario-tinted caret</a>.</li>
         <li><strong>Templates</strong> — edit, add, delete templates. The <code>daily.md</code> template is always present.</li>
         <li><strong>Sync</strong> — remote URL, access token; manual sync trigger.</li>
         <li><strong>Security</strong> — encryption setup, password change, recovery phrase regeneration, idle timeout, disable encryption.</li>
@@ -2498,7 +2601,7 @@ def hello():
           <tr><td><kbd>⌘K</kbd></td><td>Command palette</td></tr>
           <tr><td><kbd>⌘O</kbd></td><td>Quick note switcher</td></tr>
           <tr><td><kbd>⌘N</kbd></td><td>New note</td></tr>
-          <tr><td><kbd>⌘⇧N</kbd></td><td>Start a new path</td></tr>
+          <tr><td><kbd>⌘⇧N</kbd></td><td>Start a new scenario</td></tr>
           <tr><td><kbd>⌘⇧B</kbd></td><td>Branch from current note</td></tr>
           <tr><td><kbd>⌘T</kbd></td><td>Jump to today's journal</td></tr>
           <tr><td><kbd>⌘←</kbd> / <kbd>⌘→</kbd></td><td>Previous / next journal entry</td></tr>
@@ -2529,7 +2632,7 @@ def hello():
       <pre><code>your-workspace/
 ├── .yarrow/
 │   ├── config.toml              workspace settings (committed)
-│   ├── path-collections.toml    your paths, as a tree (committed)
+│   ├── path-collections.toml    your scenarios, as a tree (committed)
 │   ├── credentials.toml         sync tokens (per-machine, gitignored)
 │   ├── security.toml            wrapped encryption keys (committed)
 │   ├── dictionary.txt           workspace spell-check vocabulary (committed)
@@ -2570,12 +2673,12 @@ def hello():
         <dd>A way to link from one note to another by typing its name in double square brackets, like <code>[[My Other Note]]</code>.</dd>
         <dt>Typed connection</dt>
         <dd>A link between notes that says <em>how</em> they're related: this one <em>supports</em> that one, <em>challenges</em> it, <em>came from</em> it, or raises an <em>open question</em>.</dd>
-        <dt>Path</dt>
-        <dd>A "what if I tried it this way" version of your notes. Like a branch on a tree — the original keeps going, but the new path takes ideas in a different direction.</dd>
+        <dt>Scenario <em>(was Path in 2.x)</em></dt>
+        <dd>A "what if I tried it this way" version of your notes. Like a branch on a tree — the original keeps going, but the new scenario takes ideas in a different direction. (Yarrow 2.x called these "paths"; 3.0 renamed them.)</dd>
         <dt>Main note</dt>
-        <dd>The starting note for a path. Marked with a ★ in the sidebar.</dd>
-        <dt>Ghost path</dt>
-        <dd>An old path that used to be the main trunk but isn't anymore. Faded but never deleted; you can bring it back any time.</dd>
+        <dd>The starting note for a scenario. Marked with a ★ in the sidebar.</dd>
+        <dt>Ghost scenario</dt>
+        <dd>An old scenario that used to be the main trunk but isn't anymore. Faded but never deleted; you can bring it back any time.</dd>
         <dt>Checkpoint</dt>
         <dd>A snapshot Yarrow takes of your note every time you pause. Lets you scroll back to any past version.</dd>
         <dt>Map</dt>
@@ -2596,13 +2699,13 @@ def hello():
         If you're brand new, just start writing. Make a few notes, try
         linking one to another by typing <code>[[</code>, and watch the
         Map fill in as you go. The first time you find yourself wanting
-        to try something a different way — start a path. That's the
+        to try something a different way — start a scenario. That's the
         moment Yarrow earns its place on your computer.
       </p>
       <div class="cta-row">
         <a class="btn primary" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download 2.1
+          Download 3.0
         </a>
         <a class="btn ghost" href="index.html">
           ← Back to the home page
@@ -2633,15 +2736,17 @@ def hello():
 </footer>
 
 <script>
-  // ── theme toggle (same shape as index.html) ──
+  // ── theme toggle (same shape as index.html, Vellum / Workshop) ──
+  // Theme-color metas live in <head> as a pair keyed on
+  // prefers-color-scheme; we don't rewrite them here so the OS-pref
+  // fallback stays accurate when the user clears their preference.
   (function () {
     var buttons = document.querySelectorAll('[data-theme-value]');
-    var meta = document.getElementById('meta-theme-color');
-    var BG = { light: '#F7F5F0', dark: '#1B1D1C' };
+    var KEY = 'yarrow.docs.theme';
     function set(mode) {
+      if (mode !== 'vellum' && mode !== 'workshop') mode = 'vellum';
       document.documentElement.setAttribute('data-theme', mode);
-      try { localStorage.setItem('yarrow.site.theme', mode); } catch (_) {}
-      if (meta) meta.setAttribute('content', BG[mode] || BG.light);
+      try { localStorage.setItem(KEY, mode); } catch (_) {}
       buttons.forEach(function (b) {
         b.setAttribute('aria-pressed', b.getAttribute('data-theme-value') === mode ? 'true' : 'false');
       });
@@ -2649,7 +2754,7 @@ def hello():
     buttons.forEach(function (b) {
       b.addEventListener('click', function () { set(b.getAttribute('data-theme-value')); });
     });
-    set(document.documentElement.getAttribute('data-theme') || 'light');
+    set(document.documentElement.getAttribute('data-theme') || 'vellum');
   })();
 
   // ── mobile slide-out TOC drawer ──

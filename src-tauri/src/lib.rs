@@ -5,6 +5,7 @@ pub mod bibtex_import;
 pub mod commands;
 pub mod crypto;
 pub mod server_crypto;
+pub mod drafts;
 pub mod error;
 pub mod export;
 pub mod find_replace;
@@ -26,8 +27,158 @@ pub mod shopping_list;
 pub mod server;
 pub mod templates;
 pub mod trash;
+pub mod welcome;
 pub mod workspace;
 pub mod ws_client;
+
+// 3.0 visual polish — macOS sidebar vibrancy.
+//
+// macOS's NSVisualEffectView produces the translucent material that
+// sidebar surfaces in Finder, Mail, and Notes use; it picks up colour
+// from whatever's behind the window (wallpaper, other apps) and is the
+// single most distinctive macOS-native touch available.
+//
+// We attach the `Sidebar` material to the main window's contentView at
+// startup. The frontend signals this via a `data-mac-vibrancy="true"`
+// attribute on <html> (set inside the setup callback below via
+// `eval(...)`); CSS uses that attribute to switch the sidebar's
+// background to transparent so the vibrancy shows through.
+//
+// Best-effort — on failure (older macOS, sandbox quirk, future Tauri
+// regression like the 2.1.x titleBarStyle saga) we log and carry on
+// with the existing flat sidebar background. Never fatal.
+//
+// `#[cfg(target_os = "macos")]` because the crate target gate in
+// Cargo.toml already restricts the dependency to macOS — the
+// reference would fail to compile on Linux/Windows otherwise.
+#[cfg(target_os = "macos")]
+fn apply_macos_vibrancy(win: &tauri::WebviewWindow) {
+    use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+    match apply_vibrancy(
+        win,
+        NSVisualEffectMaterial::Sidebar,
+        Some(NSVisualEffectState::Active),
+        // Corner radius of the vibrancy effect view itself (not the
+        // window). The doc suggests 8.0; we leave it at None so the
+        // material follows the window shape exactly — Tauri's window
+        // already has its own radius.
+        None,
+    ) {
+        Ok(()) => {
+            // Surface state to the frontend so CSS can toggle the
+            // sidebar to a transparent background. Using `eval` (not
+            // `emit`) because it has to land on <html> before paint.
+            let _ = win.eval(
+                "document.documentElement.dataset.macVibrancy = 'true';",
+            );
+        }
+        Err(e) => {
+            eprintln!("[yarrow] vibrancy unavailable, falling back to flat sidebar: {e}");
+        }
+    }
+}
+
+/// Theme-aware vibrancy material switch (per theme system spec §9.1).
+///
+/// Light-family themes (Vellum, Linen, Ashrose) use `Sidebar` — the
+/// material designed for translucent sidebars in light apps; it picks
+/// up wallpaper warmth without darkening the chrome. Dark-family
+/// themes (Workshop, Graphite, Dracula) use `HudWindow` — a deeper,
+/// less-translucent material that reads as solid-with-depth on a
+/// dark canvas, where `Sidebar` would let too much wallpaper bleed
+/// through and muddy the colour identity.
+///
+/// Best-effort: failures (older macOS, sandbox quirk, unknown theme
+/// string) just log and leave the previous material in place. Called
+/// from the frontend after a theme change resolves.
+#[tauri::command]
+#[allow(unused_variables)]
+fn cmd_apply_theme_vibrancy(window: tauri::WebviewWindow, theme: String) {
+    #[cfg(target_os = "macos")]
+    {
+        use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+        let material = match theme.as_str() {
+            "vellum" | "linen" | "ashrose" | "light" => {
+                NSVisualEffectMaterial::Sidebar
+            }
+            "workshop" | "graphite" | "dracula" | "dark" => {
+                NSVisualEffectMaterial::HudWindow
+            }
+            _ => NSVisualEffectMaterial::Sidebar,
+        };
+        if let Err(e) = apply_vibrancy(
+            &window,
+            material,
+            Some(NSVisualEffectState::Active),
+            None,
+        ) {
+            eprintln!("[yarrow] theme vibrancy switch failed: {e}");
+        }
+    }
+}
+
+/// System color-scheme probe (theme system spec §9.3).
+///
+/// On modern desktop environments WebKit2GTK exposes
+/// `prefers-color-scheme` correctly via the GTK / Qt theme bridge,
+/// so the frontend's matchMedia call already does the right thing.
+/// This command is a Rust-side fallback for older DEs where the
+/// WebView reports "no-preference" — we read the same XDG settings
+/// the WebView would consult and return the resolved family.
+///
+/// Return values: `"light"`, `"dark"`, or `"unknown"`. The frontend
+/// only uses "unknown" as a tiebreaker; any concrete answer wins.
+///
+/// Linux: query the freedesktop `org.freedesktop.appearance.color-scheme`
+/// portal-equivalent via gsettings (GNOME 42+ / KDE Plasma 6 honour
+/// this key). Falls back to `GTK_THEME` env naming heuristics if
+/// gsettings isn't available.
+///
+/// macOS / Windows: rely on the WebView's matchMedia — the platform
+/// integrations there are mature and the Rust path would just
+/// duplicate logic that already works.
+#[tauri::command]
+fn cmd_detect_color_scheme() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        // 1. gsettings (GNOME 42+ honours this; KDE Plasma 6 mirrors it).
+        if let Ok(out) = std::process::Command::new("gsettings")
+            .args([
+                "get",
+                "org.gnome.desktop.interface",
+                "color-scheme",
+            ])
+            .output()
+        {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).to_ascii_lowercase();
+                if s.contains("dark") {
+                    return "dark".into();
+                }
+                if s.contains("light") || s.contains("default") {
+                    return "light".into();
+                }
+            }
+        }
+
+        // 2. KDE-specific colorscheme hint via env.
+        if let Ok(scheme) = std::env::var("KDE_SESSION_VERSION") {
+            // KDE_SESSION_VERSION=6 + KDE Plasma should already drive
+            // gsettings above. If we land here KDE failed to expose
+            // it; fall through to GTK_THEME below.
+            let _ = scheme;
+        }
+
+        // 3. GTK_THEME naming hint — `…-dark` suffix is conventional.
+        if let Ok(t) = std::env::var("GTK_THEME") {
+            let lower = t.to_ascii_lowercase();
+            if lower.ends_with(":dark") || lower.contains("-dark") {
+                return "dark".into();
+            }
+        }
+    }
+    "unknown".into()
+}
 
 /// Validate the saved window rect against the current monitor and
 /// reset it on mismatch. This breaks the bad-state-inherits-itself
@@ -120,7 +271,17 @@ fn build_native_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<
     let about_meta = AboutMetadataBuilder::new()
         .name(Some("Yarrow"))
         .version(Some(env!("CARGO_PKG_VERSION")))
-        .copyright(Some("Yarrow — git-backed note-taking for non-linear thinking"))
+        // 2.2.1 — fuller About panel: macOS shows the standard
+        // metadata fields (comments, copyright, website link, OSS
+        // license, credits line) when they're populated, so the
+        // About sheet matches the depth users expect from a native
+        // app instead of just showing a name + version.
+        .comments(Some("Git-backed note-taking for non-linear thinking."))
+        .copyright(Some("© 2026 Yarrow contributors. Released under the MIT license."))
+        .website(Some("https://github.com/neuralpunk/yarrow"))
+        .website_label(Some("Source on GitHub"))
+        .license(Some("MIT"))
+        .credits(Some("Built with Tauri 2, React 19, CodeMirror 6, and D3."))
         .build();
 
     let app_submenu = SubmenuBuilder::new(app, "Yarrow")
@@ -264,12 +425,17 @@ pub fn run() {
             use tauri::Manager;
             if let Some(win) = app.get_webview_window("main") {
                 rescue_offscreen_window(&win);
+                #[cfg(target_os = "macos")]
+                apply_macos_vibrancy(&win);
             }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            cmd_apply_theme_vibrancy,
+            cmd_detect_color_scheme,
             commands::cmd_init_workspace,
             commands::cmd_init_sample_workspace,
+            commands::cmd_clone_workspace,
             commands::cmd_open_workspace,
             commands::cmd_active_workspace,
             commands::cmd_close_workspace,
@@ -296,8 +462,11 @@ pub fn run() {
             commands::cmd_save_note,
             commands::cmd_save_note_on_path,
             commands::cmd_save_note_full,
+            commands::cmd_quicksave_note,
             commands::cmd_list_path_overrides,
             commands::cmd_clear_path_override,
+            commands::cmd_borrow_note,
+            commands::cmd_borrow_text,
             commands::cmd_create_note,
             commands::cmd_rename_note,
             commands::cmd_set_pinned,
@@ -328,6 +497,9 @@ pub fn run() {
             commands::cmd_rename_path_collection,
             commands::cmd_set_path_collection_condition,
             commands::cmd_set_path_collection_color,
+            commands::cmd_set_path_archived,
+            commands::cmd_paths_diverging_for_note,
+            commands::cmd_path_divergence_summary,
             commands::cmd_set_path_collection_auto_tag,
             commands::cmd_suggest_path_clusters,
             commands::cmd_set_path_collection_main_note,
@@ -351,6 +523,7 @@ pub fn run() {
             commands::cmd_save_scratchpad,
             commands::cmd_append_scratchpad,
             commands::cmd_promote_scratchpad,
+            commands::cmd_write_text_file,
             commands::cmd_search,
             commands::cmd_fuzzy_rank,
             commands::cmd_clear_search_index,
@@ -369,6 +542,8 @@ pub fn run() {
             commands::cmd_set_main_note,
             commands::cmd_list_recent_workspaces,
             commands::cmd_forget_recent_workspace,
+            commands::cmd_rename_recent_workspace,
+            commands::cmd_welcome_stats,
             commands::cmd_list_templates,
             commands::cmd_read_template,
             commands::cmd_write_template,
@@ -407,6 +582,7 @@ pub fn run() {
             commands::cmd_import_notion_vault,
             commands::cmd_import_bibtex,
             commands::cmd_default_workspaces_root,
+            commands::cmd_desktop_env,
             commands::cmd_create_workspace_dir,
             commands::cmd_count_wikilink_references,
             commands::cmd_render_bibliography,
@@ -416,6 +592,13 @@ pub fn run() {
             commands::cmd_clip_recipe,
             commands::cmd_add_recipe_to_shopping_list,
             commands::cmd_shopping_list_slug,
+            commands::cmd_draft_list_for_note,
+            commands::cmd_draft_create,
+            commands::cmd_draft_read,
+            commands::cmd_draft_save,
+            commands::cmd_draft_rename,
+            commands::cmd_draft_discard,
+            commands::cmd_draft_promote,
         ]);
     // Native menu (macOS only — Linux/Windows pass through unchanged).
     install_native_menu(builder)

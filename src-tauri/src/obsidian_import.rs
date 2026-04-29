@@ -15,11 +15,28 @@ pub struct ImportReport {
     pub renamed: Vec<(String, String)>,
 }
 
+/// Per-file progress callback used by the import functions to report
+/// streaming progress back to the caller. The caller (a Tauri command
+/// in `commands.rs`) wires this to `app.emit("yarrow:import-progress", …)`
+/// so the frontend can render a real "187 of 412 done" indicator
+/// instead of a bare spinner. Every importer in this module — and in
+/// `foreign_import.rs` — uses the same shape so the frontend listener
+/// can be format-agnostic.
+pub type ProgressFn<'a> = &'a (dyn Fn(usize, usize, &str) + Send + Sync);
+
 /// Copy every `.md` file under `source` into the workspace's `notes/`
 /// directory, converting Obsidian-flavored frontmatter and `#tag` annotations
 /// into Yarrow's frontmatter shape. `.obsidian/`, `.trash/`, and any path
 /// segment beginning with a dot are skipped.
 pub fn import_vault(workspace_root: &Path, source: &Path) -> Result<ImportReport> {
+    import_vault_with_progress(workspace_root, source, None)
+}
+
+pub fn import_vault_with_progress(
+    workspace_root: &Path,
+    source: &Path,
+    progress: Option<ProgressFn>,
+) -> Result<ImportReport> {
     if !source.is_dir() {
         return Err(YarrowError::Invalid(
             "Pick a folder that contains your Obsidian vault.".into(),
@@ -27,25 +44,55 @@ pub fn import_vault(workspace_root: &Path, source: &Path) -> Result<ImportReport
     }
     let notes_dir = workspace::notes_dir(workspace_root);
     std::fs::create_dir_all(&notes_dir)?;
+
+    // Pre-walk to count totals so the progress reporter knows the
+    // denominator before file work starts. Two-pass walk is cheap
+    // compared to the per-file IO that follows; the alternative
+    // (streaming an unknown total) leaves users staring at "187…"
+    // with no sense of progress, which the consultant flagged as a
+    // worse experience than no progress at all.
+    let candidates: Vec<PathBuf> = WalkDir::new(source)
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            !(name.starts_with('.') && e.depth() > 0)
+        })
+        .filter_map(|r| r.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.eq_ignore_ascii_case("md"))
+                .unwrap_or(false)
+        })
+        .map(|e| e.path().to_path_buf())
+        .collect();
+
+    let total = candidates.len();
     let mut imported = 0usize;
     let mut skipped = 0usize;
     let mut renamed: Vec<(String, String)> = Vec::new();
 
-    for entry in WalkDir::new(source).into_iter().filter_entry(|e| {
-        // Honor Obsidian's hidden config + scratch folders, plus any other
-        // dotfile/dot-dir under the vault root.
-        let name = e.file_name().to_string_lossy();
-        !(name.starts_with('.') && e.depth() > 0)
-    }) {
-        let entry = match entry { Ok(e) => e, Err(_) => { skipped += 1; continue; } };
-        if !entry.file_type().is_file() { continue; }
-        let path = entry.path();
-        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-        if !ext.eq_ignore_ascii_case("md") { continue; }
+    for (i, path) in candidates.iter().enumerate() {
+        // Report *before* the work so the UI's "now importing X" copy
+        // matches what's about to happen, and so the final 100/100
+        // event coincides with the completed work.
+        if let Some(report) = progress {
+            let label = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            report(i, total, &label);
+        }
         match import_one(&notes_dir, source, path, &mut renamed) {
             Ok(_) => imported += 1,
             Err(_) => skipped += 1,
         }
+    }
+    if let Some(report) = progress {
+        report(total, total, "");
     }
     Ok(ImportReport { imported, skipped, renamed })
 }

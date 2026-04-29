@@ -9,13 +9,13 @@ export const appshellEN = {
   "appshell.workspace.switchAria": "Switch workspace",
   "appshell.workspace.fallbackName": "Workspace",
   "appshell.workspace.notesPathsSingleSingle":
-    "{notes} note · {paths} path",
+    "{notes} note · {scenarios} scenario",
   "appshell.workspace.notesPathsSinglePlural":
-    "{notes} note · {paths} paths",
+    "{notes} note · {scenarios} scenarios",
   "appshell.workspace.notesPathsPluralSingle":
-    "{notes} notes · {paths} path",
+    "{notes} notes · {scenarios} scenario",
   "appshell.workspace.notesPathsPluralPlural":
-    "{notes} notes · {paths} paths",
+    "{notes} notes · {scenarios} scenarios",
 
   // Sidebar search trigger + utility row
   "appshell.sidebar.findAnything": "Find anything",
@@ -25,12 +25,17 @@ export const appshellEN = {
   "appshell.sidebar.activityTitle": "Writing activity heatmap",
   "appshell.sidebar.trashLabel": "Trash",
   "appshell.sidebar.trashTitle": "Restore or permanently remove deleted notes",
+  "appshell.sidebar.trashTitleWithCount":
+    "{count} note(s) in Trash — open to restore or purge",
+  "appshell.sidebar.resizeTitle": "Drag to resize the sidebar",
+  "appshell.sidebar.resizeAria": "Resize sidebar",
 
   // Status bar
+  "appshell.status.modePillTitle": "Active mode: {mode} — click to change",
   "appshell.status.notes": "{count} notes",
-  "appshell.status.paths": "{count} paths",
-  "appshell.status.onPath": "on path: {path}",
-  "appshell.status.onPathNone": "on path: —",
+  "appshell.status.paths": "{count} scenarios",
+  "appshell.status.onPath": "on scenario: {path}",
+  "appshell.status.onPathNone": "on scenario: —",
   "appshell.status.selected": "{count} selected",
   "appshell.status.selectedTitle": "{count} chars selected",
   "appshell.status.wordCountSingle": "{count} word",
@@ -43,6 +48,8 @@ export const appshellEN = {
     "{count} note is kept off the server — registered in .git/info/exclude and never sync.",
   "appshell.status.offServerPluralTitle":
     "{count} notes are kept off the server — registered in .git/info/exclude and never sync.",
+  "appshell.status.syncedAgo": "synced {time}",
+  "appshell.status.syncTimestampTitle": "Last sync: {datetime}",
 
   // Sync pill labels
   "appshell.sync.synced": "synced",
@@ -50,6 +57,38 @@ export const appshellEN = {
   "appshell.sync.syncing": "syncing…",
   "appshell.sync.failed": "sync failed",
   "appshell.sync.notAnywhere": "not synced anywhere",
+
+  // Skip-to-content + verbose-announcer
+  "appshell.skipToContent": "Skip to editor",
+  "appshell.announce.syncStarted": "Sync started.",
+  "appshell.announce.syncFinished": "Sync finished. Everything's up to date.",
+  "appshell.announce.syncFailed": "Sync failed: {message}",
+  "appshell.announce.saved": "Note saved.",
+  "appshell.announce.checkpointSaved": "Checkpoint saved.",
+  "appshell.announce.pathCreated": "New direction created: {name}.",
+  "appshell.announce.pathSwitched": "Switched to {name}.",
+  "appshell.announce.checkpointPinned": "Checkpoint pinned.",
+  "appshell.announce.checkpointUnpinned": "Checkpoint unpinned.",
+  "appshell.announce.checkpointRestored": "Restored to checkpoint.",
+  "appshell.announce.noteCreated": "Note created: {title}.",
+  "appshell.announce.noteDeleted": "Note moved to trash: {title}.",
+
+  // Sync status-bar popover
+  "appshell.sync.popover.openAria": "Sync status: {status}. Click for details.",
+  "appshell.sync.popover.title": "Sync details",
+  "appshell.sync.popover.lastSynced": "Last synced {time}.",
+  "appshell.sync.popover.retry": "Retry now",
+  "appshell.sync.popover.openSettings": "Sync settings…",
+  "appshell.sync.popover.body.synced":
+    "Everything's up to date. Auto-sync runs again in the background.",
+  "appshell.sync.popover.body.pending":
+    "There are local changes that haven't been pushed yet — Yarrow will sync them on the next interval.",
+  "appshell.sync.popover.body.syncing":
+    "Sync is running now.",
+  "appshell.sync.popover.body.error":
+    "The last sync didn't complete. Yarrow will keep trying — Retry now to attempt it immediately.",
+  "appshell.sync.popover.body.no-remote":
+    "This workspace isn't connected anywhere yet. Open Sync settings to add a remote.",
 
   // Toast / dismiss
   "appshell.toast.dismiss": "Dismiss",
@@ -71,12 +110,15 @@ export const appshellEN = {
   "appshell.toast.unlockToDecrypt": "Unlock to decrypt this note.",
   "appshell.toast.encrypted":
     "Encrypted \"{title}\" — every past version in history was re-sealed with the same key.",
-  "appshell.toast.encryptError": "Couldn't encrypt: {error}",
+  "appshell.toast.encryptError":
+    "Couldn't encrypt — your note is unchanged on disk. {error}",
   "appshell.toast.decrypted": "Decrypted \"{title}\".",
-  "appshell.toast.decryptError": "Couldn't decrypt: {error}",
+  "appshell.toast.decryptError":
+    "Couldn't decrypt — the note stays sealed and intact. {error}",
   "appshell.toast.movedToFolder": "Moved to “{folder}”",
   "appshell.toast.movedOutOfFolder": "Moved out of folder",
-  "appshell.toast.moveError": "Couldn't move note: {error}",
+  "appshell.toast.moveError":
+    "Couldn't move the note — it's still in its original folder. {error}",
   "appshell.toast.deleted": "Deleted \"{title}.\"",
   "appshell.toast.undoLabel": "Undo",
   "appshell.toast.undoError": "Couldn't undo delete: {error}",
@@ -86,15 +128,19 @@ export const appshellEN = {
   "appshell.toast.unlockToCopy": "Unlock the note first to copy its contents.",
   "appshell.toast.copiedAsMarkdown": "Copied \"{title}\" as markdown.",
   "appshell.toast.copyError": "Couldn't copy: {error}",
-  "appshell.toast.renameError": "Couldn't rename: {error}",
-  "appshell.toast.tagsError": "Couldn't update tags: {error}",
+  "appshell.toast.renameError":
+    "Couldn't rename — the note kept its original title. {error}",
+  "appshell.toast.tagsError":
+    "Couldn't save tags — the note's current tags are unchanged. {error}",
   "appshell.toast.annotationSaveError": "Couldn't save annotation: {error}",
   "appshell.toast.annotationAddError": "Couldn't add annotation: {error}",
   "appshell.toast.kept": "Kept — \"{label}\" will survive future pruning.",
-  "appshell.toast.pinError": "Couldn't pin: {error}",
+  "appshell.toast.pinError":
+    "Couldn't pin — the note's pin state is unchanged. {error}",
   "appshell.toast.unpinned":
     "Unpinned — this checkpoint is no longer protected from pruning.",
-  "appshell.toast.unpinError": "Couldn't unpin: {error}",
+  "appshell.toast.unpinError":
+    "Couldn't unpin — the note's pin state is unchanged. {error}",
   "appshell.toast.restored":
     "Restored — the previous version stays safely in history.",
   "appshell.toast.promoteError": "Couldn't promote: {error}",
@@ -118,7 +164,10 @@ export const appshellEN = {
     "Sync: {count} conflict — server version kept; your local version saved as a .conflict-*.md sibling.",
   "appshell.toast.syncConflictsPlural":
     "Sync: {count} conflicts — server version kept; your local version saved as a .conflict-*.md sibling.",
-  "appshell.toast.syncIssue": "Sync issue: {message}",
+  "appshell.toast.syncIssue":
+    "Sync didn't finish — {message}. Yarrow will retry automatically.",
+  "appshell.toast.conflictResolved":
+    "Brought together. Both original versions are still in History — scrub back any time to recover what you didn't keep.",
   "appshell.toast.workspacePurged":
     "Another device permanently deleted files from this workspace. Re-aligning…",
   "appshell.toast.workspacePurgedFailed":
@@ -129,8 +178,8 @@ export const appshellEN = {
   // Map / connections rail
   "appshell.map.title": "Connections",
   "appshell.map.titleFiltered": "Map · {pathName}",
-  "appshell.map.notesInPathSingle": "{count} note in this path",
-  "appshell.map.notesInPathPlural": "{count} notes in this path",
+  "appshell.map.notesInPathSingle": "{count} note in this scenario",
+  "appshell.map.notesInPathPlural": "{count} notes in this scenario",
   "appshell.map.thisNote": "this note",
   "appshell.map.neighborsSingle": "{count} neighbor",
   "appshell.map.neighborsPlural": "{count} neighbors",
@@ -140,6 +189,13 @@ export const appshellEN = {
 
   // Outline rail (2.2.0)
   "appshell.outline.title": "Outline",
+
+  // Tab bar (3.1.0)
+  "appshell.tabs.label": "Open notes",
+  "appshell.tabs.close": "Close tab",
+  "appshell.tabs.newTab": "New tab",
+  "appshell.tabs.untitled": "Untitled",
+  "appshell.tabs.openInNewTab": "Open in new tab",
 
   // Locked note hero
   "appshell.locked.title": "This note is locked",
@@ -156,7 +212,7 @@ export const appshellEN = {
   // Empty workspace hero
   "appshell.empty.title": "A blank page, and everything ahead of it",
   "appshell.empty.body":
-    "Yarrow saves every word automatically. Every time you branch, the original stays safe. Nothing you write here can get lost.",
+    "Yarrow saves every word automatically. Every time you start a new scenario, the original stays safe. Nothing you write here can get lost.",
   "appshell.empty.startFirstNote": "Start your first note",
   "appshell.empty.findNote": "Find a note",
 
@@ -194,37 +250,37 @@ export const appshellEN = {
   "appshell.deleteMany.titleSingle": "Delete {count} note?",
   "appshell.deleteMany.titlePlural": "Delete {count} notes?",
   "appshell.deleteMany.body":
-    "They disappear from the list. Past versions on this path remain in history.",
+    "They disappear from the list. Past versions on this scenario remain in history.",
 
   // Promote path confirm
   "appshell.promote.title": "Promote “{path}” to main?",
   "appshell.promote.bodyEmpty":
-    "This path has no edits yet, so promoting it just archives it. Continue?",
+    "This scenario has no edits yet, so promoting it just archives it. Continue?",
   "appshell.promote.bodyEditsSingle":
-    "{count} note edited on this path will be applied to main. The path itself will be archived. This cannot be undone automatically (older versions stay in history).",
+    "{count} note edited on this scenario will be applied to main. The scenario itself will be archived. This cannot be undone automatically (older versions stay in history).",
   "appshell.promote.bodyEditsPlural":
-    "{count} notes edited on this path will be applied to main. The path itself will be archived. This cannot be undone automatically (older versions stay in history).",
+    "{count} notes edited on this scenario will be applied to main. The scenario itself will be archived. This cannot be undone automatically (older versions stay in history).",
 
   // Throw away path confirm
   "appshell.throwAway.title": "Throw away “{path}”?",
   "appshell.throwAway.bodyEmpty":
-    "This path has no edits yet. Discarding just removes the path entry.",
+    "This scenario has no edits yet. Discarding just removes the scenario entry.",
   "appshell.throwAway.bodyEditsSingle":
-    "{count} edited note on this path will be lost. Main is unaffected. Continue?",
+    "{count} edited note on this scenario will be lost. Main is unaffected. Continue?",
   "appshell.throwAway.bodyEditsPlural":
-    "{count} edited notes on this path will be lost. Main is unaffected. Continue?",
+    "{count} edited notes on this scenario will be lost. Main is unaffected. Continue?",
 
   // Confirm-state generic buttons
   "appshell.confirm.keepIt": "keep it",
   "appshell.confirm.yesDelete": "yes, delete",
 
   // New path modal
-  "appshell.newPath.title": "Start a new path",
+  "appshell.newPath.title": "Start a new scenario",
   "appshell.newPath.intro":
-    "A path is an if…. Write the question — that's all. The version you have now stays safely on {root}.",
+    "A scenario is an if…. Write the question — that's all. The version you have now stays safely on {root}.",
   "appshell.newPath.trunkHint":
-    "Every path branches from {root}. One trunk, many branches.",
-  "appshell.newPath.questionLabel": "the question this path asks",
+    "Every scenario opens off {root}. One trunk, many scenarios.",
+  "appshell.newPath.questionLabel": "the question this scenario asks",
   "appshell.newPath.placeholder": "If the Seattle job comes through…",
   "appshell.newPath.suggestion1": "If it rains on the day",
   "appshell.newPath.suggestion2": "If the project gets denied",
@@ -293,13 +349,13 @@ export const appshellES: Record<AppshellKey, string> = {
   "appshell.workspace.switchAria": "Cambiar de espacio de trabajo",
   "appshell.workspace.fallbackName": "Espacio de trabajo",
   "appshell.workspace.notesPathsSingleSingle":
-    "{notes} nota · {paths} ruta",
+    "{notes} nota · {scenarios} escenario",
   "appshell.workspace.notesPathsSinglePlural":
-    "{notes} nota · {paths} rutas",
+    "{notes} nota · {scenarios} escenarios",
   "appshell.workspace.notesPathsPluralSingle":
-    "{notes} notas · {paths} ruta",
+    "{notes} notas · {scenarios} escenario",
   "appshell.workspace.notesPathsPluralPlural":
-    "{notes} notas · {paths} rutas",
+    "{notes} notas · {scenarios} escenarios",
 
   // Sidebar search trigger + utility row
   "appshell.sidebar.findAnything": "Buscar lo que sea",
@@ -310,12 +366,17 @@ export const appshellES: Record<AppshellKey, string> = {
   "appshell.sidebar.trashLabel": "Papelera",
   "appshell.sidebar.trashTitle":
     "Restaurar o eliminar permanentemente notas eliminadas",
+  "appshell.sidebar.trashTitleWithCount":
+    "{count} nota(s) en la papelera — abrir para restaurar o purgar",
+  "appshell.sidebar.resizeTitle": "Arrastra para cambiar el tamaño de la barra lateral",
+  "appshell.sidebar.resizeAria": "Cambiar tamaño de la barra lateral",
 
   // Status bar
+  "appshell.status.modePillTitle": "Modo activo: {mode} — clic para cambiar",
   "appshell.status.notes": "{count} notas",
-  "appshell.status.paths": "{count} rutas",
-  "appshell.status.onPath": "en la ruta: {path}",
-  "appshell.status.onPathNone": "en la ruta: —",
+  "appshell.status.paths": "{count} escenarios",
+  "appshell.status.onPath": "en el escenario: {path}",
+  "appshell.status.onPathNone": "en el escenario: —",
   "appshell.status.selected": "{count} seleccionado",
   "appshell.status.selectedTitle": "{count} caracteres seleccionados",
   "appshell.status.wordCountSingle": "{count} palabra",
@@ -329,6 +390,8 @@ export const appshellES: Record<AppshellKey, string> = {
     "{count} nota se mantiene fuera del servidor — registrada en .git/info/exclude y nunca se sincroniza.",
   "appshell.status.offServerPluralTitle":
     "{count} notas se mantienen fuera del servidor — registradas en .git/info/exclude y nunca se sincronizan.",
+  "appshell.status.syncedAgo": "sincronizado {time}",
+  "appshell.status.syncTimestampTitle": "Última sincronización: {datetime}",
 
   // Sync pill labels
   "appshell.sync.synced": "sincronizado",
@@ -336,6 +399,39 @@ export const appshellES: Record<AppshellKey, string> = {
   "appshell.sync.syncing": "sincronizando…",
   "appshell.sync.failed": "sincronización fallida",
   "appshell.sync.notAnywhere": "sin sincronización en ningún lado",
+
+  // Skip-to-content + verbose-announcer
+  "appshell.skipToContent": "Saltar al editor",
+  "appshell.announce.syncStarted": "Sincronización iniciada.",
+  "appshell.announce.syncFinished": "Sincronización terminada. Todo está al día.",
+  "appshell.announce.syncFailed": "Sincronización fallida: {message}",
+  "appshell.announce.saved": "Nota guardada.",
+  "appshell.announce.checkpointSaved": "Punto de control guardado.",
+  "appshell.announce.pathCreated": "Nueva dirección creada: {name}.",
+  "appshell.announce.pathSwitched": "Cambiado a {name}.",
+  "appshell.announce.checkpointPinned": "Punto de control fijado.",
+  "appshell.announce.checkpointUnpinned": "Punto de control liberado.",
+  "appshell.announce.checkpointRestored": "Restaurado al punto de control.",
+  "appshell.announce.noteCreated": "Nota creada: {title}.",
+  "appshell.announce.noteDeleted": "Nota movida a la papelera: {title}.",
+
+  // Sync status-bar popover
+  "appshell.sync.popover.openAria":
+    "Estado de sincronización: {status}. Haz clic para ver detalles.",
+  "appshell.sync.popover.title": "Detalles de sincronización",
+  "appshell.sync.popover.lastSynced": "Última sincronización {time}.",
+  "appshell.sync.popover.retry": "Reintentar",
+  "appshell.sync.popover.openSettings": "Ajustes de sincronización…",
+  "appshell.sync.popover.body.synced":
+    "Todo está al día. La sincronización automática se ejecuta de nuevo en segundo plano.",
+  "appshell.sync.popover.body.pending":
+    "Hay cambios locales que aún no se han enviado — Yarrow los sincronizará en el próximo intervalo.",
+  "appshell.sync.popover.body.syncing":
+    "La sincronización está en curso.",
+  "appshell.sync.popover.body.error":
+    "La última sincronización no se completó. Yarrow seguirá intentándolo — pulsa Reintentar para hacerlo ahora.",
+  "appshell.sync.popover.body.no-remote":
+    "Este espacio de trabajo aún no está conectado en ningún sitio. Abre los ajustes de sincronización para añadir un remoto.",
 
   // Toast / dismiss
   "appshell.toast.dismiss": "Descartar",
@@ -359,12 +455,15 @@ export const appshellES: Record<AppshellKey, string> = {
   "appshell.toast.unlockToDecrypt": "Desbloquea para descifrar esta nota.",
   "appshell.toast.encrypted":
     "Cifrada \"{title}\" — todas las versiones anteriores del historial se resellaron con la misma clave.",
-  "appshell.toast.encryptError": "No se pudo cifrar: {error}",
+  "appshell.toast.encryptError":
+    "No se pudo cifrar — la nota permanece intacta en disco. {error}",
   "appshell.toast.decrypted": "Descifrada \"{title}\".",
-  "appshell.toast.decryptError": "No se pudo descifrar: {error}",
+  "appshell.toast.decryptError":
+    "No se pudo descifrar — la nota sigue sellada e intacta. {error}",
   "appshell.toast.movedToFolder": "Movida a “{folder}”",
   "appshell.toast.movedOutOfFolder": "Movida fuera de la carpeta",
-  "appshell.toast.moveError": "No se pudo mover la nota: {error}",
+  "appshell.toast.moveError":
+    "No se pudo mover la nota — sigue en su carpeta original. {error}",
   "appshell.toast.deleted": "Eliminada \"{title}.\"",
   "appshell.toast.undoLabel": "Deshacer",
   "appshell.toast.undoError": "No se pudo deshacer la eliminación: {error}",
@@ -376,19 +475,22 @@ export const appshellES: Record<AppshellKey, string> = {
     "Desbloquea la nota primero para copiar su contenido.",
   "appshell.toast.copiedAsMarkdown": "Copiada \"{title}\" como markdown.",
   "appshell.toast.copyError": "No se pudo copiar: {error}",
-  "appshell.toast.renameError": "No se pudo renombrar: {error}",
+  "appshell.toast.renameError":
+    "No se pudo renombrar — la nota mantiene su título original. {error}",
   "appshell.toast.tagsError":
-    "No se pudieron actualizar las etiquetas: {error}",
+    "No se pudieron guardar las etiquetas — las etiquetas actuales de la nota no han cambiado. {error}",
   "appshell.toast.annotationSaveError":
     "No se pudo guardar la anotación: {error}",
   "appshell.toast.annotationAddError":
     "No se pudo añadir la anotación: {error}",
   "appshell.toast.kept":
     "Conservado — \"{label}\" sobrevivirá a futuras limpiezas.",
-  "appshell.toast.pinError": "No se pudo fijar: {error}",
+  "appshell.toast.pinError":
+    "No se pudo fijar — el estado de fijado de la nota no ha cambiado. {error}",
   "appshell.toast.unpinned":
     "Desfijado — este punto de control ya no está protegido contra limpiezas.",
-  "appshell.toast.unpinError": "No se pudo desfijar: {error}",
+  "appshell.toast.unpinError":
+    "No se pudo desfijar — el estado de fijado de la nota no ha cambiado. {error}",
   "appshell.toast.restored":
     "Restaurado — la versión anterior queda a salvo en el historial.",
   "appshell.toast.promoteError": "No se pudo promover: {error}",
@@ -413,7 +515,10 @@ export const appshellES: Record<AppshellKey, string> = {
     "Sincronización: {count} conflicto — se conservó la versión del servidor; tu versión local se guardó como un archivo hermano .conflict-*.md.",
   "appshell.toast.syncConflictsPlural":
     "Sincronización: {count} conflictos — se conservó la versión del servidor; tu versión local se guardó como un archivo hermano .conflict-*.md.",
-  "appshell.toast.syncIssue": "Problema de sincronización: {message}",
+  "appshell.toast.syncIssue":
+    "La sincronización no se completó — {message}. Yarrow lo reintentará automáticamente.",
+  "appshell.toast.conflictResolved":
+    "Versiones unidas. Ambas versiones originales siguen en el Historial — desplázate hacia atrás cuando quieras para recuperar lo que no conservaste.",
   "appshell.toast.workspacePurged":
     "Otro dispositivo eliminó archivos permanentemente de este espacio de trabajo. Realineando…",
   "appshell.toast.workspacePurgedFailed":
@@ -426,8 +531,8 @@ export const appshellES: Record<AppshellKey, string> = {
   // Map / connections rail
   "appshell.map.title": "Conexiones",
   "appshell.map.titleFiltered": "Mapa · {pathName}",
-  "appshell.map.notesInPathSingle": "{count} nota en esta ruta",
-  "appshell.map.notesInPathPlural": "{count} notas en esta ruta",
+  "appshell.map.notesInPathSingle": "{count} nota en este escenario",
+  "appshell.map.notesInPathPlural": "{count} notas en este escenario",
   "appshell.map.thisNote": "esta nota",
   "appshell.map.neighborsSingle": "{count} vecino",
   "appshell.map.neighborsPlural": "{count} vecinos",
@@ -436,6 +541,12 @@ export const appshellES: Record<AppshellKey, string> = {
   "appshell.links.title": "Enlaces desde esta nota",
 
   "appshell.outline.title": "Esquema",
+
+  "appshell.tabs.label": "Notas abiertas",
+  "appshell.tabs.close": "Cerrar pestaña",
+  "appshell.tabs.newTab": "Nueva pestaña",
+  "appshell.tabs.untitled": "Sin título",
+  "appshell.tabs.openInNewTab": "Abrir en nueva pestaña",
 
   // Locked note hero
   "appshell.locked.title": "Esta nota está bloqueada",
@@ -490,37 +601,37 @@ export const appshellES: Record<AppshellKey, string> = {
   "appshell.deleteMany.titleSingle": "¿Eliminar {count} nota?",
   "appshell.deleteMany.titlePlural": "¿Eliminar {count} notas?",
   "appshell.deleteMany.body":
-    "Desaparecen de la lista. Las versiones anteriores en esta ruta quedan en el historial.",
+    "Desaparecen de la lista. Las versiones anteriores en este escenario quedan en el historial.",
 
   // Promote path confirm
   "appshell.promote.title": "¿Promover “{path}” a main?",
   "appshell.promote.bodyEmpty":
-    "Esta ruta aún no tiene cambios, así que promoverla solo la archiva. ¿Continuar?",
+    "Este escenario aún no tiene cambios, así que promoverlo solo lo archiva. ¿Continuar?",
   "appshell.promote.bodyEditsSingle":
-    "{count} nota editada en esta ruta se aplicará a main. La ruta misma será archivada. Esto no se puede deshacer automáticamente (las versiones anteriores quedan en el historial).",
+    "{count} nota editada en este escenario se aplicará a main. El escenario mismo será archivado. Esto no se puede deshacer automáticamente (las versiones anteriores quedan en el historial).",
   "appshell.promote.bodyEditsPlural":
-    "{count} notas editadas en esta ruta se aplicarán a main. La ruta misma será archivada. Esto no se puede deshacer automáticamente (las versiones anteriores quedan en el historial).",
+    "{count} notas editadas en este escenario se aplicarán a main. El escenario mismo será archivado. Esto no se puede deshacer automáticamente (las versiones anteriores quedan en el historial).",
 
   // Throw away path confirm
   "appshell.throwAway.title": "¿Descartar “{path}”?",
   "appshell.throwAway.bodyEmpty":
-    "Esta ruta aún no tiene cambios. Descartar solo elimina la entrada de la ruta.",
+    "Este escenario aún no tiene cambios. Descartar solo elimina la entrada del escenario.",
   "appshell.throwAway.bodyEditsSingle":
-    "{count} nota editada en esta ruta se perderá. Main no se ve afectada. ¿Continuar?",
+    "{count} nota editada en este escenario se perderá. Main no se ve afectada. ¿Continuar?",
   "appshell.throwAway.bodyEditsPlural":
-    "{count} notas editadas en esta ruta se perderán. Main no se ve afectada. ¿Continuar?",
+    "{count} notas editadas en este escenario se perderán. Main no se ve afectada. ¿Continuar?",
 
   // Confirm-state generic buttons
   "appshell.confirm.keepIt": "conservarla",
   "appshell.confirm.yesDelete": "sí, eliminar",
 
   // New path modal
-  "appshell.newPath.title": "Empezar una nueva ruta",
+  "appshell.newPath.title": "Empezar un nuevo escenario",
   "appshell.newPath.intro":
-    "Una ruta es un si…. Escribe la pregunta — eso es todo. La versión que tienes ahora queda a salvo en {root}.",
+    "Un escenario es un si…. Escribe la pregunta — eso es todo. La versión que tienes ahora queda a salvo en {root}.",
   "appshell.newPath.trunkHint":
-    "Cada ruta se ramifica desde {root}. Un tronco, muchas ramas.",
-  "appshell.newPath.questionLabel": "la pregunta que hace esta ruta",
+    "Cada escenario se ramifica desde {root}. Un tronco, muchas ramas.",
+  "appshell.newPath.questionLabel": "la pregunta que hace este escenario",
   "appshell.newPath.placeholder": "Si sale el trabajo de Seattle…",
   "appshell.newPath.suggestion1": "Si llueve ese día",
   "appshell.newPath.suggestion2": "Si rechazan el proyecto",
@@ -589,13 +700,13 @@ export const appshellSV: Record<AppshellKey, string> = {
   "appshell.workspace.switchAria": "Byt arbetsyta",
   "appshell.workspace.fallbackName": "Arbetsyta",
   "appshell.workspace.notesPathsSingleSingle":
-    "{notes} anteckning · {paths} stig",
+    "{notes} anteckning · {scenarios} scenario",
   "appshell.workspace.notesPathsSinglePlural":
-    "{notes} anteckning · {paths} stigar",
+    "{notes} anteckning · {scenarios} scenarier",
   "appshell.workspace.notesPathsPluralSingle":
-    "{notes} anteckningar · {paths} stig",
+    "{notes} anteckningar · {scenarios} scenario",
   "appshell.workspace.notesPathsPluralPlural":
-    "{notes} anteckningar · {paths} stigar",
+    "{notes} anteckningar · {scenarios} scenarier",
 
   // Sidebar search trigger + utility row
   "appshell.sidebar.findAnything": "Sök vad som helst",
@@ -606,12 +717,17 @@ export const appshellSV: Record<AppshellKey, string> = {
   "appshell.sidebar.trashLabel": "Papperskorg",
   "appshell.sidebar.trashTitle":
     "Återställ eller ta bort raderade anteckningar permanent",
+  "appshell.sidebar.trashTitleWithCount":
+    "{count} anteckning(ar) i papperskorgen — öppna för att återställa eller rensa",
+  "appshell.sidebar.resizeTitle": "Dra för att ändra sidofältets storlek",
+  "appshell.sidebar.resizeAria": "Ändra sidofältets storlek",
 
   // Status bar
+  "appshell.status.modePillTitle": "Aktivt läge: {mode} — klicka för att byta",
   "appshell.status.notes": "{count} anteckningar",
-  "appshell.status.paths": "{count} stigar",
-  "appshell.status.onPath": "på stig: {path}",
-  "appshell.status.onPathNone": "på stig: —",
+  "appshell.status.paths": "{count} scenarier",
+  "appshell.status.onPath": "på scenario: {path}",
+  "appshell.status.onPathNone": "på scenario: —",
   "appshell.status.selected": "{count} markerade",
   "appshell.status.selectedTitle": "{count} tecken markerade",
   "appshell.status.wordCountSingle": "{count} ord",
@@ -625,6 +741,8 @@ export const appshellSV: Record<AppshellKey, string> = {
     "{count} anteckning hålls utanför servern — registrerad i .git/info/exclude och synkroniseras aldrig.",
   "appshell.status.offServerPluralTitle":
     "{count} anteckningar hålls utanför servern — registrerade i .git/info/exclude och synkroniseras aldrig.",
+  "appshell.status.syncedAgo": "synkad {time}",
+  "appshell.status.syncTimestampTitle": "Senast synk: {datetime}",
 
   // Sync pill labels
   "appshell.sync.synced": "synkroniserat",
@@ -632,6 +750,39 @@ export const appshellSV: Record<AppshellKey, string> = {
   "appshell.sync.syncing": "synkroniserar…",
   "appshell.sync.failed": "synkronisering misslyckades",
   "appshell.sync.notAnywhere": "synkroniseras inte någonstans",
+
+  // Skip-to-content + verbose-announcer
+  "appshell.skipToContent": "Hoppa till redigeraren",
+  "appshell.announce.syncStarted": "Synkronisering startade.",
+  "appshell.announce.syncFinished": "Synkroniseringen klar. Allt är uppdaterat.",
+  "appshell.announce.syncFailed": "Synkroniseringen misslyckades: {message}",
+  "appshell.announce.saved": "Anteckning sparad.",
+  "appshell.announce.checkpointSaved": "Kontrollpunkt sparad.",
+  "appshell.announce.pathCreated": "Ny riktning skapad: {name}.",
+  "appshell.announce.pathSwitched": "Bytte till {name}.",
+  "appshell.announce.checkpointPinned": "Kontrollpunkt fäst.",
+  "appshell.announce.checkpointUnpinned": "Kontrollpunkt avfäst.",
+  "appshell.announce.checkpointRestored": "Återställd till kontrollpunkt.",
+  "appshell.announce.noteCreated": "Anteckning skapad: {title}.",
+  "appshell.announce.noteDeleted": "Anteckning flyttad till papperskorgen: {title}.",
+
+  // Sync status-bar popover
+  "appshell.sync.popover.openAria":
+    "Synkroniseringsstatus: {status}. Klicka för detaljer.",
+  "appshell.sync.popover.title": "Synkroniseringsdetaljer",
+  "appshell.sync.popover.lastSynced": "Senaste synk {time}.",
+  "appshell.sync.popover.retry": "Försök igen",
+  "appshell.sync.popover.openSettings": "Synkroniseringsinställningar…",
+  "appshell.sync.popover.body.synced":
+    "Allt är uppdaterat. Auto-synk körs igen i bakgrunden.",
+  "appshell.sync.popover.body.pending":
+    "Det finns lokala ändringar som inte har skickats än — Yarrow synkar dem vid nästa intervall.",
+  "appshell.sync.popover.body.syncing":
+    "Synkroniseringen pågår nu.",
+  "appshell.sync.popover.body.error":
+    "Senaste synk slutfördes inte. Yarrow fortsätter försöka — Försök igen för att köra direkt.",
+  "appshell.sync.popover.body.no-remote":
+    "Den här arbetsytan är inte ansluten någonstans än. Öppna synkroniseringsinställningarna för att lägga till en fjärransluten.",
 
   // Toast / dismiss
   "appshell.toast.dismiss": "Avfärda",
@@ -678,19 +829,21 @@ export const appshellSV: Record<AppshellKey, string> = {
   "appshell.toast.copiedAsMarkdown": "Kopierade \"{title}\" som markdown.",
   "appshell.toast.copyError": "Det gick inte att kopiera: {error}",
   "appshell.toast.renameError":
-    "Det gick inte att byta namn: {error}",
+    "Det gick inte att byta namn — anteckningen behåller sin ursprungliga titel. {error}",
   "appshell.toast.tagsError":
-    "Det gick inte att uppdatera taggarna: {error}",
+    "Det gick inte att spara taggarna — anteckningens nuvarande taggar är oförändrade. {error}",
   "appshell.toast.annotationSaveError":
     "Det gick inte att spara anteckningen: {error}",
   "appshell.toast.annotationAddError":
     "Det gick inte att lägga till anteckningen: {error}",
   "appshell.toast.kept":
     "Sparat — \"{label}\" kommer att överleva framtida rensning.",
-  "appshell.toast.pinError": "Det gick inte att fästa: {error}",
+  "appshell.toast.pinError":
+    "Det gick inte att fästa — anteckningens fäst-status är oförändrad. {error}",
   "appshell.toast.unpinned":
     "Lossad — den här kontrollpunkten är inte längre skyddad mot rensning.",
-  "appshell.toast.unpinError": "Det gick inte att lossa: {error}",
+  "appshell.toast.unpinError":
+    "Det gick inte att lossa — anteckningens fäst-status är oförändrad. {error}",
   "appshell.toast.restored":
     "Återställd — den tidigare versionen ligger tryggt kvar i historiken.",
   "appshell.toast.promoteError": "Det gick inte att befordra: {error}",
@@ -717,7 +870,10 @@ export const appshellSV: Record<AppshellKey, string> = {
     "Synkronisering: {count} konflikt — serverversionen behölls; din lokala version sparades som en .conflict-*.md-syskonfil.",
   "appshell.toast.syncConflictsPlural":
     "Synkronisering: {count} konflikter — serverversionen behölls; din lokala version sparades som en .conflict-*.md-syskonfil.",
-  "appshell.toast.syncIssue": "Synkroniseringsproblem: {message}",
+  "appshell.toast.syncIssue":
+    "Synkroniseringen blev inte klar — {message}. Yarrow försöker igen automatiskt.",
+  "appshell.toast.conflictResolved":
+    "Sammanförda. Båda ursprungsversionerna finns kvar i Historiken — bläddra bakåt när som helst för att återställa det du inte behöll.",
   "appshell.toast.workspacePurged":
     "En annan enhet raderade filer permanent från denna arbetsyta. Anpassar om…",
   "appshell.toast.workspacePurgedFailed":
@@ -730,8 +886,8 @@ export const appshellSV: Record<AppshellKey, string> = {
   // Map / connections rail
   "appshell.map.title": "Kopplingar",
   "appshell.map.titleFiltered": "Karta · {pathName}",
-  "appshell.map.notesInPathSingle": "{count} anteckning på den här stigen",
-  "appshell.map.notesInPathPlural": "{count} anteckningar på den här stigen",
+  "appshell.map.notesInPathSingle": "{count} anteckning i det här scenariot",
+  "appshell.map.notesInPathPlural": "{count} anteckningar i det här scenariot",
   "appshell.map.thisNote": "den här anteckningen",
   "appshell.map.neighborsSingle": "{count} granne",
   "appshell.map.neighborsPlural": "{count} grannar",
@@ -740,6 +896,12 @@ export const appshellSV: Record<AppshellKey, string> = {
   "appshell.links.title": "Länkar från den här anteckningen",
 
   "appshell.outline.title": "Översikt",
+
+  "appshell.tabs.label": "Öppna anteckningar",
+  "appshell.tabs.close": "Stäng flik",
+  "appshell.tabs.newTab": "Ny flik",
+  "appshell.tabs.untitled": "Namnlös",
+  "appshell.tabs.openInNewTab": "Öppna i ny flik",
 
   // Locked note hero
   "appshell.locked.title": "Den här anteckningen är låst",
@@ -794,37 +956,37 @@ export const appshellSV: Record<AppshellKey, string> = {
   "appshell.deleteMany.titleSingle": "Ta bort {count} anteckning?",
   "appshell.deleteMany.titlePlural": "Ta bort {count} anteckningar?",
   "appshell.deleteMany.body":
-    "De försvinner från listan. Tidigare versioner på den här stigen ligger kvar i historiken.",
+    "De försvinner från listan. Tidigare versioner i det här scenariot ligger kvar i historiken.",
 
   // Promote path confirm
   "appshell.promote.title": "Befordra “{path}” till main?",
   "appshell.promote.bodyEmpty":
-    "Den här stigen har inga ändringar än, så att befordra den arkiverar bara den. Fortsätt?",
+    "Det här scenariot har inga ändringar än, så att befordra det arkiverar bara det. Fortsätt?",
   "appshell.promote.bodyEditsSingle":
-    "{count} anteckning som redigerats på den här stigen kommer att tillämpas på main. Stigen själv arkiveras. Detta kan inte ångras automatiskt (äldre versioner ligger kvar i historiken).",
+    "{count} anteckning som redigerats i det här scenariot kommer att tillämpas på main. Scenariot självt arkiveras. Detta kan inte ångras automatiskt (äldre versioner ligger kvar i historiken).",
   "appshell.promote.bodyEditsPlural":
-    "{count} anteckningar som redigerats på den här stigen kommer att tillämpas på main. Stigen själv arkiveras. Detta kan inte ångras automatiskt (äldre versioner ligger kvar i historiken).",
+    "{count} anteckningar som redigerats i det här scenariot kommer att tillämpas på main. Scenariot självt arkiveras. Detta kan inte ångras automatiskt (äldre versioner ligger kvar i historiken).",
 
   // Throw away path confirm
   "appshell.throwAway.title": "Kasta “{path}”?",
   "appshell.throwAway.bodyEmpty":
-    "Den här stigen har inga ändringar än. Att kasta den tar bara bort stigposten.",
+    "Det här scenariot har inga ändringar än. Att kasta det tar bara bort scenarioposten.",
   "appshell.throwAway.bodyEditsSingle":
-    "{count} redigerad anteckning på den här stigen kommer att gå förlorad. Main påverkas inte. Fortsätt?",
+    "{count} redigerad anteckning i det här scenariot kommer att gå förlorad. Main påverkas inte. Fortsätt?",
   "appshell.throwAway.bodyEditsPlural":
-    "{count} redigerade anteckningar på den här stigen kommer att gå förlorade. Main påverkas inte. Fortsätt?",
+    "{count} redigerade anteckningar i det här scenariot kommer att gå förlorade. Main påverkas inte. Fortsätt?",
 
   // Confirm-state generic buttons
   "appshell.confirm.keepIt": "behåll",
   "appshell.confirm.yesDelete": "ja, ta bort",
 
   // New path modal
-  "appshell.newPath.title": "Starta en ny stig",
+  "appshell.newPath.title": "Starta ett nytt scenario",
   "appshell.newPath.intro":
-    "En stig är ett om…. Skriv frågan — det är allt. Versionen du har nu ligger tryggt kvar på {root}.",
+    "Ett scenario är ett om…. Skriv frågan — det är allt. Versionen du har nu ligger tryggt kvar på {root}.",
   "appshell.newPath.trunkHint":
-    "Varje stig förgrenar sig från {root}. En stam, många grenar.",
-  "appshell.newPath.questionLabel": "frågan den här stigen ställer",
+    "Varje scenario förgrenar sig från {root}. En stam, många grenar.",
+  "appshell.newPath.questionLabel": "frågan det här scenariot ställer",
   "appshell.newPath.placeholder": "Om jobbet i Seattle blir av…",
   "appshell.newPath.suggestion1": "Om det regnar den dagen",
   "appshell.newPath.suggestion2": "Om projektet får avslag",

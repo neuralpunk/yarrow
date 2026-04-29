@@ -96,6 +96,47 @@ pub fn init_workspace(path: &Path) -> Result<Repository> {
     Ok(repo)
 }
 
+/// 3.0 — clone an existing Yarrow workspace from a remote git URL into
+/// `dest`. The caller is responsible for `dest` being non-existent or
+/// empty; this function will create it. SSH URLs authenticate via the
+/// running ssh-agent (no password prompt). HTTPS URLs only work for
+/// public repos here — token-based clones are not yet wired through
+/// the UI.
+///
+/// On error, the caller should remove `dest` so a half-cloned tree
+/// doesn't pollute the user's filesystem (see `cmd_clone_workspace`).
+pub fn clone_workspace(url: &str, dest: &Path) -> Result<Repository> {
+    let mut cb = RemoteCallbacks::new();
+    cb.credentials(|_url, username, allowed| {
+        // ssh-agent first (the common case for git@github.com:… style
+        // URLs). Without an agent the clone of a private repo will
+        // surface a Cred::default() and libgit2 will fail clearly.
+        if allowed.contains(git2::CredentialType::SSH_KEY) {
+            if let Some(user) = username {
+                return Cred::ssh_key_from_agent(user);
+            }
+        }
+        Cred::default()
+    });
+
+    let mut fetch_opts = FetchOptions::new();
+    fetch_opts.remote_callbacks(cb);
+
+    let mut builder = git2::build::RepoBuilder::new();
+    builder.fetch_options(fetch_opts);
+    let repo = builder.clone(url, dest)?;
+    Ok(repo)
+}
+
+/// Returns `true` if `dir` looks like a Yarrow workspace — i.e. it
+/// contains the canonical `.yarrow/config.toml` marker. We deliberately
+/// gate on `config.toml` rather than `index.db`: the search-cache db is
+/// gitignored (workspace.rs:192) and would not survive a fresh clone,
+/// so checking it would reject every legitimately cloned workspace.
+pub fn is_yarrow_workspace(dir: &Path) -> bool {
+    dir.join(".yarrow").join("config.toml").is_file()
+}
+
 /// Create an empty commit on HEAD when the working tree has nothing
 /// to commit yet. Used as a last-resort seed during first sync so
 /// push has a branch to send.
@@ -144,6 +185,71 @@ pub fn checkpoint(repo: &Repository, message: &str) -> Result<Oid> {
     let parents: Vec<&git2::Commit> = parent_commit.iter().collect();
     let oid = repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)?;
     Ok(oid)
+}
+
+/// Create a checkpoint commit for a note save.
+///
+/// Every save creates a fresh commit. We previously had an amend window
+/// that rolled successive saves into one commit "to keep history clean",
+/// but it had a subtle bug — `parent.time()` in git2 returns the
+/// COMMITTER time, which is refreshed on each amend, so the window
+/// renewed itself indefinitely. Users typing every 25 s saw the same
+/// commit get amended forever and reported "history checkpoints aren't
+/// being created" twice. Removing amend entirely is the cleaner fix:
+/// the auto-save debounce already throttles the rate (one save per
+/// typing burst, not per keystroke), so we don't need a second layer
+/// of consolidation.
+///
+/// The `affinity_key` (typically the note slug) is recorded as a
+/// trailer line `Yarrow-slug: <slug>` at the bottom of the commit
+/// message so other code (history slider, etc.) can attribute commits
+/// to a specific note. The trailer is stripped from the user-visible
+/// message at the display layer.
+pub fn checkpoint_or_amend(
+    repo: &Repository,
+    user_message: &str,
+    affinity_key: &str,
+) -> Result<Oid> {
+    let mut index = repo.index()?;
+    index.update_all(["*"].iter(), None)?;
+    index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)?;
+    index.write()?;
+    let tree_id = index.write_tree()?;
+    let tree = repo.find_tree(tree_id)?;
+    let sig = signature()?;
+
+    let parent_commit = match repo.head() {
+        Ok(head) => Some(head.peel_to_commit()?),
+        Err(_) => None,
+    };
+
+    // No-op if the tree didn't actually change.
+    if let Some(parent) = &parent_commit {
+        if parent.tree()?.id() == tree_id {
+            return Ok(parent.id());
+        }
+    }
+
+    let message_with_trailer = format!("{}\n\nYarrow-slug: {}\n", user_message.trim_end(), affinity_key);
+    let parents: Vec<&git2::Commit> = parent_commit.iter().collect();
+    let oid = repo.commit(Some("HEAD"), &sig, &sig, &message_with_trailer, &tree, &parents)?;
+    Ok(oid)
+}
+
+/// Strip the trailer line(s) `checkpoint_or_amend` appends from a
+/// user-visible commit message. Use when surfacing a commit subject or
+/// body to the UI (history slider, log views).
+pub fn user_visible_message(message: &str) -> String {
+    let mut lines: Vec<&str> = message.lines().collect();
+    while let Some(last) = lines.last() {
+        let t = last.trim();
+        if t.is_empty() || t.starts_with("Yarrow-slug:") {
+            lines.pop();
+        } else {
+            break;
+        }
+    }
+    lines.join("\n")
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -401,13 +507,36 @@ pub struct HistoryEntry {
     pub thinking_note: Option<String>,
 }
 
+/// Soft cap on the number of history entries returned for a single note.
+/// At ~5000 commits the unbounded walk + the timeline render combined to
+/// stall the modal for seconds; capping at 500 covers the overwhelming
+/// majority of real-world "scrub through this note's history" sessions
+/// while keeping both sides snappy. Callers that need more can paginate
+/// via `note_history_paged` (added below).
+const NOTE_HISTORY_DEFAULT_LIMIT: usize = 500;
+
 pub fn note_history(repo: &Repository, note_relpath: &str) -> Result<Vec<HistoryEntry>> {
+    note_history_paged(repo, note_relpath, NOTE_HISTORY_DEFAULT_LIMIT, 0)
+}
+
+/// Walks the repo for checkpoints touching `note_relpath`, returning at
+/// most `limit` entries starting at `offset` distinct-tree-entry hits.
+/// `limit == 0` means "no cap"; non-zero values short-circuit the walk
+/// once the page is filled, which matters at 5k+ commits where the bulk
+/// of cost is the per-commit `tree.get_path()` lookup.
+pub fn note_history_paged(
+    repo: &Repository,
+    note_relpath: &str,
+    limit: usize,
+    offset: usize,
+) -> Result<Vec<HistoryEntry>> {
     let mut revwalk = repo.revwalk()?;
     revwalk.set_sorting(Sort::TIME)?;
     revwalk.push_head()?;
 
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(limit.min(64));
     let mut last_tree_entry: Option<Oid> = None;
+    let mut hits = 0usize;
     for oid in revwalk {
         let oid = oid?;
         let commit = repo.find_commit(oid)?;
@@ -426,6 +555,16 @@ pub fn note_history(repo: &Repository, note_relpath: &str) -> Result<Vec<History
         }
         last_tree_entry = current_blob;
 
+        // Distinct hit. Skip until we reach `offset`, then collect up to
+        // `limit` entries. We can't apply offset against the raw revwalk
+        // because identical-tree dedupe means the offset is in
+        // distinct-version space, not commit-count space.
+        if hits < offset {
+            hits += 1;
+            continue;
+        }
+        hits += 1;
+
         let (message, thinking_note) = split_message(commit.message().unwrap_or(""));
         out.push(HistoryEntry {
             oid: oid.to_string(),
@@ -433,13 +572,21 @@ pub fn note_history(repo: &Repository, note_relpath: &str) -> Result<Vec<History
             timestamp: commit.time().seconds(),
             thinking_note,
         });
+
+        if limit != 0 && out.len() >= limit {
+            break;
+        }
     }
     Ok(out)
 }
 
 fn split_message(msg: &str) -> (String, Option<String>) {
+    // Strip the `Yarrow-slug:` trailer (if present — added by
+    // `checkpoint_or_amend`) before splitting head/body so the user
+    // never sees it in the history slider.
+    let cleaned = user_visible_message(msg);
     // Convention: first line is summary, blank line, then thinking note.
-    let mut parts = msg.splitn(2, "\n\n");
+    let mut parts = cleaned.splitn(2, "\n\n");
     let head = parts.next().unwrap_or("").trim().to_string();
     let body = parts
         .next()
@@ -1055,10 +1202,16 @@ pub fn sync_to_server(
     // Only applied when the workspace has explicitly opted into
     // `insecure_skip_tls_verify` via Settings (the "TLS: insecure" badge
     // in the UI). Persists on the repo, which matches user intent.
-    if insecure_tls {
-        if let Ok(mut cfg) = repo.config() {
-            let _ = cfg.set_bool("http.sslVerify", false);
-        }
+    //
+    // CRITICAL: the off path must also write the repo config back to
+    // `true`. Earlier versions only wrote on the way IN to insecure
+    // mode and never on the way out — so a user who briefly enabled
+    // insecure-TLS and then turned it off on Linux/libcurl would have
+    // `http.sslVerify = false` stuck in `.git/config` and TLS
+    // verification silently disabled forever. The unconditional write
+    // below closes that hole.
+    if let Ok(mut cfg) = repo.config() {
+        let _ = cfg.set_bool("http.sslVerify", !insecure_tls);
     }
 
     // Fresh workspaces come up from `init_workspace` with no HEAD —
@@ -1909,6 +2062,15 @@ pub struct ConflictContent {
     pub ours: Option<String>,
     pub theirs: Option<String>,
     pub working: Option<String>,
+    /// Unix timestamp of HEAD's commit (the "ours" side of the merge).
+    /// Lets the resolver UI render a friendly relative-time chip so the
+    /// user can tell which version is older. Note: this is the commit
+    /// timestamp for the whole tree, not strictly this file — but in
+    /// Yarrow's per-save-checkpoint model that's a close approximation
+    /// of "when this file was last touched on this path".
+    pub ours_timestamp: Option<i64>,
+    /// Unix timestamp of MERGE_HEAD's commit (the "theirs" side).
+    pub theirs_timestamp: Option<i64>,
 }
 
 pub fn is_merging(repo: &Repository) -> bool {
@@ -1972,18 +2134,53 @@ pub fn get_conflict_content(
         None
     };
 
+    // Pull the HEAD and MERGE_HEAD commit timestamps so the resolver can
+    // show "from {path}, 2 hours ago" instead of two anonymous panes.
+    // Both reads are best-effort — a corrupted ref shouldn't block the
+    // resolver from rendering, so we swallow errors and ship `None`.
+    let ours_timestamp = repo
+        .head()
+        .ok()
+        .and_then(|r| r.peel_to_commit().ok())
+        .map(|c| c.time().seconds());
+    let theirs_timestamp = std::fs::read_to_string(repo.path().join("MERGE_HEAD"))
+        .ok()
+        .and_then(|s| Oid::from_str(s.trim()).ok())
+        .and_then(|oid| repo.find_commit(oid).ok())
+        .map(|c| c.time().seconds());
+
     Ok(ConflictContent {
         relpath: relpath.to_string(),
         base,
         ours,
         theirs,
         working,
+        ours_timestamp,
+        theirs_timestamp,
     })
 }
 
 fn read_blob(repo: &Repository, oid: Oid) -> Result<String> {
     let blob = repo.find_blob(oid)?;
-    Ok(String::from_utf8_lossy(blob.content()).into_owned())
+    // Yarrow's conflict UI is line-by-line text — feeding it a binary
+    // blob (an attached image, a sealed-history ciphertext) would
+    // produce garbage that the user can't safely "resolve". Surface a
+    // clean error instead so the frontend can show "this file has a
+    // binary conflict" and guide the user to the appropriate tool.
+    if blob.is_binary() {
+        return Err(YarrowError::Invalid(
+            "binary file conflict — Yarrow's text resolver can't merge this safely".into(),
+        ));
+    }
+    let bytes = blob.content();
+    std::str::from_utf8(bytes)
+        .map(|s| s.to_string())
+        .map_err(|_| {
+            YarrowError::Invalid(
+                "non-UTF-8 conflict content — Yarrow's text resolver can't merge this safely"
+                    .into(),
+            )
+        })
 }
 
 /// Write the resolved content to disk and mark the conflict resolved in the index.

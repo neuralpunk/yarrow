@@ -80,6 +80,21 @@ pub fn forget(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Rename a recent entry's display name without re-ordering the list.
+/// `remember` re-inserts at the top, which is the wrong behavior for a
+/// pure rename — the user expects the workspace to stay where it was.
+pub fn update_name(path: &Path, name: &str) -> Result<()> {
+    let mut cfg = load();
+    let path_str = path.to_string_lossy().to_string();
+    for r in cfg.recent.iter_mut() {
+        if r.path == path_str {
+            r.name = name.to_string();
+        }
+    }
+    save(&cfg)?;
+    Ok(())
+}
+
 pub fn list_recent() -> Vec<RecentWorkspace> {
     let cfg = load();
     // Prune entries whose folder no longer exists so the onboarding list stays honest.

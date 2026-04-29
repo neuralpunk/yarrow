@@ -16,6 +16,7 @@ import type {
   AttachmentRef,
   BranchTopo,
   ConflictContent,
+  Draft,
   EnableEncryptionOutcome,
   EncryptionStatus,
   ExportReport,
@@ -32,6 +33,7 @@ import type {
   PathMeta,
   Provenance,
   RecentWorkspace,
+  WelcomeStats,
   SearchHit,
   DiscardOutcome,
   LargeBlobEntry,
@@ -48,6 +50,16 @@ import type {
 } from "./types";
 
 export const api = {
+  /** 3.1 — theme system spec §9.1. Best-effort macOS vibrancy
+   *  material switch on theme change. No-op on Linux/Windows
+   *  (the command compiles to nothing in the Rust gate). */
+  applyThemeVibrancy: (theme: string) =>
+    invoke<void>("cmd_apply_theme_vibrancy", { theme }),
+  /** 3.1 — theme system spec §9.3. Linux DE colour-scheme probe
+   *  (gsettings / GTK_THEME). Returns "light" | "dark" | "unknown";
+   *  used as a tiebreaker when matchMedia is indeterminate. */
+  detectColorScheme: () =>
+    invoke<"light" | "dark" | "unknown">("cmd_detect_color_scheme"),
   // workspace
   initWorkspace: (
     path: string,
@@ -61,6 +73,12 @@ export const api = {
       mode,
       startingNoteTitle,
     }),
+  /** 3.0 — clone an existing Yarrow workspace from a git URL into
+   *  `<parent>/<name>`. The backend rejects anything that doesn't
+   *  contain `.yarrow/config.toml` post-clone, so we never end up
+   *  with a random repo masquerading as a workspace. */
+  cloneWorkspace: (parent: string, name: string, url: string) =>
+    invoke<WorkspaceConfig>("cmd_clone_workspace", { parent, name, url }),
   openWorkspace: (path: string) =>
     invoke<WorkspaceConfig>("cmd_open_workspace", { path }),
   activeWorkspace: () => invoke<string | null>("cmd_active_workspace"),
@@ -161,11 +179,22 @@ export const api = {
     invoke<ExportReport>("cmd_export_static", { dest }),
   exportPathMarkdown: (pathName: string, dest: string) =>
     invoke<ExportReport>("cmd_export_path_markdown", { pathName, dest }),
+  /** Write arbitrary UTF-8 text to a user-chosen path. Used by the
+   *  Settings → About export-as-JSON flow once the user picks a
+   *  destination via Tauri's save dialog. */
+  writeTextFile: (path: string, content: string) =>
+    invoke<void>("cmd_write_text_file", { path, content }),
   notesOnPath: (pathName: string) =>
     invoke<{ slug: string; body: string }[]>("cmd_notes_on_path", { pathName }),
 
   saveNote: (slug: string, body: string, thinkingNote?: string) =>
     invoke<Note>("cmd_save_note", { slug, body, thinkingNote }),
+  /** Disk-only quick save. Writes the .md to disk with no checkpoint and
+   *  no graph rebuild. The editor fires this on a short timer so user
+   *  work survives a crash even when the user-configurable git debounce
+   *  is set to several minutes. */
+  quicksaveNote: (slug: string, body: string) =>
+    invoke<void>("cmd_quicksave_note", { slug, body }),
   /** Combined save: returns the note plus the workspace summaries, graph,
    *  and orphans from a single backend pass. Replaces the four IPC
    *  fan-out the editor used to make after every keystroke pause. */
@@ -335,6 +364,72 @@ export const api = {
       expectedDiskBytes,
     }),
 
+  // borrow (spec §5.3) — pull one paragraph or one whole note from a
+  // source path into a destination path. The destination advances; the
+  // source is untouched. Empty path string === main.
+  borrowNote: (slug: string, sourcePath: string, destPath: string) =>
+    invoke<Note>("cmd_borrow_note", { slug, sourcePath, destPath }),
+  borrowText: (
+    slug: string,
+    sourcePath: string,
+    destPath: string,
+    sourceStart: number,
+    sourceEnd: number,
+    destStart: number,
+    destEnd: number,
+  ) =>
+    invoke<Note>("cmd_borrow_text", {
+      slug,
+      sourcePath,
+      destPath,
+      sourceStart,
+      sourceEnd,
+      destStart,
+      destEnd,
+    }),
+
+  // path archive (spec §5.5 / §6.8) — "set aside" without deleting.
+  setPathArchived: (name: string, archived: boolean) =>
+    invoke<void>("cmd_set_path_archived", { name, archived }),
+
+  /** Which non-root paths have a divergent override of this note?
+   *  Empty list when the note is identical across every path.
+   *  Used by the editor metadata strip's path-awareness line. */
+  pathsDivergingForNote: (slug: string) =>
+    invoke<string[]>("cmd_paths_diverging_for_note", { slug }),
+
+  /** Per-path divergence summary for the whole workspace — used by
+   *  the path map for "5 differ from main" badges and by the
+   *  decision matrix for ◐ (differs) cell indicators. `slugs` lists
+   *  every note whose body diverges on that path. */
+  pathDivergenceSummary: () =>
+    invoke<{ name: string; differs: number; slugs: string[] }[]>(
+      "cmd_path_divergence_summary",
+    ),
+
+  // drafts (Pillar 2) — alternative bodies for a single note. The user
+  // sees a tab strip above the editor: [main] [draft-1] [draft-2] [+].
+  // Promoting a draft replaces the canonical body and emits a normal
+  // checkpoint; discarding is permanent (no trash).
+  draftListForNote: (slug: string) =>
+    invoke<Draft[]>("cmd_draft_list_for_note", { slug }),
+  draftCreate: (slug: string, displayName: string, seedBody: string) =>
+    invoke<Draft>("cmd_draft_create", {
+      slug,
+      displayName,
+      seedBody,
+    }),
+  draftRead: (slug: string, draftId: string) =>
+    invoke<string>("cmd_draft_read", { slug, draftId }),
+  draftSave: (slug: string, draftId: string, body: string) =>
+    invoke<void>("cmd_draft_save", { slug, draftId, body }),
+  draftRename: (slug: string, draftId: string, displayName: string) =>
+    invoke<void>("cmd_draft_rename", { slug, draftId, displayName }),
+  draftDiscard: (slug: string, draftId: string) =>
+    invoke<void>("cmd_draft_discard", { slug, draftId }),
+  draftPromote: (slug: string, draftId: string) =>
+    invoke<Note>("cmd_draft_promote", { slug, draftId }),
+
   // scratchpad
   readScratchpad: () => invoke<string>("cmd_read_scratchpad"),
   saveScratchpad: (content: string) =>
@@ -380,6 +475,11 @@ export const api = {
     invoke<RecentWorkspace[]>("cmd_list_recent_workspaces"),
   forgetRecentWorkspace: (path: string) =>
     invoke<void>("cmd_forget_recent_workspace", { path }),
+  renameRecentWorkspace: (path: string, name: string) =>
+    invoke<void>("cmd_rename_recent_workspace", { path, name }),
+  // IntroPage welcome stats — computed fresh on every IntroPage mount
+  // (no in-session cache, per the spec's snapshot model).
+  welcomeStats: () => invoke<WelcomeStats>("cmd_welcome_stats"),
 
   // encryption
   encryptionStatus: () => invoke<EncryptionStatus>("cmd_encryption_status"),
@@ -482,4 +582,12 @@ export const api = {
   defaultWorkspacesRoot: () => invoke<string>("cmd_default_workspaces_root"),
   createWorkspaceDir: (parent: string, name: string) =>
     invoke<string>("cmd_create_workspace_dir", { parent, name }),
+
+  // 3.0 visual polish: Linux desktop-environment introspection.
+  // Returns "gnome" | "kde" | "xfce" | "cinnamon" | "mate" | "unity"
+  // | "lxqt" | "lxde" | "unknown" | "" (empty for non-Linux). The
+  // bootstrap in main.tsx surfaces this as a `data-de="<de>"`
+  // attribute on <html> so CSS can opt in to platform-conditional
+  // chrome (e.g. GNOME-style header treatment, KDE Breeze borders).
+  desktopEnv: () => invoke<string>("cmd_desktop_env"),
 };

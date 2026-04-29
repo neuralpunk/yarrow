@@ -84,3 +84,11 @@ flamegraph.svg
 # ───────── Personal/local scripts ─────────
 scripts/
 mockups/
+
+# ───────── Asset working folders ─────────
+# Doodle Icons by Khushmeen (doodleicons.com) are dropped into
+# `doodle_icons/` as the upstream source bundle (~450 SVGs across 15
+# categories, plus Figma + PNG previews). Only the ~75 SVGs that
+# Yarrow actually maps to Kit slugs ship through `public/kits/`; the
+# source bundle stays local so we don't redistribute the whole set.
+doodle_icons/

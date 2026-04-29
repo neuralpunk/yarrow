@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
-  <line x1="5.5" y1="7.3" x2="5.5" y2="16.7" stroke="#181602" stroke-width="2.2" stroke-linecap="round"></line>
-  <path d="M 5.5 15.5 C 5.5 11, 11 9.5, 15.7 9.5" stroke="#181602" stroke-width="2.2" stroke-linecap="round" fill="none"></path>
-  <circle cx="5.5" cy="4.5" r="2.9" fill="#181602"></circle>
-  <circle cx="5.5" cy="19.5" r="2.9" fill="#181602"></circle>
-  <circle cx="18.5" cy="9.5" r="2.9" fill="#e8b820" stroke="#7a5d05" stroke-width="1.4"></circle>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect x="0" y="0" width="1024" height="1024" rx="225.28" ry="225.28" fill="#14202E"></rect>
+  <rect x="1" y="1" width="1022" height="1022" rx="224.28" ry="224.28" fill="none" stroke="rgba(232,221,196,0.10)" stroke-width="2"></rect>
+  <g transform="translate(133.12 133.12) scale(0.74)">
+    <path d="M 240 720 C 520 680, 520 280, 800 240" fill="none" stroke="#C18F3E" stroke-width="56" stroke-linecap="round"></path><path d="M 240 720 C 520 720, 580 480, 860 480" fill="none" stroke="#C18F3E" stroke-width="56" stroke-linecap="round"></path><path d="M 240 720 C 520 760, 520 680, 800 720" fill="none" stroke="#C18F3E" stroke-width="56" stroke-linecap="round"></path><circle cx="800" cy="240" r="80" fill="#E8DDC4"></circle><circle cx="800" cy="240" r="80" fill="none" stroke="#D4A55A" stroke-width="28"></circle><circle cx="860" cy="480" r="80" fill="#E8DDC4"></circle><circle cx="860" cy="480" r="80" fill="none" stroke="#D4A55A" stroke-width="28"></circle><circle cx="800" cy="720" r="80" fill="#E8DDC4"></circle><circle cx="800" cy="720" r="80" fill="none" stroke="#D4A55A" stroke-width="28"></circle><circle cx="240" cy="720" r="158" fill="none" stroke="#E0B560" stroke-width="14" opacity="0.95"></circle><circle cx="240" cy="720" r="130" fill="#E8DDC4"></circle>
+  </g>
 </svg>

@@ -2,12 +2,11 @@ import { RangeSetBuilder } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import {
   Decoration,
-  DecorationSet,
   EditorView,
   ViewPlugin,
-  ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
+import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { api } from "../../../lib/tauri";
 
 // ────────────── inline image preview ──────────────

@@ -6,22 +6,109 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
-## [2.2.1] — 2026-04-26
+## [3.0.0] — 2026-04-27
 
-A targeted follow-up to 2.2.0 to address a stubborn macOS bottom-edge cutoff that survived the four-version chase from 2.1.4 through 2.1.7. Empirically the WKWebView-reported viewport height runs ~100–260 px past the actual visible content area on macOS Tahoe, and the deficit varies across macOS versions and display arrangements — so this release adds (a) a much more generous default correction and (b) a user-facing tuner for cases where the default isn't right.
+The first release of the 3.x line and a rewrite from the inside out. Three things land at once:
 
-### Added
+1. **Modes & Personas** — five UI presets (Basic, Path-Based, Writer, Researcher, Developer) that bias what the rail surfaces without locking anything away. Every feature stays one ⌘K away regardless of mode.
+2. **Frontend rewrite, React 19 → Svelte 5 (runes)** — zero-regression port of every UI surface (107 `.tsx` → 107 `.svelte`, 18 hook modules → 18 `.svelte.ts` rune-class singletons). IPC contract unchanged.
+3. **Design-system pass** — full token catalogue (spacing, radius, easing, duration, typography features, OKLCH palette, tinted shadows), Phosphor Light replaces Lucide for chrome glyphs, 75 hand-drawn Doodle Icons (Khushmeen Sidhu) replace emoji in the Kits picker, Tailwind 4 (Lightning CSS) replaces Tailwind 3 + autoprefixer, and Hunspell-WASM replaces nspell.
 
-- **macOS bottom-edge correction** — Settings → Appearance, Mac only. Five named presets (None / Small / Medium / Large / X-Large mapping to 0 / 80 / 150 / 220 / 300 px). Picking a preset reflows the layout immediately — no reload. Only renders for users on macOS; Linux and Windows installs don't see this row.
+Plus expanded Accessibility (Visualizations subsection, reading-guide band, colour-blind-safe edge patterns, aria-live path-op announcements), a faster ConnectionGraph (Sigma WebGL above 50 nodes), and serious polish on macOS (vibrancy, native font, OS-style sheet entrance, system-accent focus rings, enriched About) and Linux (DE detection, Adwaita Sans on GNOME 46+).
+
+### Added — Modes & Personas
+
+- **Five UI presets**, picked from a new Settings → Modes & Personas tab. **Basic** strips the right rail to its core; **Path-Based** is the full Yarrow rail; **Writer / Researcher / Developer / Clinician / Cooking** are persona skins layered on Path-Based. Two-step picker (Mode → Persona). Persisted to `localStorage` (`yarrow.mode`); switching is instant and never hides a feature unreachably. Localised en / es / sv.
+- **Mode-aware ⌘K** — the command palette surfaces an "Open Modes & Personas settings…" entry plus six direct switchers, so changing modes never requires opening Settings.
+- **Persona plugins.**
+  - **Writer** — typewriter mode + a delta-based daily writing-streak (status-bar pill, modal with progress, goal editor, reset escape hatch). Negative-edit clamping so revision doesn't subtract earned progress.
+  - **Researcher** (emerald) — Open Questions list (`??` markers in active note), Sources list (`#source` / `#paper` / `#cite` / `#reference` / `#bibliography`), and a New Source scaffolder (URL / Author / Year + Quote / Notes / `??`).
+  - **Developer** (slate-blue) — Decision Log (`#decision` / `#decided` / `#resolved`), New ADR scaffolder (Status / Context / Decision / Alternatives / Consequences), code-highlight toggle.
+  - **Clinician** (teal) — sensitive-notes list (`#clinical` / `#private` / `#phi` / `#confidential`), follow-ups list (`#review` / `#followup` / `#todo` / `#wip`), four-card session-note picker (SOAP / BIRP / DAP / Intake) on the existing template registry.
+  - **Cooking** (orange) — Cook mode (bigger text + screen wake-lock), Recipe Clipper, Add to Shopping List, Recipe Library status-bar pill.
+- **Plugin architecture.** `src/plugins/<persona>/` is the canonical home for persona features; each plugin owns three slots — Rail (mounted via the new `personaSlot` prop on `<RightRail>`), status-bar widget, and lazy-imported modals. Adding a persona is a folder, not a core-file edit.
+
+### Added — Design system
+
+- **Token catalogue** in `src/index.css`: 4-pt spacing scale, radius scale, three-curve easing (`--ease-standard` mirrors Apple's), five-rung duration scale, four typography feature tokens (prose / tabular / mono / display), letter-spacing scale, **OKLCH palette** with theme-aware overrides, and a tinted shadow + tinted border stack (warm in light themes, deep-black in dark — never gray-on-cream).
+- **Typography helpers** — `.y-prose`, `.y-tabular`, `.y-mono`, `.y-display-large/medium`, `.y-label-caps`, `.y-hanging-punct`. Editor surface picks up old-style figures (`onum`) and hanging punctuation (WebKit-only).
+- **macOS sidebar vibrancy** — `window-vibrancy` crate attaches `NSVisualEffectMaterial::Sidebar` at startup; `data-mac-vibrancy="true"` stamped on `<html>` so the left sidebar drops to a translucent tint. Honours both the in-app Reduce Transparency setting and the OS-level `prefers-reduced-transparency` media query.
+- **Linux DE detection** — new `cmd_desktop_env` reads `XDG_CURRENT_DESKTOP` (with `XDG_SESSION_DESKTOP` / `DESKTOP_SESSION` fallbacks) and stamps `<html data-de="…">`. Adwaita Sans now precedes `system-ui` in the chrome stack on GNOME 46+.
+- **Phosphor Light** as the chrome icon library (`@phosphor-icons/react` → `phosphor-svelte`). `weight="light"` hardcoded in the wrap factory so no call site can opt into a heavier weight. `vendor-icons` chunk: 86 KB / 21 KB gzipped (then shrunk to 43 KB after the Svelte rewrite).
+- **Hand-drawn Kits** — 75 Doodle Icons by Khushmeen Sidhu replace emoji in the Kits picker. Each SVG is tinted by category via CSS `mask-image`. Notable swaps (subset): `mood-energy` → analytics, `methodology-card` → flask, `hypothesis-card` → microscope, `eisenhower-matrix` → target. Source bundle gitignored; only the 75 used SVGs ship.
+- **Stroke-derived icon weight** — `strokeForSize()` codifies the size→weight ladder per the design plan.
+- **Animation hygiene utilities** — `.yarrow-anim-promote` (persistent GPU layer) and `.yarrow-anim-active` (transient promotion).
+- **Decision-matrix best-match banner** — surfaces the option(s) with the best weighted score against starred criteria. Empty-state copy guides the user when no criteria are weighted.
+- **Kits-picker category-chip nav** under the search input; smooth-scroll to category sections.
+- **Quick Hand time-aware subtitle** — copy adapts by hour (morning / afternoon / evening / late). Settings tile swapped to the Command-palette icon to match the action it triggers.
+- **Reading-guide band** in the editor when the a11y pref is on; gated behind reduce-motion.
+- **Accessibility Visualizations subsection** — new prefs **Diff patterns alongside colour** (default on; strikethrough/underline on diff segments) and **Graph table-mode alternative** (replaces the force graph with a sortable table).
+- **Per-edge stroke patterns on the Connections graph** when colour-blind-safe is active — solid `supports`, dash-dot `challenges`, dotted `came-from`, dashed `open-question`.
+- **Path-operation aria-live announcements** for path created / switched, checkpoint pinned / unpinned / restored, note created / deleted (en / es / sv).
+- **Tag Browser modal** — workspace-wide tag browser with a colour legend and a count-sorted all-tags list. Click a tag to toggle on the active note; right-click to copy `#tagname`.
+- **Tag Browser intro copy compressed** to one tight sentence per kind across all locales.
+- **Trim-checkpoints unified picker** consolidates the prior two buttons into one "Trim checkpoints…" with an age / empty-only chooser.
+- **`NOTICE.md`** — third-party asset attribution (Doodle Icons, Phosphor Icons, Google Fonts).
+
+### Added — Platform integration
+
+- **macOS bottom-edge correction** — Settings → Appearance, Mac only. Five presets (None / Small / Medium / Large / X-Large = 0 / 90 / 100 / 150 / 220 px). Reflows immediately on pick.
+- **macOS-style sheet entrance** — modals slide down with a slight scale, mirroring `NSWindow.beginSheet(_:)`. Honours `prefers-reduced-motion`.
+- **Enriched About panel on macOS** — comments line, copyright + © year, GitHub source link, MIT licence, credits for the open-source stack (Tauri 2, Svelte 5, CodeMirror 6, D3).
+
+### Added — Tag system
+
+- **Special tag colours** — six new recognised kinds on top of `#clinical` (rose). Attention amber (`#review` / `#followup` / `#todo` / `#wip`), Mature emerald (`#evergreen` / `#permanent` / `#canonical`), Question cyan (`#question` / `#q` / `#open`), Decision indigo (`#decision` / `#decided` / `#resolved`), Draft italic-faded (`#draft` / `#sketch` / `#raw` / `#seedling`), Archived strikethrough (`#archived` / `#dead` / `#deprecated`). Case-insensitive exact-name match.
 
 ### Changed
 
-- **Default viewport correction on macOS bumped from 0 to 150 px** so the left-rail Activity / Trash and the global status bar (word count, sync state) now sit fully within the visible content area on a fresh install.
-- The viewport-height read in `main.tsx` now subtracts the saved correction on macOS only (gated by `data-platform="mac"`), with a hard floor of 200 px so a hostile or accidental override can't hide the chrome.
+- **Tailwind 3 → Tailwind 4 (Lightning CSS).** `tailwind.config.js` deleted — colour, font, animation, and keyframe tokens now live in a single `@theme` block at the top of `src/index.css`. `@tailwind base/components/utilities` → `@import 'tailwindcss';`; `darkMode: "class"` → `@custom-variant dark (&:is(.dark *));`. Autoprefixer dependency dropped (folded into Lightning CSS). Migrator-applied class renames across 70 files (`flex-shrink-0` → `shrink-0`, `outline-none` → `outline-hidden`, etc.). Production CSS bundle build time roughly a third of v3's; final bundle 184.98 KB / 35.64 KB gzipped. `svelte-check` passes 0/0 across 459 files post-migration.
+- **Spell checker: nspell → hunspell-asm@4.0.2** (Hunspell C++ compiled to WASM). External API unchanged. More accurate affix matching on irregular morphology, and `removeUserWord` now actually removes from the live runtime (nspell exposed `add` but not `remove`). The 297 KB-gzipped `vendor-hunspell` chunk is lazy-loaded behind the off-by-default Spell-check extra.
+- **ConnectionGraph WebGL renderer for dense graphs** — added `SigmaForceGraph.svelte` (Sigma 3 + graphology + ForceAtlas2). Used only past `DENSE_GRAPH_THRESHOLD` (50 notes) when the user explicitly opts in via the dense-gate banner; small graphs keep the existing D3 view unchanged. ForceAtlas2 (Barnes–Hut auto-on >200 nodes) settles the layout in 200 sync iterations at mount; canvas renders 60fps with no per-frame DOM cost. CSS variables read at mount and re-read via `MutationObserver` so theme + colour-blind toggles repaint without rebuild. **Sigma.js (MIT)** chosen over Cosmograph (CC-BY-NC-4.0 — would block paid distribution). New `vendor-sigma` chunk: 41 KB gzipped.
+- **Frontend ported from React 19 → Svelte 5 (runes mode).** Full rewrite, end-to-end, zero-regression. `svelte-check` reports 0/0; build succeeds; every panel renders identically; every shortcut still lands at the same action; IPC contract untouched. Scope: 107 `.tsx` → 107 `.svelte`, 18 React-hook modules → 18 `.svelte.ts` rune-class singletons, `main.tsx` → `main.ts` Svelte 5 `mount()`, `GuidanceProvider` tree → singleton `guidance` store with `$effect.root`. Translation patterns: `useState` → `$state`, `useMemo` → `$derived.by`, `useEffect` → `$effect` with returned cleanup, mount-only → `onMount`, `useCallback` → plain functions, `useRef` → plain `let`, `useT()` → reactive translator, `lazy + Suspense` → direct imports (Vite `manualChunks` already splits the bundles). Helper sub-components (Toggle / Section / Row / etc.) inlined as `{#snippet}` blocks. The 21 inline radial-icon JSX components collapsed into one `RadialIcon.svelte` keyed off a string id. CodeMirror extension files split type-only imports for `verbatimModuleSyntax`, which is back on. Bundle: `vendor-icons` 86 KB → 43 KB gzipped (Phosphor's Svelte build is leaner); main `index` chunk 415 KB gzipped.
+- **Modal backdrop hygiene** — OS `prefers-reduced-transparency` now strips `backdrop-filter` app-wide, not just under the in-app `.a11y-reduce-transparency` class. The in-app **Reduce Transparency** toggle now strips both the blur AND the 28%-black gradient overlay together (no more half-broken mid-state).
+- **Active-note row styling** — switched to `bg-black/[0.07] dark:bg-black/[0.32]` plus a yellow inset bar on the leading edge so every theme reads consistently as "this note is open." Replaces the prior `bg-yel/30` which only worked in light themes.
+- **Right-rail icon-with-label-below layout** — vertical-tile stack instead of horizontal row. `RAIL_WIDTH_EXPANDED` 210 → 132 px. History icon no longer gated on `showPathFeatures` (reachable from Basic too).
+- **Settings modal sized up** — 860 × 720 → 1040 × 760 px, plus a `hintExtra` slot, larger gap and row padding, vertically centred controls. Dense panes no longer scroll horizontally on standard 1440-wide monitors.
+- **Compare modal default view** flipped from "summary" to "marginalia" so the inline-annotation diff is what users see first.
+- **Radial-menu wedge sizing** — `<foreignObject>` 104×60 → 116×72 to prevent label clipping at the curve. Outer halo refactored to a `::before` pseudo with `inset: 8px`.
+- **Writer rail tone** — switched from hard-coded `text-rose-600` to a theme-aware `writer-rail-tone` token. Missed-goal indicator switched `bg-rose-500` → `bg-amber-500` so red is reserved for true error states.
+- **Editor body numerals** — `.cm-content` adds `onum` (old-style figures); Linux keeps the `calt` 0 override layered on top.
+- **Gestures pane** when the radial menu is off shows a disabled banner with a link to Accessibility → Motor (no longer silently dimmed); the tab itself is no longer gated on `radialOn`.
+- **Scratchpad placeholder** uses the singular `scratchpad.placeholderActive` string when the pad is active for the open note.
+- **Default macOS viewport correction bumped 0 → 100 px** on a fresh install so the left rail and status bar sit fully inside the visible content area. Hard floor of 200 px so a hostile override can't hide the chrome.
+- **Native font stack on macOS chrome** — Apple system font (`-apple-system` / `BlinkMacSystemFont`) replaces Inter for chrome only; editor unaffected. Linux/Windows continue on Inter (with Adwaita Sans pre-fallback on GNOME 46+).
+- **macOS focus rings** use the system accent (`AccentColor` keyword) instead of brand-yellow. Inputs/textareas keep their existing border-tint focus.
 
-### Internal
+### Fixed
 
-- New `src/lib/macViewportFudge.ts` is the single source of truth for the correction value, the preset ladder, and the live-update event protocol. `main.tsx` and Settings.tsx both import from it; the picker dispatches a `yarrow:vp-fudge-changed` window event that `main.tsx`'s resync listener picks up.
+- **Bottom-left "+ New" button blanking the entire app.** `handleCreateNote` accepted an optional `prefilledTitle?: string`; bare `onClick={handleCreateNote}` callers passed React's `MouseEvent` straight through, the controlled input then tried to render a non-string value, React 19 unmounted the tree, and the screen went blank. Fixed by type-guarding the argument with `typeof prefilledTitle === "string"`.
+- **Reset Accessibility Settings did nothing.** `localStorage.removeItem` doesn't fire change events; the per-pref `*-changed` events the hooks listen for never fired; the radial-menu pref didn't match the `yarrow.a11y.*` prefix the reset filter scanned. Fixed via `resetAccessibilityPrefs()` that writes defaults through the same helpers as ordinary changes (so events fire) and dispatches `yarrow:extras-radialMenu-changed` for the radial pref. A "Reset done" chip surfaces in Settings → About.
+- **`cmd_write_text_file` build error** — was returning a non-existent `YarrowError::Workspace` variant; switched to `YarrowError::Other`.
+- **Post-migration cleanup pass — `useRef` mirrors and `setTimeout` leaks.** Removed two leftover `useRef`-style mirrors in `AppShell.svelte` (`configRef`, `activeSlugRef`) — `$state` proxies dispatch reads through the latest value at access, so the mirror pattern is dead code in Svelte 5. Wrapped eight focus-on-mount `setTimeout` calls (across CommandPalette, QuickCapture, RecipeClipperModal, FindReplace, UnlockPrompt, QuickSwitcher, CustomTemplatesModal, JournalKits) with cleanup so timers don't fire after unmount. Captured the 1.4s "Copied" timer in `ExternalUrlFallbackModal` so it can be cleared on close. CodeMirror `EditorView.destroy()`, D3 `simulation.stop()`, every `MutationObserver` / `ResizeObserver`, and Tauri `listen()` unlisten functions are all properly cleaned up — verified file-by-file.
+
+### Security & performance (3-phase audit)
+
+A senior-engineer security & performance audit shipped in three phases. **75 unit tests** added (was 0) covering crypto migration, slug validation, and idle auto-lock.
+
+- **Slug validation at the IPC boundary** — `notes::validate_slug` (and a `validate_trash_slug` variant for `-deleted-<N>` suffixes) guards ~46 `cmd_*` handlers that take a slug. ASCII alnum + `-` / `_` plus `daily/<YYYY-MM-DD>`; rejects `..`, backslash, leading slash, NUL, control chars. Closes a path-traversal class.
+- **Defense-in-depth at the path-construction funnels** — `notes::note_path`, `trash::body_path`, `trash::meta_path`, and `path_content::override_file` swap a malformed slug for a poison sentinel (`__yarrow_invalid_slug__`) inside the intended subdirectory, so a slug from below the IPC boundary (rogue sync, import bug, hand-edit) produces "file not found" rather than escaping. The IPC and funnel layers are intentionally redundant — one for clean error UX, one for security depth.
+- **Atomic mode-0600 write path for secrets** — `workspace::atomic_write_secret` opens the temp file with `OpenOptions::mode(0o600)` from creation on Unix (no chmod-after-write window). Used by `secrets.rs::write_file` (credentials.toml — sync token + server PAT) and `workspace::write_security` (security.toml — encryption envelope).
+- **Argon2id parameters bumped + transparent migration.** `(m=64 MiB, t=3, p=1)` → `(m=128 MiB, t=4, p=1)`. Older workspaces unlock with whatever params their envelope recorded, then opportunistically re-derive + re-wrap under the current params. Snapshot rollback on any mid-migration error so a partial migration can never lock the user out. Backed by 12 unit tests including an injectable-failure rollback that asserts the envelope is byte-identical to its pre-migration state.
+- **Idle auto-lock fix.** The 60-second activity heartbeat used to call `current_key`, which reset `last_activity` on every successful read — so the heartbeat itself extended the session forever. New `peek_key` returns the master key (or zeroes it on expiry) without touching `last_activity`; `cmd_activity_ping` and `cmd_encryption_status` use it. 11 tests lock in the lifecycle (fresh-unlocked, explicit lock clears, idle expiry zeroes the key + history cache, real activity extends, peek does NOT extend, peek still triggers expiry, 60-iteration heartbeat loop times out at the configured ceiling).
+- **Sync `http.sslVerify` writes both directions.** A user who briefly enabled `insecure_skip_tls_verify` then turned it off on Linux/libcurl previously had `http.sslVerify = false` stuck in `.git/config`. Now `sync_to_server` unconditionally writes `http.sslVerify = !insecure_tls`.
+- **Binary-conflict detection in the merge path** — `git::read_blob` refuses binary blobs (via `Blob::is_binary`) and non-UTF-8 content with a typed `Invalid` error instead of `String::from_utf8_lossy`-ing the bytes through the line-by-line resolver.
+- **Clone URL scheme allowlist** — `cmd_clone_workspace` refuses anything other than `https://`, `ssh://`, or `git@host:path`. `file://`, `http://`, `git://`, `ftp://` are blocked.
+- **Read-size cap (16 MiB)** on user-uploaded files — `workspace::read_to_string_capped` replaces bare `read_to_string` in `read_daily_template`, `templates::read`, and `bibtex_import`. Notes themselves stay uncapped (constrained by the editor; refusal would silently break a workspace).
+- **Frontmatter parse — single pass.** `notes::parse` collapsed from two `Matter` passes to one, guarded by `catch_unwind(AssertUnwindSafe)`. Roughly 50% reduction on every read / scan / save.
+- **Save-path body-clone elimination.** `cmd_save_note_full` no longer deep-clones the cached `Vec<ScannedNote>` (megabytes of prose on a typical vault). New `AppState::scan_cache_with` runs derivations under the lock against a borrowed slice; auto-path reconciliation moved outside the lock.
+- **ResizeObserver coalesced through the RAF path** in `src/main.ts` — observer feeds `scheduleSync` instead of synchronous `syncViewportHeight`, eliminating per-pass style recalcs during window drag.
+- **Frontend dependency cleanup.** `@codemirror/view` and `postcss` patch-bumped; `svelte-check` 0/0 across 385 files. The remaining 3 moderate `npm audit` advisories (transitive `nanoid <3.3.8` via `hunspell-asm@4.0.2 → emscripten-wasm-loader`) are **not reachable** from Yarrow code (nanoid is used internally to name a temp folder for the WASM module; the vulnerability requires caller-supplied non-integer input which neither Yarrow nor the hunspell stack provides). The proposed `npm audit fix --force` regresses hunspell-asm to 0.0.8 and breaks `removeWord` — held for an upstream fix-forward.
+
+### Removed
+
+- **React** — `react`, `react-dom`, `@types/react`, `@types/react-dom`, `@phosphor-icons/react`, `@vitejs/plugin-react` removed from `package.json`. All 107 `.tsx` files deleted; `tsconfig.json` and `vite.config.ts` reverted to Svelte-only configuration.
+- **Lucide React** — `lucide-react` removed (replaced by Phosphor earlier in the release; the Svelte rewrite then deleted the React replacement too).
 
 ## [2.2.0] — 2026-04-26
 

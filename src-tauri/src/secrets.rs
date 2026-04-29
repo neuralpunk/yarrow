@@ -109,7 +109,7 @@ fn write_file(root: &Path, creds: &FileCredentials) -> Result<()> {
         // leave credentials.toml parseable-but-empty (the
         // `FileCredentials::default()` branch returns None for both
         // fields), effectively erasing the PAT on next boot.
-        crate::workspace::atomic_write(&path, raw.as_bytes())?;
+        crate::workspace::atomic_write_secret(&path, raw.as_bytes())?;
         // Best-effort readback — if the write silently zeroed (we've
         // seen this on overlayed filesystems and some sandboxed
         // setups), flag it loudly so the user can try again instead

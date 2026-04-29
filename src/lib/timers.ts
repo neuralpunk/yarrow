@@ -18,6 +18,16 @@
 // the running list survives across surface re-mounts (e.g. swapping
 // notes while a timer is counting down).
 
+export interface TimerOrigin {
+  /** Slug of the note where the timer was started. */
+  slug: string;
+  /** Scenario the user was on when the timer was started. */
+  path: string;
+  /** Human-readable note title at the moment of starting. Used for
+   *  tooltips on the pill; the slug is what we navigate by. */
+  label?: string;
+}
+
 export interface RunningTimer {
   /** Stable id used for keying + dismissal. */
   id: string;
@@ -30,6 +40,10 @@ export interface RunningTimer {
   /** True once the timer has fired. Stays in the list briefly so the
    *  user can dismiss the celebration manually. */
   fired: boolean;
+  /** Note + scenario the timer was started from. Optional because
+   *  callers pre-2.2.x didn't pass one; the pill becomes click-to-jump
+   *  when this is present. */
+  origin?: TimerOrigin;
 }
 
 let timers: RunningTimer[] = [];
@@ -75,7 +89,11 @@ export function formatRemaining(ms: number): string {
   return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-export function startTimer(durationMs: number, label: string): RunningTimer {
+export function startTimer(
+  durationMs: number,
+  label: string,
+  origin?: TimerOrigin,
+): RunningTimer {
   const id = `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const t: RunningTimer = {
     id,
@@ -83,6 +101,7 @@ export function startTimer(durationMs: number, label: string): RunningTimer {
     totalMs: durationMs,
     endsAt: Date.now() + durationMs,
     fired: false,
+    origin,
   };
   timers = [...timers, t];
   notify();

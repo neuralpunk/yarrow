@@ -35,6 +35,16 @@ export function prefetchNote(slug: string) {
   });
   cache.set(slug, p);
   enforceSize();
+  // Encrypted notes must always round-trip to the backend so it can
+  // authoritatively decide locked-vs-unlocked when the workspace's
+  // idle timer has expired. If we let a decrypted body sit in this
+  // cache after lock, the user could click away and back and read
+  // plaintext from cache while Settings shows the workspace locked.
+  void p
+    .then((n) => {
+      if (n.encrypted && cache.get(slug) === p) cache.delete(slug);
+    })
+    .catch(() => {});
 }
 
 /** Read a note, using the prefetch cache if available. */
@@ -48,7 +58,14 @@ export async function getCachedOrReadNote(slug: string): Promise<Note> {
   cache.set(slug, p);
   enforceSize();
   try {
-    return await p;
+    const n = await p;
+    if (n.encrypted && cache.get(slug) === p) {
+      // Same reasoning as in prefetchNote: never cache an encrypted
+      // note's body — the backend is the only authority on whether
+      // the workspace is currently unlocked.
+      cache.delete(slug);
+    }
+    return n;
   } catch (e) {
     if (cache.get(slug) === p) cache.delete(slug);
     throw e;

@@ -1,6 +1,6 @@
 // Editor surfaces — NoteEditor, Toolbar, HistorySlider, RadialMenu,
 // LinearContextMenu, NoteReader, AnnotationsGutter,
-// FloatingDirectionCTA, ForkSuggestion, TagBouquet, TagChips.
+// ForkSuggestion, TagBouquet, TagChips.
 
 export const editorEN = {
   // ── NoteEditor ─────────────────────────────────────────────────
@@ -10,28 +10,32 @@ export const editorEN = {
   "editor.note.saved": "saved",
   "editor.note.edited": "edited",
   "editor.note.connectsTo": "This note connects to",
-  "editor.note.blame": "Written {when} · path {path}",
+  "editor.note.blame": "Written {when} · scenario {path}",
 
   // ── Toolbar ────────────────────────────────────────────────────
   "editor.toolbar.editing": "editing…",
   "editor.toolbar.savedJustNow": "saved just now",
   "editor.toolbar.saved": "saved",
   "editor.toolbar.checkpoints": "{count} checkpoints",
-  "editor.toolbar.switchPath": "Switch path",
-  "editor.toolbar.namePathPrompt": "+ name this path",
-  "editor.toolbar.namePathTitle": "What question is this path asking?",
-  "editor.toolbar.onlyPath": "your only path",
+  "editor.toolbar.switchPath": "Switch scenario",
+  "editor.toolbar.back": "Back",
+  "editor.toolbar.backAria": "Go back to the previously open note",
+  "editor.toolbar.backTitle": "Back to “{title}” ({shortcut})",
+  "editor.toolbar.backTitleEmpty": "Back to the previous note ({shortcut})",
+  "editor.toolbar.namePathPrompt": "+ name this scenario",
+  "editor.toolbar.namePathTitle": "What question is this scenario asking?",
+  "editor.toolbar.onlyPath": "your only scenario",
   "editor.toolbar.backToRoot": "Go back to {root} — the trunk of your thinking",
   "editor.toolbar.backArrow": "← {root}",
-  "editor.toolbar.branchThis": "Branch this",
-  "editor.toolbar.branchThisTitle": "Start a path from this note ({shortcut})",
+  "editor.toolbar.branchThis": "Start a scenario",
+  "editor.toolbar.branchThisTitle": "Start a scenario from this note ({shortcut})",
   "editor.toolbar.connectionsMap": "Connections Map",
   "editor.toolbar.connectionsMapTitle": "Open the connections map",
-  "editor.toolbar.paths": "Paths",
-  "editor.toolbar.pathsTitle": "Open the paths graph",
+  "editor.toolbar.paths": "Scenarios",
+  "editor.toolbar.pathsTitle": "Open the scenarios graph",
   "editor.toolbar.compare": "Compare",
-  "editor.toolbar.compareTitle": "Compare two paths side by side",
-  "editor.toolbar.openPathsGraph": "Open the paths graph",
+  "editor.toolbar.compareTitle": "Compare two scenarios side by side",
+  "editor.toolbar.openPathsGraph": "Open the scenarios graph",
   "editor.toolbar.journalJump": "Jump to another day — creates the entry if it doesn't exist yet",
 
   // Zen / focus chip
@@ -41,13 +45,13 @@ export const editorEN = {
   "editor.toolbar.zenExitTitle": "Exit zen mode ({shortcut})",
 
   // Path switcher dropdown
-  "editor.pathSwitcher.placeholder": "Switch path · {count} available",
+  "editor.pathSwitcher.placeholder": "Switch scenario · {count} available",
   "editor.pathSwitcher.backToRoot": "← Back to {root}",
   "editor.pathSwitcher.backToRootTitle": "Jump back to the trunk",
-  "editor.pathSwitcher.noMatches": "No paths match.",
+  "editor.pathSwitcher.noMatches": "No scenarios match.",
   "editor.pathSwitcher.you": "YOU",
   "editor.pathSwitcher.main": "MAIN",
-  "editor.pathSwitcher.unnamedPath": "unnamed path",
+  "editor.pathSwitcher.unnamedPath": "unnamed scenario",
   "editor.pathSwitcher.notesCountOne": "{count} note",
   "editor.pathSwitcher.notesCountOther": "{count} notes",
   "editor.pathSwitcher.ghostsHeader": "ghosts · past eras",
@@ -60,8 +64,8 @@ export const editorEN = {
   "editor.history.bucket.yesterday": "Yesterday",
   "editor.history.bucket.earlierThisWeek": "Earlier this week",
   "editor.history.bucket.thisMonth": "This month",
-  "editor.history.checkpointsOne": "{count} checkpoint on this path · ↑/↓ to scrub · esc to close",
-  "editor.history.checkpointsOther": "{count} checkpoints on this path · ↑/↓ to scrub · esc to close",
+  "editor.history.checkpointsOne": "{count} checkpoint on this scenario · ↑/↓ to scrub · esc to close",
+  "editor.history.checkpointsOther": "{count} checkpoints on this scenario · ↑/↓ to scrub · esc to close",
   "editor.history.showDiffOnly": "show differences only",
   "editor.history.close": "Close",
   "editor.history.now": "Now",
@@ -173,14 +177,10 @@ export const editorEN = {
   "editor.annotations.removeAria": "Remove annotation",
   "editor.annotations.empty": "empty — click to write",
 
-  // ── FloatingDirectionCTA ──────────────────────────────────────
-  "editor.directionCta.label": "Try another version",
-  "editor.directionCta.title": "Try another version ({shortcut})",
-
   // ── ForkSuggestion ────────────────────────────────────────────
   "editor.forkSuggestion.title": "Explore a different direction?",
   "editor.forkSuggestion.body":
-    "This paragraph sounds like it's pulling against what came before. You can branch off to try it out without losing the current take.",
+    "This paragraph sounds like it's pulling against what came before. You can open a new scenario to try it out without losing the current take.",
   "editor.forkSuggestion.accept": "Yes, explore it",
   "editor.forkSuggestion.dismiss": "Not now",
 
@@ -189,6 +189,8 @@ export const editorEN = {
   "editor.tagBouquet.addTitle": "Add #{tag}",
   "editor.tagBouquet.dismiss": "not now",
   "editor.tagBouquet.dismissTitle": "Hide suggestions for this note",
+  "editor.tagBouquet.more": "+{count} more",
+  "editor.tagBouquet.moreTitle": "Show {count} more suggestions",
 
   // ── TagChips ──────────────────────────────────────────────────
   "editor.tagChips.addTags": "+ add tags",
@@ -196,6 +198,40 @@ export const editorEN = {
   "editor.tagChips.addTagPlaceholder": "+ tag",
   "editor.tagChips.removeTitle": "Remove #{tag}",
   "editor.tagChips.removeAria": "Remove tag {tag}",
+
+  // ── Drafts (Pillar 2) ─────────────────────────────────────────
+  // Drafts are alternative bodies for one note — sketchpad versions
+  // the user can hold alongside the canonical text without inventing
+  // a whole new note. Tab strip sits above the editor.
+  "editor.drafts.main": "main",
+  "editor.drafts.mainTitle": "The canonical version of this note",
+  "editor.drafts.newDraft": "+ draft",
+  "editor.drafts.newDraftTitle": "Start a new draft from the current text",
+  "editor.drafts.newDraftPrompt": "Name this draft",
+  "editor.drafts.newDraftDefault": "rough",
+  "editor.drafts.tabTitle": "Switch to draft “{name}”",
+  "editor.drafts.activeBadge": "DRAFT",
+  "editor.drafts.activeNotice": "Editing a draft. Saves stay here until you keep it.",
+  "editor.drafts.keep": "Keep this draft",
+  "editor.drafts.keepTitle": "Replace the main note with this draft",
+  "editor.drafts.keepConfirm": "Replace the main note with this draft? The current main version will be in history.",
+  "editor.drafts.discard": "Discard this draft",
+  "editor.drafts.discardTitle": "Throw this draft away — there's no undo",
+  "editor.drafts.discardConfirm": "Discard draft “{name}”? This can't be undone.",
+  "editor.drafts.rename": "Rename",
+  "editor.drafts.renameTitle": "Rename this draft",
+  "editor.drafts.renamePrompt": "New name for this draft",
+  "editor.drafts.menuAria": "Draft actions",
+  "editor.drafts.newDraftModalTitle": "Name this draft",
+  "editor.drafts.newDraftModalLead":
+    "A draft is a private parallel pass at this note. Saves stay in the draft until you keep it. Give it a short name so you can tell drafts apart later.",
+  "editor.drafts.renameModalTitle": "Rename this draft",
+  "editor.drafts.renameModalLead":
+    "Pick a name that tells you what this draft is for at a glance.",
+  "editor.drafts.namePlaceholder": "rough",
+  "editor.drafts.modalCancel": "cancel",
+  "editor.drafts.modalCreate": "start draft",
+  "editor.drafts.modalSave": "save name",
 } as const;
 
 export type EditorKey = keyof typeof editorEN;
@@ -208,28 +244,32 @@ export const editorES: Record<EditorKey, string> = {
   "editor.note.saved": "guardado",
   "editor.note.edited": "editado",
   "editor.note.connectsTo": "Esta nota conecta con",
-  "editor.note.blame": "Escrito {when} · ruta {path}",
+  "editor.note.blame": "Escrito {when} · escenario {path}",
 
   // Toolbar
   "editor.toolbar.editing": "editando…",
   "editor.toolbar.savedJustNow": "guardado justo ahora",
   "editor.toolbar.saved": "guardado",
   "editor.toolbar.checkpoints": "{count} puntos de control",
-  "editor.toolbar.switchPath": "Cambiar de ruta",
-  "editor.toolbar.namePathPrompt": "+ nombrar esta ruta",
-  "editor.toolbar.namePathTitle": "¿Qué pregunta plantea esta ruta?",
-  "editor.toolbar.onlyPath": "tu única ruta",
+  "editor.toolbar.switchPath": "Cambiar de escenario",
+  "editor.toolbar.back": "Atrás",
+  "editor.toolbar.backAria": "Volver a la nota abierta anteriormente",
+  "editor.toolbar.backTitle": "Volver a «{title}» ({shortcut})",
+  "editor.toolbar.backTitleEmpty": "Volver a la nota anterior ({shortcut})",
+  "editor.toolbar.namePathPrompt": "+ nombrar este escenario",
+  "editor.toolbar.namePathTitle": "¿Qué pregunta plantea este escenario?",
+  "editor.toolbar.onlyPath": "tu único escenario",
   "editor.toolbar.backToRoot": "Volver a {root} — el tronco de tu pensamiento",
   "editor.toolbar.backArrow": "← {root}",
-  "editor.toolbar.branchThis": "Ramificar esto",
-  "editor.toolbar.branchThisTitle": "Iniciar una ruta desde esta nota ({shortcut})",
+  "editor.toolbar.branchThis": "Iniciar un escenario",
+  "editor.toolbar.branchThisTitle": "Iniciar un escenario desde esta nota ({shortcut})",
   "editor.toolbar.connectionsMap": "Mapa de conexiones",
   "editor.toolbar.connectionsMapTitle": "Abrir el mapa de conexiones",
-  "editor.toolbar.paths": "Rutas",
-  "editor.toolbar.pathsTitle": "Abrir el grafo de rutas",
+  "editor.toolbar.paths": "Escenarios",
+  "editor.toolbar.pathsTitle": "Abrir el grafo de escenarios",
   "editor.toolbar.compare": "Comparar",
-  "editor.toolbar.compareTitle": "Comparar dos rutas lado a lado",
-  "editor.toolbar.openPathsGraph": "Abrir el grafo de rutas",
+  "editor.toolbar.compareTitle": "Comparar dos escenarios lado a lado",
+  "editor.toolbar.openPathsGraph": "Abrir el grafo de escenarios",
   "editor.toolbar.journalJump":
     "Saltar a otro día — crea la entrada si aún no existe",
 
@@ -240,13 +280,13 @@ export const editorES: Record<EditorKey, string> = {
   "editor.toolbar.zenExitTitle": "Salir del modo zen ({shortcut})",
 
   // Path switcher
-  "editor.pathSwitcher.placeholder": "Cambiar de ruta · {count} disponibles",
+  "editor.pathSwitcher.placeholder": "Cambiar de escenario · {count} disponibles",
   "editor.pathSwitcher.backToRoot": "← Volver a {root}",
   "editor.pathSwitcher.backToRootTitle": "Volver al tronco",
-  "editor.pathSwitcher.noMatches": "Ninguna ruta coincide.",
+  "editor.pathSwitcher.noMatches": "Ningún escenario coincide.",
   "editor.pathSwitcher.you": "TÚ",
   "editor.pathSwitcher.main": "PRINCIPAL",
-  "editor.pathSwitcher.unnamedPath": "ruta sin nombre",
+  "editor.pathSwitcher.unnamedPath": "escenario sin nombre",
   "editor.pathSwitcher.notesCountOne": "{count} nota",
   "editor.pathSwitcher.notesCountOther": "{count} notas",
   "editor.pathSwitcher.ghostsHeader": "fantasmas · épocas pasadas",
@@ -260,9 +300,9 @@ export const editorES: Record<EditorKey, string> = {
   "editor.history.bucket.earlierThisWeek": "Antes esta semana",
   "editor.history.bucket.thisMonth": "Este mes",
   "editor.history.checkpointsOne":
-    "{count} punto de control en esta ruta · ↑/↓ para recorrer · esc para cerrar",
+    "{count} punto de control en este escenario · ↑/↓ para recorrer · esc para cerrar",
   "editor.history.checkpointsOther":
-    "{count} puntos de control en esta ruta · ↑/↓ para recorrer · esc para cerrar",
+    "{count} puntos de control en este escenario · ↑/↓ para recorrer · esc para cerrar",
   "editor.history.showDiffOnly": "mostrar solo las diferencias",
   "editor.history.close": "Cerrar",
   "editor.history.now": "Ahora",
@@ -373,14 +413,10 @@ export const editorES: Record<EditorKey, string> = {
   "editor.annotations.removeAria": "Eliminar anotación",
   "editor.annotations.empty": "vacío — haz clic para escribir",
 
-  // FloatingDirectionCTA
-  "editor.directionCta.label": "Probar otra versión",
-  "editor.directionCta.title": "Probar otra versión ({shortcut})",
-
   // ForkSuggestion
   "editor.forkSuggestion.title": "¿Explorar una dirección distinta?",
   "editor.forkSuggestion.body":
-    "Este párrafo parece tirar contra lo que vino antes. Puedes ramificarlo y probarlo sin perder la versión actual.",
+    "Este párrafo parece tirar contra lo que vino antes. Puedes abrir una nuevo escenario para probarlo sin perder la versión actual.",
   "editor.forkSuggestion.accept": "Sí, explorar",
   "editor.forkSuggestion.dismiss": "Ahora no",
 
@@ -389,6 +425,8 @@ export const editorES: Record<EditorKey, string> = {
   "editor.tagBouquet.addTitle": "Añadir #{tag}",
   "editor.tagBouquet.dismiss": "ahora no",
   "editor.tagBouquet.dismissTitle": "Ocultar sugerencias para esta nota",
+  "editor.tagBouquet.more": "+{count} más",
+  "editor.tagBouquet.moreTitle": "Mostrar {count} sugerencias más",
 
   // TagChips
   "editor.tagChips.addTags": "+ añadir etiquetas",
@@ -396,6 +434,37 @@ export const editorES: Record<EditorKey, string> = {
   "editor.tagChips.addTagPlaceholder": "+ etiqueta",
   "editor.tagChips.removeTitle": "Quitar #{tag}",
   "editor.tagChips.removeAria": "Quitar etiqueta {tag}",
+
+  // Drafts
+  "editor.drafts.main": "principal",
+  "editor.drafts.mainTitle": "La versión canónica de esta nota",
+  "editor.drafts.newDraft": "+ borrador",
+  "editor.drafts.newDraftTitle": "Empieza un borrador nuevo desde el texto actual",
+  "editor.drafts.newDraftPrompt": "Nombra este borrador",
+  "editor.drafts.newDraftDefault": "borrador",
+  "editor.drafts.tabTitle": "Cambia al borrador «{name}»",
+  "editor.drafts.activeBadge": "BORRADOR",
+  "editor.drafts.activeNotice": "Editando un borrador. Lo que guardes se queda aquí hasta que lo conserves.",
+  "editor.drafts.keep": "Conservar este borrador",
+  "editor.drafts.keepTitle": "Reemplaza la nota principal con este borrador",
+  "editor.drafts.keepConfirm": "¿Reemplazar la nota principal con este borrador? La versión actual seguirá en el historial.",
+  "editor.drafts.discard": "Descartar este borrador",
+  "editor.drafts.discardTitle": "Tira este borrador — no hay deshacer",
+  "editor.drafts.discardConfirm": "¿Descartar el borrador «{name}»? No se puede deshacer.",
+  "editor.drafts.rename": "Renombrar",
+  "editor.drafts.renameTitle": "Renombrar este borrador",
+  "editor.drafts.renamePrompt": "Nuevo nombre para este borrador",
+  "editor.drafts.menuAria": "Acciones del borrador",
+  "editor.drafts.newDraftModalTitle": "Nombra este borrador",
+  "editor.drafts.newDraftModalLead":
+    "Un borrador es una pasada paralela y privada de esta nota. Lo que guardes se queda en el borrador hasta que lo conserves. Dale un nombre corto para distinguir borradores luego.",
+  "editor.drafts.renameModalTitle": "Renombrar este borrador",
+  "editor.drafts.renameModalLead":
+    "Elige un nombre que te diga de un vistazo para qué es este borrador.",
+  "editor.drafts.namePlaceholder": "rápido",
+  "editor.drafts.modalCancel": "cancelar",
+  "editor.drafts.modalCreate": "iniciar borrador",
+  "editor.drafts.modalSave": "guardar nombre",
 };
 
 export const editorSV: Record<EditorKey, string> = {
@@ -406,29 +475,33 @@ export const editorSV: Record<EditorKey, string> = {
   "editor.note.saved": "sparat",
   "editor.note.edited": "redigerad",
   "editor.note.connectsTo": "Den här anteckningen kopplar till",
-  "editor.note.blame": "Skrivet {when} · stig {path}",
+  "editor.note.blame": "Skrivet {when} · scenario {path}",
 
   // Toolbar
   "editor.toolbar.editing": "redigerar…",
   "editor.toolbar.savedJustNow": "sparat just nu",
   "editor.toolbar.saved": "sparat",
   "editor.toolbar.checkpoints": "{count} kontrollpunkter",
-  "editor.toolbar.switchPath": "Byt stig",
-  "editor.toolbar.namePathPrompt": "+ namnge den här stigen",
-  "editor.toolbar.namePathTitle": "Vilken fråga ställer den här stigen?",
-  "editor.toolbar.onlyPath": "din enda stig",
+  "editor.toolbar.switchPath": "Byt scenario",
+  "editor.toolbar.back": "Tillbaka",
+  "editor.toolbar.backAria": "Gå tillbaka till föregående anteckning",
+  "editor.toolbar.backTitle": "Tillbaka till ”{title}” ({shortcut})",
+  "editor.toolbar.backTitleEmpty": "Tillbaka till föregående anteckning ({shortcut})",
+  "editor.toolbar.namePathPrompt": "+ namnge det här scenariot",
+  "editor.toolbar.namePathTitle": "Vilken fråga ställer det här scenariot?",
+  "editor.toolbar.onlyPath": "ditt enda scenario",
   "editor.toolbar.backToRoot": "Tillbaka till {root} — tankarnas stam",
   "editor.toolbar.backArrow": "← {root}",
-  "editor.toolbar.branchThis": "Förgrena den här",
+  "editor.toolbar.branchThis": "Starta ett scenario",
   "editor.toolbar.branchThisTitle":
-    "Starta en stig från den här anteckningen ({shortcut})",
+    "Starta ett scenario från den här anteckningen ({shortcut})",
   "editor.toolbar.connectionsMap": "Kopplingskarta",
   "editor.toolbar.connectionsMapTitle": "Öppna kopplingskartan",
-  "editor.toolbar.paths": "Stigar",
-  "editor.toolbar.pathsTitle": "Öppna stiggrafen",
+  "editor.toolbar.paths": "Scenarier",
+  "editor.toolbar.pathsTitle": "Öppna scenariografen",
   "editor.toolbar.compare": "Jämför",
-  "editor.toolbar.compareTitle": "Jämför två stigar sida vid sida",
-  "editor.toolbar.openPathsGraph": "Öppna stiggrafen",
+  "editor.toolbar.compareTitle": "Jämför två scenarier sida vid sida",
+  "editor.toolbar.openPathsGraph": "Öppna scenariografen",
   "editor.toolbar.journalJump":
     "Hoppa till en annan dag — skapar inlägget om det inte finns",
 
@@ -439,13 +512,13 @@ export const editorSV: Record<EditorKey, string> = {
   "editor.toolbar.zenExitTitle": "Avsluta zen-läge ({shortcut})",
 
   // Path switcher
-  "editor.pathSwitcher.placeholder": "Byt stig · {count} tillgängliga",
+  "editor.pathSwitcher.placeholder": "Byt scenario · {count} tillgängliga",
   "editor.pathSwitcher.backToRoot": "← Tillbaka till {root}",
   "editor.pathSwitcher.backToRootTitle": "Hoppa tillbaka till stammen",
-  "editor.pathSwitcher.noMatches": "Ingen stig matchar.",
+  "editor.pathSwitcher.noMatches": "Inget scenario matchar.",
   "editor.pathSwitcher.you": "DU",
   "editor.pathSwitcher.main": "HUVUD",
-  "editor.pathSwitcher.unnamedPath": "namnlös stig",
+  "editor.pathSwitcher.unnamedPath": "namnlöst scenario",
   "editor.pathSwitcher.notesCountOne": "{count} anteckning",
   "editor.pathSwitcher.notesCountOther": "{count} anteckningar",
   "editor.pathSwitcher.ghostsHeader": "spöken · gångna epoker",
@@ -459,9 +532,9 @@ export const editorSV: Record<EditorKey, string> = {
   "editor.history.bucket.earlierThisWeek": "Tidigare i veckan",
   "editor.history.bucket.thisMonth": "Den här månaden",
   "editor.history.checkpointsOne":
-    "{count} kontrollpunkt på den här stigen · ↑/↓ för att skrolla · esc för att stänga",
+    "{count} kontrollpunkt i det här scenariot · ↑/↓ för att skrolla · esc för att stänga",
   "editor.history.checkpointsOther":
-    "{count} kontrollpunkter på den här stigen · ↑/↓ för att skrolla · esc för att stänga",
+    "{count} kontrollpunkter i det här scenariot · ↑/↓ för att skrolla · esc för att stänga",
   "editor.history.showDiffOnly": "visa endast skillnader",
   "editor.history.close": "Stäng",
   "editor.history.now": "Nu",
@@ -572,14 +645,10 @@ export const editorSV: Record<EditorKey, string> = {
   "editor.annotations.removeAria": "Ta bort marginalanteckning",
   "editor.annotations.empty": "tom — klicka för att skriva",
 
-  // FloatingDirectionCTA
-  "editor.directionCta.label": "Pröva en annan version",
-  "editor.directionCta.title": "Pröva en annan version ({shortcut})",
-
   // ForkSuggestion
   "editor.forkSuggestion.title": "Utforska en annan riktning?",
   "editor.forkSuggestion.body":
-    "Det här stycket verkar dra mot det som kom innan. Du kan förgrena dig och pröva utan att förlora den nuvarande versionen.",
+    "Det här stycket verkar dra mot det som kom innan. Du kan öppna ett nytt scenario och pröva utan att förlora den nuvarande versionen.",
   "editor.forkSuggestion.accept": "Ja, utforska",
   "editor.forkSuggestion.dismiss": "Inte nu",
 
@@ -588,6 +657,8 @@ export const editorSV: Record<EditorKey, string> = {
   "editor.tagBouquet.addTitle": "Lägg till #{tag}",
   "editor.tagBouquet.dismiss": "inte nu",
   "editor.tagBouquet.dismissTitle": "Dölj förslag för den här anteckningen",
+  "editor.tagBouquet.more": "+{count} till",
+  "editor.tagBouquet.moreTitle": "Visa {count} fler förslag",
 
   // TagChips
   "editor.tagChips.addTags": "+ lägg till taggar",
@@ -595,4 +666,35 @@ export const editorSV: Record<EditorKey, string> = {
   "editor.tagChips.addTagPlaceholder": "+ tagg",
   "editor.tagChips.removeTitle": "Ta bort #{tag}",
   "editor.tagChips.removeAria": "Ta bort tagg {tag}",
+
+  // Drafts
+  "editor.drafts.main": "huvudversion",
+  "editor.drafts.mainTitle": "Den kanoniska versionen av den här anteckningen",
+  "editor.drafts.newDraft": "+ utkast",
+  "editor.drafts.newDraftTitle": "Starta ett nytt utkast från den nuvarande texten",
+  "editor.drafts.newDraftPrompt": "Namnge det här utkastet",
+  "editor.drafts.newDraftDefault": "utkast",
+  "editor.drafts.tabTitle": "Byt till utkastet ”{name}”",
+  "editor.drafts.activeBadge": "UTKAST",
+  "editor.drafts.activeNotice": "Redigerar ett utkast. Det du sparar stannar här tills du behåller det.",
+  "editor.drafts.keep": "Behåll det här utkastet",
+  "editor.drafts.keepTitle": "Ersätt huvudanteckningen med det här utkastet",
+  "editor.drafts.keepConfirm": "Ersätta huvudanteckningen med det här utkastet? Den nuvarande versionen finns kvar i historiken.",
+  "editor.drafts.discard": "Förkasta det här utkastet",
+  "editor.drafts.discardTitle": "Släng det här utkastet — det går inte att ångra",
+  "editor.drafts.discardConfirm": "Förkasta utkastet ”{name}”? Det kan inte ångras.",
+  "editor.drafts.rename": "Byt namn",
+  "editor.drafts.renameTitle": "Byt namn på det här utkastet",
+  "editor.drafts.renamePrompt": "Nytt namn för det här utkastet",
+  "editor.drafts.menuAria": "Utkaståtgärder",
+  "editor.drafts.newDraftModalTitle": "Namnge det här utkastet",
+  "editor.drafts.newDraftModalLead":
+    "Ett utkast är en privat parallell version av den här anteckningen. Det du sparar stannar i utkastet tills du behåller det. Ge det ett kort namn så kan du skilja utkast åt senare.",
+  "editor.drafts.renameModalTitle": "Byt namn på utkastet",
+  "editor.drafts.renameModalLead":
+    "Välj ett namn som direkt säger vad det här utkastet är till för.",
+  "editor.drafts.namePlaceholder": "ung",
+  "editor.drafts.modalCancel": "avbryt",
+  "editor.drafts.modalCreate": "starta utkast",
+  "editor.drafts.modalSave": "spara namn",
 };

@@ -1,6 +1,6 @@
 [package]
 name = "yarrow"
-version = "2.2.1"
+version = "3.0.0"
 description = "Yarrow — git-backed note-taking for non-linear thinking"
 authors = ["Yarrow"]
 edition = "2021"
@@ -96,6 +96,13 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 rust-stemmers = "1"
 x25519-dalek = { version = "^2", features = ["static_secrets"] }
 hkdf = "^0.12"
+
+# 3.0 visual polish: native macOS vibrancy on the sidebar via
+# window-vibrancy. Compiles to nothing on Linux/Windows because we
+# only invoke it under `#[cfg(target_os = "macos")]`. The crate
+# itself is multi-platform but we only consume the macOS path.
+[target.'cfg(target_os = "macos")'.dependencies]
+window-vibrancy = "0.6"
 
 [profile.release]
 lto = true

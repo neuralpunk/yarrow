@@ -18,7 +18,7 @@ use chrono::Utc;
 
 use crate::error::{Result, YarrowError};
 use crate::notes::{self, Frontmatter};
-use crate::obsidian_import::ImportReport;
+use crate::obsidian_import::{ImportReport, ProgressFn};
 use crate::workspace;
 
 #[derive(Debug, Default)]
@@ -29,25 +29,42 @@ pub struct BibEntry {
 }
 
 pub fn import_bibtex(workspace_root: &Path, source: &Path) -> Result<ImportReport> {
+    import_bibtex_with_progress(workspace_root, source, None)
+}
+
+pub fn import_bibtex_with_progress(
+    workspace_root: &Path,
+    source: &Path,
+    progress: Option<ProgressFn>,
+) -> Result<ImportReport> {
     if !source.exists() {
         return Err(YarrowError::Invalid(
             "Pick the .bib file you exported from Zotero, BibDesk, or your reference manager.".into(),
         ));
     }
-    let raw = std::fs::read_to_string(source)?;
+    let raw = workspace::read_to_string_capped(source)?;
     let entries = parse(&raw);
     let notes_dir = workspace::notes_dir(workspace_root);
     std::fs::create_dir_all(&notes_dir)?;
 
+    let total = entries.len();
     let mut imported = 0usize;
     let mut skipped = 0usize;
     let mut renamed: Vec<(String, String)> = Vec::new();
 
-    for entry in entries.iter() {
+    for (i, entry) in entries.iter().enumerate() {
+        if let Some(report) = progress {
+            // BibTeX entries don't have filenames; surface the cite key
+            // instead so the UI shows recognisable progress.
+            report(i, total, &entry.key);
+        }
         match write_paper_card(workspace_root, &notes_dir, entry, &mut renamed) {
             Ok(_) => imported += 1,
             Err(_) => skipped += 1,
         }
+    }
+    if let Some(report) = progress {
+        report(total, total, "");
     }
     Ok(ImportReport { imported, skipped, renamed })
 }

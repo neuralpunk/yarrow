@@ -242,6 +242,23 @@ export interface RecentWorkspace {
   last_opened: string;
 }
 
+/// IntroPage welcome-screen stats. Computed across every recent
+/// workspace's notes folder; see `src-tauri/src/welcome.rs`.
+export interface ContinueNote {
+  workspace_path: string;
+  workspace_name: string;
+  note_slug: string;
+  note_title: string;
+  modified: string;
+}
+
+export interface WelcomeStats {
+  notes_this_month: number;
+  day_streak: number;
+  words_this_month: number;
+  continue_note: ContinueNote | null;
+}
+
 export interface AttachmentRef {
   relpath: string;
   size: number;
@@ -266,6 +283,18 @@ export interface SearchHit {
   title: string;
   snippet: string;
   score: number;
+}
+
+/** One alternative body for a note. Drafts live as sibling .md files
+ *  under `.yarrow/drafts/<slug>/<id>.md` and are gitignored —
+ *  scratchpad-grade until the user promotes one. */
+export interface Draft {
+  /** Filesystem-safe id used in every command. */
+  id: string;
+  /** User-typed name, preserved through round-trips. */
+  display_name: string;
+  /** Unix-secs mtime of the draft file, for sorting. */
+  modified: number;
 }
 
 export interface BranchFork {
@@ -310,6 +339,10 @@ export interface PathCollection {
   /** `true` for paths seeded as a full copy of the workspace. New notes
    *  are auto-added to these paths so the "full copy" invariant stays true. */
   full_workspace?: boolean;
+  /** "Set aside" — user no longer considers this an active alternative.
+   *  Archived paths render dimmed in the path map and are excluded from
+   *  the writing-path switcher. Reversible at any time. */
+  archived?: boolean;
 }
 
 /** A path is "live" when it is the root, or when its parent chain reaches
@@ -348,6 +381,10 @@ export interface ConflictContent {
   ours: string | null;
   theirs: string | null;
   working: string | null;
+  /** Unix timestamp (seconds) of HEAD's commit — the "ours" side. */
+  ours_timestamp: number | null;
+  /** Unix timestamp (seconds) of MERGE_HEAD's commit — the "theirs" side. */
+  theirs_timestamp: number | null;
 }
 
 export type WorkspaceMode = "mapped" | "basic";
@@ -390,6 +427,9 @@ export interface WorkspaceConfig {
     search_index_enabled: boolean;
     /** Auto-sync cadence in minutes. 0 disables. */
     autosync_minutes: number;
+    /** How many days a deleted note stays in `.yarrow/trash/` before
+     *  the next workspace open auto-purges it. 0 = keep forever. */
+    trash_retention_days: number;
   };
   mapping: {
     mode: WorkspaceMode;

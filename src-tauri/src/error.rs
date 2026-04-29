@@ -21,7 +21,7 @@ pub enum YarrowError {
     PathNotFound(String),
     #[error("cannot delete active path: {0}")]
     CannotDeleteActivePath(String),
-    #[error("merge conflicts: {0}")]
+    #[error("paths could not be brought together cleanly: {0}")]
     MergeConflicts(String),
     #[error("no remote configured")]
     NoRemote,

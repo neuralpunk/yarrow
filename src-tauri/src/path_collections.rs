@@ -75,6 +75,17 @@ pub struct PathCollection {
     /// so legacy collections keep their curated memberships unchanged.
     #[serde(default)]
     pub full_workspace: bool,
+    /// "Set aside" — the user no longer considers this an active
+    /// alternative. Archived paths render dimmed in the path map and
+    /// are excluded from the writing-path switcher; the user can
+    /// restore them at any time. Distinct from delete: notes,
+    /// overlays, and history all stay on disk.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub archived: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -121,33 +132,86 @@ pub fn read_all(workspace: &Path) -> Result<CollectionsView> {
                     return seed(workspace);
                 }
             }
-            // Migrate legacy data to the permanent-trunk model.
+            // Tidy parent pointers that are obviously broken.
             //
-            // The root is identified by `view.root`, NOT by having an empty
-            // parent. A path can simultaneously be the current root AND carry
-            // a permanent-trunk pointer in `parent` — and it MUST, so that
-            // when the path is demoted later, its original era can be
-            // restored. So we leave the root's parent alone.
+            // The root is identified by `view.root`, NOT by having an
+            // empty parent. A path can simultaneously be the current
+            // root AND carry a permanent-trunk pointer in `parent` —
+            // and it MUST, so that when the path is demoted later,
+            // its original era can be restored.
             //
-            //   - A path with parent == self is an era-swap artifact from
-            //     the earlier era-swap model; clear it so the fallback
-            //     below can assign a real trunk.
-            //   - A non-root path with parent == "" (usually a path that
-            //     was promoted and then demoted under the old model,
-            //     losing its original trunk) gets re-parented to the
-            //     current root — best-guess for "the workspace's primary
-            //     trunk" so the first promote-back restores the sibling
-            //     relationship.
-            let root_name = f.root.clone();
+            // A path with parent == self is an era-swap artifact from
+            // the earlier era-swap model; clear it so the path renders
+            // as an original trunk (parent="") rather than as a self-
+            // referential cycle. This is a real data-correctness fix.
+            //
+            // We DO NOT auto-rewrite paths whose parent is "" but whose
+            // name isn't the current root. An empty parent is meaningful
+            // — it means "this path was an original trunk." When such a
+            // path is demoted, the right rendering is "ghost / behind
+            // us in the timeline," which is exactly what isGhostPath
+            // produces from parent="". Earlier versions silently
+            // rewrote parent to the current root on read, which broke
+            // chronology after a promote: the previous trunk got re-
+            // anchored to the new trunk and dragged every sibling back
+            // into the live tree as if the user hadn't moved on.
             for c in f.collections.iter_mut() {
                 if c.parent == c.name {
                     c.parent = String::new();
                 }
             }
+
+            // Heal workspaces that the prior auto-rewrite migration
+            // poisoned. Symptom: a 2-cycle in parent pointers, where
+            // path A.parent == B and B.parent == A. This happened
+            // when a non-root path with parent="" was promoted: the
+            // previous trunk's parent got auto-set to the new root,
+            // and the new root already had its `parent` pointing at
+            // the previous trunk (set at create time). The cycle
+            // makes both look "live" through each other and the
+            // graph re-anchors all the old siblings under the new
+            // root, breaking chronology.
+            //
+            // The right side of the cycle to break is the auto-
+            // mutated one — the *previous* trunk. We pick it as the
+            // path whose parent points at the current root, and
+            // whose own former-trunk role is implied by `created_at`
+            // being earlier than the path it points at. Setting
+            // parent back to "" restores the "original trunk" role
+            // and makes isGhostPath read it correctly post-promote.
+            let cycle_targets: Vec<String> = {
+                let by_name: std::collections::HashMap<String, &PathCollection> =
+                    f.collections.iter().map(|c| (c.name.clone(), c)).collect();
+                f.collections
+                    .iter()
+                    .filter_map(|a| {
+                        let b = by_name.get(&a.parent)?;
+                        if b.parent != a.name {
+                            return None;
+                        }
+                        // Both sides reference each other. Break the
+                        // cycle by clearing the older path's parent —
+                        // it's the one that pre-dates the cycle and
+                        // was the original trunk.
+                        let target = if a.created_at <= b.created_at { a } else { b };
+                        Some(target.name.clone())
+                    })
+                    .collect()
+            };
+            let healed = !cycle_targets.is_empty();
             for c in f.collections.iter_mut() {
-                if c.name != root_name && c.parent.is_empty() {
-                    c.parent = root_name.clone();
+                if cycle_targets.contains(&c.name) {
+                    c.parent = String::new();
                 }
+            }
+            if healed {
+                // Persist the heal so future reads start from clean
+                // data and the disk file matches what the UI sees.
+                let view_to_write = CollectionsView {
+                    root: f.root.clone(),
+                    collections: f.collections.clone(),
+                };
+                let _ = write_view(workspace, &view_to_write);
             }
             Ok(CollectionsView { root: f.root, collections: f.collections })
         }
@@ -173,6 +237,7 @@ fn seed(workspace: &Path) -> Result<CollectionsView> {
         color: None,
         auto_membership_tag: None,
         full_workspace: true,
+        archived: false,
     };
     let view = CollectionsView {
         root: "main".into(),
@@ -285,6 +350,7 @@ pub fn create(
         color: None,
         auto_membership_tag: None,
         full_workspace: true,
+        archived: false,
     };
     view.collections.push(new.clone());
     write_view(workspace, &view)?;
@@ -346,6 +412,24 @@ pub fn set_condition(workspace: &Path, name: &str, condition: &str) -> Result<()
         return Err(YarrowError::Other(format!("Path '{}' not found.", name)));
     };
     c.condition = condition.trim().to_string();
+    write_view(workspace, &view)
+}
+
+/// Toggle a path's archived flag. Refused for the active root, since
+/// "set aside the trunk" has no coherent meaning — adopt or rename
+/// first. Idempotent: setting an already-archived path archived is a
+/// noop.
+pub fn set_archived(workspace: &Path, name: &str, archived: bool) -> Result<()> {
+    let mut view = read_all(workspace)?;
+    if view.root == name && archived {
+        return Err(YarrowError::Other(
+            "Cannot set aside the active trunk path. Adopt another path first.".to_string(),
+        ));
+    }
+    let Some(c) = view.collections.iter_mut().find(|c| c.name == name) else {
+        return Err(YarrowError::Other(format!("Path '{}' not found.", name)));
+    };
+    c.archived = archived;
     write_view(workspace, &view)
 }
 

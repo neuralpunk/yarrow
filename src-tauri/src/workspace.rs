@@ -110,13 +110,21 @@ pub struct Preferences {
     /// remote is configured (generic git OR `sync.server`).
     #[serde(default = "default_autosync")]
     pub autosync_minutes: u32,
+    /// How many days a deleted note stays in `.yarrow/trash/` before the
+    /// next workspace open auto-purges it. The consultant's §3.8 review
+    /// flagged the user trust contract here: the empty-trash copy
+    /// promises a 30-day window, and that promise needs to be backed by
+    /// an actual purge. `0` keeps trash forever (matches the consultant's
+    /// "configurable up to 'forever'" recommendation).
+    #[serde(default = "default_trash_retention")]
+    pub trash_retention_days: u32,
 }
 
 fn default_decay() -> u32 {
     60
 }
 fn default_debounce() -> u32 {
-    3000
+    8000
 }
 fn default_true() -> bool {
     true
@@ -130,6 +138,9 @@ fn default_idle_lock() -> u32 {
 fn default_autosync() -> u32 {
     5 // minutes; 0 disables
 }
+fn default_trash_retention() -> u32 {
+    30 // days; 0 = keep forever
+}
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -142,6 +153,7 @@ impl Default for Preferences {
             encryption_idle_timeout_secs: default_idle_lock(),
             search_index_enabled: true,
             autosync_minutes: default_autosync(),
+            trash_retention_days: default_trash_retention(),
         }
     }
 }
@@ -196,6 +208,7 @@ const GITIGNORE: &str = "\
 .yarrow/credentials.toml
 .yarrow/trash/
 .yarrow/session.json
+.yarrow/drafts/
 ";
 
 pub fn yarrow_dir(root: &Path) -> PathBuf {
@@ -246,7 +259,7 @@ pub fn write_security(root: &Path, env: &crate::crypto::WorkspaceEnvelope) -> Re
         std::fs::create_dir_all(parent)?;
     }
     let raw = toml::to_string_pretty(env)?;
-    std::fs::write(path, raw)?;
+    atomic_write_secret(&path, raw.as_bytes())?;
     Ok(())
 }
 
@@ -375,13 +388,77 @@ pub fn write_config(root: &Path, config: &WorkspaceConfig) -> Result<()> {
 /// ntfs). Yarrow's `.yarrow/` lives inside the workspace root, which
 /// is always on one filesystem, so this is safe.
 pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    atomic_write_inner(path, contents, false)
+}
+
+/// Cap on a single `read_to_string` for user-uploaded / user-authored
+/// files (templates, daily-template, BibTeX imports). Markdown notes
+/// intentionally bypass this — those are already constrained by the
+/// editor and any refusal here would silently break a workspace. Pick a
+/// size larger than any plausible legitimate document but small enough
+/// to bound a malicious or accidentally-huge file (e.g. a binary blob
+/// dropped into `.bib`) before it eats all RAM.
+pub const READ_TO_STRING_CAP: u64 = 16 * 1024 * 1024;
+
+/// Read a file as UTF-8, refusing to allocate more than `READ_TO_STRING_CAP`
+/// bytes. Surfaces a clean [`YarrowError::Invalid`] on overflow instead of
+/// the OOM that bare `read_to_string` would produce on a hostile input.
+pub(crate) fn read_to_string_capped(path: &Path) -> Result<String> {
+    use std::io::Read;
+    let f = std::fs::File::open(path)?;
+    let meta = f.metadata()?;
+    if meta.len() > READ_TO_STRING_CAP {
+        return Err(YarrowError::Invalid(format!(
+            "file is {} bytes — refused to read more than {} MiB",
+            meta.len(),
+            READ_TO_STRING_CAP / (1024 * 1024),
+        )));
+    }
+    let mut s = String::new();
+    f.take(READ_TO_STRING_CAP + 1).read_to_string(&mut s)?;
+    if s.len() as u64 > READ_TO_STRING_CAP {
+        return Err(YarrowError::Invalid(format!(
+            "file exceeds {} MiB cap",
+            READ_TO_STRING_CAP / (1024 * 1024),
+        )));
+    }
+    Ok(s)
+}
+
+/// Like `atomic_write`, but on Unix opens the tmp file with mode 0600
+/// from the start so the file is never world- or group-readable, even
+/// for the brief window between create() and the rename. Used for
+/// credentials.toml (server PAT, sync token) and security.toml
+/// (encryption envelope). On Windows the call is identical to
+/// `atomic_write` — NTFS ACLs on a per-user `%APPDATA%`/profile path
+/// already restrict access to the owning user; tightening further
+/// would mean a winapi DACL pass which we have not done here.
+pub(crate) fn atomic_write_secret(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    atomic_write_inner(path, contents, true)
+}
+
+fn atomic_write_inner(path: &Path, contents: &[u8], secret: bool) -> std::io::Result<()> {
     use std::io::Write;
     let tmp = path.with_extension(format!(
         "{}.tmp",
         path.extension().and_then(|s| s.to_str()).unwrap_or("")
     ));
     {
-        let mut f = std::fs::File::create(&tmp)?;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        if secret {
+            use std::os::unix::fs::OpenOptionsExt;
+            // 0600 — owner read/write, no group/other access. Must be set
+            // at open() time, not via a follow-up chmod, to avoid a
+            // window where the file is briefly created with the umask
+            // default (typically 0644 on Linux) and readable by other
+            // local users.
+            opts.mode(0o600);
+        }
+        #[cfg(not(unix))]
+        let _ = secret; // suppress unused-var warning on non-Unix
+        let mut f = opts.open(&tmp)?;
         f.write_all(contents)?;
         f.sync_all()?;
     }
@@ -450,16 +527,17 @@ pub fn init(
             config.mapping.main_note = Some(note.slug.clone());
             write_config(root, &config)?;
         } else {
-            let seed = crate::notes::seed_note_markdown();
-            let seed_path = notes_dir(root).join("getting-started.md");
-            std::fs::write(&seed_path, seed)?;
+            // Seed the welcome note plus a companion note about
+            // wikilinks. The welcome note links to the companion so
+            // a fresh workspace shows a working `[[wikilink]]` and a
+            // non-empty connections graph from minute one — the
+            // consultant's §3.3 recommendation.
+            write_seeded_starter_pair(root)?;
             config.mapping.main_note = Some("getting-started".into());
             write_config(root, &config)?;
         }
     } else {
-        let seed = crate::notes::seed_note_markdown();
-        let seed_path = notes_dir(root).join("getting-started.md");
-        std::fs::write(&seed_path, seed)?;
+        write_seeded_starter_pair(root)?;
     }
 
     // Seed default templates (ignore errors — templates are a convenience).
@@ -488,6 +566,19 @@ fn rename_current_to_main(
     Ok(())
 }
 
+/// Write the two-note starter pair (`getting-started.md` +
+/// `wikilinks-explained.md`) to a fresh workspace. Both notes link to
+/// each other so the user lands on a working wikilink example and a
+/// non-trivial connections graph instead of an empty editor + isolated
+/// node. Idempotent: callers gate on first-run.
+fn write_seeded_starter_pair(root: &Path) -> Result<()> {
+    let getting_started = notes_dir(root).join("getting-started.md");
+    let wikilinks = notes_dir(root).join("wikilinks-explained.md");
+    std::fs::write(&getting_started, crate::notes::seed_note_markdown())?;
+    std::fs::write(&wikilinks, crate::notes::seed_companion_note_markdown())?;
+    Ok(())
+}
+
 pub fn open(root: &Path) -> Result<WorkspaceConfig> {
     if !is_yarrow_workspace(root) {
         return Err(YarrowError::NoWorkspace);
@@ -495,5 +586,14 @@ pub fn open(root: &Path) -> Result<WorkspaceConfig> {
     // Back-fill default templates for workspaces created before 1.0.0 so the
     // palette's "New from template…" list is non-empty on first upgrade.
     let _ = crate::templates::seed_defaults(root);
-    read_config(root)
+    let cfg = read_config(root)?;
+    // Honour the user's configured trash-retention window. The empty-trash
+    // copy promises a default 30-day grace period; this is the worker that
+    // backs that promise. `0` is the "keep forever" setting per §3.8 of the
+    // consultant audit. Best-effort — a stalled purge shouldn't block open.
+    let retention = cfg.preferences.trash_retention_days;
+    if retention > 0 {
+        let _ = crate::trash::purge_older_than(root, retention as i64);
+    }
+    Ok(cfg)
 }

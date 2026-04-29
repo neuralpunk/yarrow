@@ -2,11 +2,10 @@ import { RangeSetBuilder } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import {
   Decoration,
-  DecorationSet,
   EditorView,
   ViewPlugin,
-  ViewUpdate,
 } from "@codemirror/view";
+import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { isCorrect, loadSpell, suggest as spellSuggest } from "../../../lib/spell";
 
 // ────────────── spell check ──────────────
@@ -39,6 +38,13 @@ function spellPluginFactory(): Extension {
     class {
       decorations: DecorationSet;
       activeLine = -1;
+      // Cached fence mask + the doc tree reference it was built against.
+      // Selection moves and viewport scrolls don't touch the fences, so
+      // we re-use the cached mask whenever the doc reference is stable.
+      // CodeMirror's `Text` is immutable; reference equality is a sound
+      // staleness check.
+      cachedFenceMask: Uint8Array | null = null;
+      cachedFenceDoc: unknown = null;
       constructor(view: EditorView) {
         this.activeLine = view.state.doc.lineAt(view.state.selection.main.head).number;
         this.decorations = this.build(view);
@@ -63,16 +69,21 @@ function spellPluginFactory(): Extension {
         const doc = view.state.doc;
         const sel = view.state.selection.main;
         const activeLine = doc.lineAt(sel.head).number;
-        const fenceMask = new Uint8Array(doc.lines + 1);
-        let inFence = false;
-        for (let n = 1; n <= doc.lines; n++) {
-          const text = doc.line(n).text;
-          if (/^\s*```/.test(text)) {
-            fenceMask[n] = 1;
-            inFence = !inFence;
-          } else {
-            fenceMask[n] = inFence ? 1 : 0;
+        let fenceMask = this.cachedFenceDoc === doc ? this.cachedFenceMask : null;
+        if (!fenceMask) {
+          fenceMask = new Uint8Array(doc.lines + 1);
+          let inFence = false;
+          for (let n = 1; n <= doc.lines; n++) {
+            const text = doc.line(n).text;
+            if (/^\s*```/.test(text)) {
+              fenceMask[n] = 1;
+              inFence = !inFence;
+            } else {
+              fenceMask[n] = inFence ? 1 : 0;
+            }
           }
+          this.cachedFenceMask = fenceMask;
+          this.cachedFenceDoc = doc;
         }
         const ranges: Array<[number, number]> = [];
         for (const { from, to } of view.visibleRanges) {

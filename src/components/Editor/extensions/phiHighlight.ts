@@ -2,11 +2,10 @@ import { RangeSetBuilder } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import {
   Decoration,
-  DecorationSet,
   EditorView,
   ViewPlugin,
-  ViewUpdate,
 } from "@codemirror/view";
+import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { scanForPhi, type PhiMatch } from "../../../lib/phiScan";
 
 // PHI inline highlighter (2.1). Loaded lazily from NoteEditor only when

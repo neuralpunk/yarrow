@@ -14,6 +14,14 @@ export function relativeTime(iso: string | number | null | undefined): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+/** Locale-aware integer formatting — "14290" → "14,290" in en-US,
+ *  "14.290" in de, etc. Used for the welcome-screen stat figures so
+ *  large counts read cleanly without manual comma concatenation. */
+const _numberFormatter = new Intl.NumberFormat();
+export function formatNumber(n: number): string {
+  return _numberFormatter.format(n);
+}
+
 /** Local-calendar ISO date (YYYY-MM-DD) — used for daily-note slugs. */
 export function todayIso(d: Date = new Date()): string {
   const y = d.getFullYear();

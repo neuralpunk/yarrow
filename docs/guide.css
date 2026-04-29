@@ -497,8 +497,10 @@ figure.diagram.screenshot { padding: 0; overflow: hidden; }
   display: block;
 }
 .screenshot-frame img.shot-dark { display: none; }
-html[data-theme="dark"] .screenshot-frame img.shot-light { display: none; }
-html[data-theme="dark"] .screenshot-frame img.shot-dark { display: block; }
+html[data-theme="dark"] .screenshot-frame img.shot-light,
+html[data-theme="workshop"] .screenshot-frame img.shot-light { display: none; }
+html[data-theme="dark"] .screenshot-frame img.shot-dark,
+html[data-theme="workshop"] .screenshot-frame img.shot-dark { display: block; }
 .screenshot-frame .callouts {
   position: absolute;
   inset: 0;
@@ -843,80 +845,85 @@ ol.callout-list strong { color: var(--char); font-weight: 600; }
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Direction-B retheme — 2026-04-22
-   Re-aligns the guide with the Direction B landing page.
-   Changes only: (a) accent shifts from plum → gold, (b) display
-   face shifts from Newsreader → Fraunces with the opsz axis wound
-   up at display sizes, and (c) masthead borrows the double-rule
-   look from the landing. Everything else — layout, diagrams,
-   v2-feature cards, callouts — is unchanged; the plum palette
-   was already living entirely inside the --yel* tokens so the
-   remap is clean.
+   3.0 brand retheme — 2026-04-28
+   Re-aligns the guide with the Vellum / Workshop pair that frames
+   Yarrow's 3.x identity. Replaces the 2.x gold-on-cream Direction-B
+   override with slate-on-bone for light and bronze-on-ink for dark.
+   Layout, diagrams, v2-feature cards, callouts unchanged — the
+   palette was already living entirely inside the --yel* / --bg /
+   --char tokens so the remap is clean.
+
+   Selectors cover both the legacy `light`/`dark` data-theme values
+   (so old bookmarks keep working) and the new `vellum`/`workshop`
+   values written by the updated toggle.
    ═══════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Inter+Tight:wght@400;500;600;700&display=swap');
 
+html[data-theme="vellum"],
 html[data-theme="light"],
 :root {
-  /* accent → warm gold/amber, matches Direction B's #b18112 */
-  --yel:    #b18112;   /* principal accent */
-  --yel2:   #d6a02a;   /* slightly lifted for hover / hairlines */
-  --yelp:   #f4e9c9;   /* plum-tinted paper → gold-tinted paper */
-  --yeld:   #6a4e07;   /* deepest gold, used for text on gold */
-  --on-yel: #ffffff;
+  /* Vellum slate-blue primary — the 3.0 brand accent. */
+  --yel:    #45627A;   /* accent-primary slate */
+  --yel2:   #6B8AA5;   /* accent-cool — hover */
+  --yelp:   #DCE3EB;   /* pale slate — active row tint */
+  --yeld:   #2C3340;   /* dark slate — text on yelp */
+  --on-yel: #FAFAF6;
 
-  /* Direction B paper palette is a cooler, more yellow-forward set */
-  --bg:      #f4efe2;
-  --bg-soft: #ebe4cf;
-  --bg-bone: #f0e9d6;
-  --s1:      #ebe4cf;
-  --s2:      #ded3ab;
-  --s3:      #c8be84;
+  /* Vellum bone canvas — cooler than the 2.x cream. */
+  --bg:      #EFEDE7;
+  --bg-soft: #F4F2EC;
+  --bg-bone: #F4F2EC;
+  --s1:      #F4F2EC;
+  --s2:      #E5E2D9;
+  --s3:      #DCDDD3;
 
-  --bd:   rgba(22, 20, 10, 0.10);
-  --bd2:  rgba(22, 20, 10, 0.18);
-  --bd3:  rgba(22, 20, 10, 0.28);
-  --rule: rgba(22, 20, 10, 0.14);
+  --bd:   rgba(44, 51, 64, 0.08);
+  --bd2:  rgba(44, 51, 64, 0.15);
+  --bd3:  rgba(44, 51, 64, 0.28);
+  --rule: rgba(44, 51, 64, 0.14);
 
-  --char: #16140a;
-  --ch2:  #2a2614;
-  --t1:   #453e20;
-  --t2:   #5a5230;
-  --t3:   #8f8553;
+  --char: #2C3340;
+  --ch2:  #3E4554;
+  --t1:   #4A5363;
+  --t2:   #5A6473;
+  --t3:   #8C95A1;
 
-  /* display face → Fraunces, matching Direction B headlines.
-     Keep Source Serif 4 for long-form body — its x-height and opsz
-     cuts pair beautifully with Fraunces display.  The sans shifts
-     to Inter Tight to match the landing. */
-  --display: "Fraunces", "Source Serif 4", ui-serif, Georgia, serif;
-  --serif:   "Source Serif 4", "Source Serif Pro", ui-serif, Georgia, serif;
+  /* Newsreader is the 3.0 editorial face (matches the desktop app);
+     Fraunces stays loaded for the rare display-size hero where its
+     opsz axis opens up the wordmark. Inter Tight carries chrome. */
+  --display: "Fraunces", "Newsreader", "Source Serif 4", ui-serif, Georgia, serif;
+  --serif:   "Newsreader", "Source Serif 4", "Source Serif Pro", ui-serif, Georgia, serif;
   --sans:    "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
+html[data-theme="workshop"],
 html[data-theme="dark"] {
-  --yel:    #d6a02a;
-  --yel2:   #f2b726;
-  --yelp:   #3a2e10;
-  --yeld:   #f2d27a;
-  --on-yel: #14120a;
+  /* Workshop bronze on deep ink — the 3.0 dark identity. */
+  --yel:    #C18F3E;
+  --yel2:   #D4A55A;
+  --yelp:   #34516B;
+  --yeld:   #E8DDC4;
+  --on-yel: #14202E;
 
-  --bg:      #14120a;
-  --bg-soft: #1c1910;
-  --bg-bone: #1a1709;
-  --s1:      #1f1b11;
-  --s2:      #2a2618;
-  --s3:      #3d3720;
+  --bg:      #14202E;
+  --bg-soft: #1B2A3D;
+  --bg-bone: #1B2A3D;
+  --s1:      #1B2A3D;
+  --s2:      #243449;
+  --s3:      #2C3D54;
 
-  --bd:   rgba(244, 239, 226, 0.08);
-  --bd2:  rgba(244, 239, 226, 0.15);
-  --bd3:  rgba(244, 239, 226, 0.24);
-  --rule: rgba(244, 239, 226, 0.14);
+  --bd:   rgba(232, 221, 196, 0.08);
+  --bd2:  rgba(232, 221, 196, 0.15);
+  --bd3:  rgba(232, 221, 196, 0.24);
+  --rule: rgba(232, 221, 196, 0.14);
 
-  --char: #f4efe2;
-  --ch2:  #e0d8bf;
-  --t1:   #c8bf96;
-  --t2:   #a39870;
-  --t3:   #6c6340;
+  /* Paper-warm cream, never clinical white per spec §3.3. */
+  --char: #E8DDC4;
+  --ch2:  #D9CDB0;
+  --t1:   #C5B89A;
+  --t2:   #B5A98C;
+  --t3:   #7E7560;
 }
 
 /* wind Fraunces's opsz axis up at display sizes — the reason we

@@ -213,6 +213,7 @@ pub fn seed(workspace_root: &Path) -> Result<SampleSeedReport> {
         color: Some("#a85cc9".into()),
         auto_membership_tag: Some("paths".into()),
         full_workspace: false,
+        archived: false,
     };
     path_collections::append(workspace_root, new_path)?;
 

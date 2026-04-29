@@ -1,4 +1,45 @@
 import type { BranchTopo, PathCollection, PathMeta } from "./types";
+import type { ThemeName } from "./theme.svelte";
+
+/**
+ * Theme-aware scenario accent palettes (theme system spec §2.4 / §3.4).
+ *
+ * Each of the six themes ships an eight-swatch picker tuned against
+ * its canvas — slate-and-leather tones on Vellum's bone background,
+ * bronze-and-rust on Workshop's ink, and so on. Anything outside this
+ * list is still allowed via the colour wheel; the presets are the
+ * "house picks" that look right out of the box.
+ *
+ * Yarrow's pre-3.1 palette stays as the fallback for Linen / Graphite
+ * (which inherited it before the system-wide rename) and as a generic
+ * default for any unknown theme value.
+ */
+const PRESETS_DEFAULT = [
+  "#c97a3a",
+  "#c43d5b",
+  "#a85cc9",
+  "#5c6dc9",
+  "#3a91c9",
+  "#3aa890",
+  "#68a83a",
+  "#7a6b5c",
+];
+
+const PRESETS_BY_THEME: Record<ThemeName, string[]> = {
+  vellum: ["#45627A", "#A04848", "#B89968", "#7A8C5C", "#8C5C7A", "#5C7A8C", "#8C7A5C", "#3D3D3D"],
+  workshop: ["#C18F3E", "#B85C57", "#7FA77A", "#5B7E9C", "#9C7BA7", "#A78F5B", "#5BA797", "#A8A089"],
+  linen: PRESETS_DEFAULT,
+  graphite: PRESETS_DEFAULT,
+  ashrose: ["#5C2E38", "#6F464F", "#A04848", "#8C5C7A", "#5C7A8C", "#7A6B5C", "#695F63", "#3D3D3D"],
+  dracula: ["#BD93F9", "#FF79C6", "#8BE9FD", "#50FA7B", "#FFB86C", "#F1FA8C", "#FF5555", "#6272A4"],
+};
+
+export function colorPresetsForTheme(theme: ThemeName | string): string[] {
+  if (theme in PRESETS_BY_THEME) {
+    return PRESETS_BY_THEME[theme as ThemeName];
+  }
+  return PRESETS_DEFAULT;
+}
 
 /**
  * Cross-cutting path awareness: which paths a given note lives on, which notes

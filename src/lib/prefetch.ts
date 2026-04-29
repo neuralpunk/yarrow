@@ -1,7 +1,7 @@
 // Warm the heavy lazy-loaded bundles during idle time so the first time the
 // user actually opens them (Map, Settings, palette, etc.) the JS is already
 // parsed. Each import starts the fetch + parse immediately but its result is
-// discarded — React.lazy will reuse the cached module when the component
+// discarded — Vite's module graph reuses the cached module when the component
 // finally mounts.
 
 type Idle = (cb: () => void) => void;
@@ -24,34 +24,34 @@ export function prefetchHeavyChunks(mappingEnabled: boolean = true) {
   // single biggest chunk; warming it right after first paint means the user's
   // first click into a note is still instant.
   schedule(() => {
-    void import("../components/Editor/NoteEditor");
+    void import("../components/Editor/NoteEditor.svelte");
   });
   schedule(() => {
-    void import("../components/CommandPalette");
-    void import("../components/Settings");
+    void import("../components/CommandPalette.svelte");
+    void import("../components/Settings.svelte");
     if (mappingEnabled) {
       // Map view exists only in mapped workspaces — skipping the
       // ConnectionGraph chunk in basic mode trims a non-trivial amount
       // of D3 + force-graph parse work from cold start.
-      void import("../components/RightSidebar/ConnectionGraph");
+      void import("../components/RightSidebar/ConnectionGraph.svelte");
     }
   });
   schedule(() => {
-    void import("../components/Editor/HistorySlider");
-    void import("../components/QuickSwitcher");
-    void import("../components/QuickCapture");
-    void import("../components/Scratchpad");
+    void import("../components/Editor/HistorySlider.svelte");
+    void import("../components/QuickSwitcher.svelte");
+    void import("../components/QuickCapture.svelte");
+    void import("../components/Scratchpad.svelte");
   });
   // 1.1 surfaces — warmed last so they don't compete with the editor warm
   // for first-paint idle time. Reading mode is high-value because flipping
   // into it is a common interaction.
   schedule(() => {
-    void import("../components/Editor/NoteReader");
+    void import("../components/Editor/NoteReader.svelte");
     if (mappingEnabled) {
       // DecisionMatrix is a paths-only surface — skip in basic mode.
-      void import("../components/DecisionMatrix");
+      void import("../components/DecisionMatrix.svelte");
     }
-    void import("../components/FindReplace");
-    void import("../components/Trash");
+    void import("../components/FindReplace.svelte");
+    void import("../components/Trash.svelte");
   });
 }

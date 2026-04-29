@@ -46,9 +46,20 @@ fn path_dir(workspace: &Path, path_name: &str) -> PathBuf {
 }
 
 /// Absolute override file location for (path, slug). Parent dirs may not exist.
+///
+/// Defense-in-depth: reject slugs that aren't filesystem-safe (would
+/// escape via `..`, contain control chars, etc.) and substitute the
+/// shared poison sentinel from `notes`. Callers from the IPC layer
+/// already validated; this guards the case where a malformed slug
+/// reaches us from below (a rogue sync, an import bug).
 fn override_file(workspace: &Path, path_name: &str, slug: &str) -> PathBuf {
+    let safe_slug = if crate::notes::slug_is_filesystem_safe(slug) {
+        slug
+    } else {
+        crate::notes::POISON_SLUG
+    };
     let mut p = path_dir(workspace, path_name);
-    for seg in slug.split('/') {
+    for seg in safe_slug.split('/') {
         p = p.join(seg);
     }
     p.set_extension("md");
