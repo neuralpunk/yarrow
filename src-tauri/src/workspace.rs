@@ -209,6 +209,7 @@ const GITIGNORE: &str = "\
 .yarrow/trash/
 .yarrow/session.json
 .yarrow/drafts/
+.yarrow/path-content/
 ";
 
 pub fn yarrow_dir(root: &Path) -> PathBuf {
@@ -619,6 +620,21 @@ pub fn open(root: &Path) -> Result<WorkspaceConfig> {
     let retention = cfg.preferences.trash_retention_days;
     if retention > 0 {
         let _ = crate::trash::purge_older_than(root, retention as i64);
+    }
+    // 3.0.2 cleanup: any path-content override whose canonical main is
+    // encrypted is a leaked plaintext copy from a pre-3.0.2 build. The
+    // IPC layer now refuses to write these, but the working tree still
+    // holds whatever was already there. Sweep them on every open so the
+    // bleed is staunched on first launch of 3.0.2 and stays staunched
+    // even if a future code path regresses. Best-effort — a failure
+    // here mustn't block opening the workspace.
+    if let Ok(purged) = crate::path_content::purge_overrides_for_encrypted_main(root) {
+        if purged > 0 {
+            eprintln!(
+                "yarrow: purged {} encrypted-note path overrides on workspace open",
+                purged
+            );
+        }
     }
     Ok(cfg)
 }

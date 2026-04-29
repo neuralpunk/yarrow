@@ -170,18 +170,22 @@
 
   $effect(() => {
     if (!menu) return;
-    const close = () => (menu = null);
-    // Defer the click-close registration by a tick. macOS WebKit emits
-    // a `click` event after Ctrl+Click (alongside `contextmenu`), and
-    // without this defer that click would close the menu the same beat
-    // it opened. The user had to keep Ctrl held to keep the menu alive.
-    const timer = window.setTimeout(() => {
-      window.addEventListener("click", close);
-    }, 0);
+    // Timestamp guard: ignore any close trigger that fires within ~250 ms
+    // of the menu opening. macOS WKWebView's trackpad Ctrl+Click emits a
+    // `click` alongside `contextmenu` whose timing setTimeout(0) couldn't
+    // reliably outrun, so the menu would dismiss on the same gesture that
+    // opened it. 250 ms covers the gesture window without making
+    // outside-click dismissal feel sluggish — human cursor-to-dismiss
+    // reaction time runs well past that.
+    const openedAt = performance.now();
+    const close = () => {
+      if (performance.now() - openedAt < 250) return;
+      menu = null;
+    };
+    window.addEventListener("click", close);
     window.addEventListener("resize", close);
     window.addEventListener("scroll", close, true);
     return () => {
-      window.clearTimeout(timer);
       window.removeEventListener("click", close);
       window.removeEventListener("resize", close);
       window.removeEventListener("scroll", close, true);

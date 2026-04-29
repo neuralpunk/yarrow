@@ -142,6 +142,68 @@ pub fn delete_overrides_for_path(workspace: &Path, path_name: &str) -> Result<()
     Ok(())
 }
 
+/// One-shot 3.0.2 cleanup: walk every override file under
+/// `.yarrow/path-content/`, look up the canonical main note, and delete
+/// the override iff main is encrypted. These overrides are leaked
+/// plaintext from before 3.0.2 — the IPC layer now refuses to write
+/// them, but pre-existing files still sit on disk and (on workspaces
+/// created before 3.0.2's `.gitignore` change) in git history.
+///
+/// We can't scrub git history from here — that needs `git filter-repo`
+/// — but we CAN stop the working tree from continuing to surface
+/// plaintext on every read and from being re-staged by the next
+/// auto-checkpoint's `add_all`. Idempotent — does nothing on a clean
+/// workspace, runs in O(overrides) time which on any non-pathological
+/// workspace is "noise" relative to the rest of `workspace::open`.
+///
+/// Returns the count of override files removed so the caller can log /
+/// surface a one-time toast.
+pub fn purge_overrides_for_encrypted_main(workspace: &Path) -> Result<usize> {
+    let root_dir = crate::workspace::yarrow_dir(workspace).join(ROOT_DIR);
+    if !root_dir.exists() {
+        return Ok(0);
+    }
+    let mut purged = 0usize;
+    // Each top-level entry is a sanitized path-name directory.
+    let entries = match std::fs::read_dir(&root_dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(0),
+    };
+    for entry in entries {
+        let entry = match entry { Ok(e) => e, Err(_) => continue };
+        let path_dir = entry.path();
+        if !path_dir.is_dir() { continue; }
+        let path_name = match path_dir.file_name().and_then(|s| s.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        let mut slugs: Vec<String> = Vec::new();
+        if walk(&path_dir, &path_dir, &mut slugs).is_err() {
+            continue;
+        }
+        for slug in slugs {
+            // Read main's frontmatter only (no key needed) to learn
+            // whether main is sealed. read_with_key with key=None
+            // returns the encrypted-but-locked Note shape for an
+            // encrypted note, which is what we want.
+            let main_encrypted = crate::notes::read_with_key(workspace, &slug, None)
+                .ok()
+                .map(|n| n.frontmatter.encrypted)
+                .unwrap_or(false);
+            if !main_encrypted {
+                continue;
+            }
+            // Slug came back from `walk` as a forward-slash path
+            // (notebook-relative). The override_file helper rebuilds
+            // the absolute path the same way write_override does, so
+            // delete_override is the canonical removal funnel.
+            let _ = delete_override(workspace, &path_name, &slug);
+            purged += 1;
+        }
+    }
+    Ok(purged)
+}
+
 /// Helper: resolve the body that should be presented for (path, slug).
 /// Reads override if present, else the main file's body. Returns None if
 /// neither exists (caller decides whether to treat that as 404 or empty).

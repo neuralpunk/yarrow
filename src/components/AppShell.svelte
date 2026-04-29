@@ -1341,6 +1341,25 @@
     const stillOnSavePath =
       effectivePath === currentPath ||
       (pathIsMain(effectivePath) && pathIsMain(currentPath));
+    // ── ENCRYPTED-NOTE GATE ──────────────────────────────────────────
+    // Encrypted notes can only live on the root path. Saving them onto
+    // a scenario would write the decrypted body in plaintext into the
+    // scenario's overlay file (`.yarrow/path-content/<scenario>/<slug>.md`)
+    // — that's the bug fixed in 3.0.2. The Rust IPC also refuses, but
+    // refusing here means the user gets a clear toast instead of a
+    // silent no-op, AND we don't even leak the body across the IPC
+    // boundary in the first place. Single source of truth: the slug's
+    // `encrypted` flag in the workspace summary list.
+    if (!onMain) {
+      const target = notes.find((n) => n.slug === slug);
+      if (target?.encrypted) {
+        toast = {
+          text: t("appshell.toast.encryptedOnPathBlocked"),
+          tone: "soft",
+        };
+        return;
+      }
+    }
     try {
       if (!onMain) {
         const note = await api.saveNoteOnPath(
@@ -3214,6 +3233,33 @@
                   class="btn-yel px-4 py-2 rounded-full text-xs"
                 >
                   {t("appshell.locked.unlock")}
+                </button>
+              </div>
+            </div>
+          {:else if activeNote.encrypted && !!currentPath && currentPath !== stableRootName && currentPath !== "main" && currentPath !== "master"}
+            <!--
+              Encrypted notes are root-only. Showing the editor here would
+              decrypt the body into a writable buffer that, on save, would
+              try to land in `.yarrow/path-content/<scenario>/<slug>.md`
+              as plaintext (the 3.0.2 bug). The Rust IPC also refuses, but
+              swapping the editor for this stub means the user's typing
+              never enters a buffer that thinks it can save in the first
+              place — defense in depth, and a much clearer story for the
+              user than "I typed but nothing happened."
+            -->
+            <div class="flex-1 flex items-center justify-center px-6">
+              <div class="w-[460px] max-w-full bg-bg-soft border border-bd rounded-2xl px-8 py-9 text-center shadow-xs">
+                <div class="font-serif text-2xl text-char mb-2 tracking-tight">
+                  {t("appshell.encryptedOnPath.title")}
+                </div>
+                <p class="text-xs text-t2 mb-6 leading-relaxed font-serif italic">
+                  {t("appshell.encryptedOnPath.body")}
+                </p>
+                <button
+                  onclick={() => handleSwitchPath(stableRootName)}
+                  class="btn-yel px-4 py-2 rounded-full text-xs"
+                >
+                  {t("appshell.encryptedOnPath.switchToRoot")}
                 </button>
               </div>
             </div>

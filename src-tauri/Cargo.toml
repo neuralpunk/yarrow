@@ -1,6 +1,6 @@
 [package]
 name = "yarrow"
-version = "3.0.1"
+version = "3.0.2"
 description = "Yarrow — git-backed note-taking for non-linear thinking"
 authors = ["Yarrow"]
 edition = "2021"

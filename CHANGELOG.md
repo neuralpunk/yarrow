@@ -6,6 +6,28 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [3.0.2] — 2026-04-29
+
+A point release that locks down the path-overlay layer's encrypted-note handling end-to-end. The first pass at the fix closed `cmd_save_note_on_path`, but follow-up reproduction surfaced two adjacent leaks: (1) creating a new scenario from an encrypted note and then typing into the (decrypted) note still ended in plaintext on disk because the editor remained writable while on the new scenario, and (2) the borrow ops (`cmd_borrow_note` / `cmd_borrow_text`) routed encrypted-note bodies through the same plaintext lane. This release treats anything tagged `encrypted: true` like the keys to a nuclear power plant — defensive at every layer. Plus a sturdier macOS context-menu fix that the 3.0.1 tick-defer didn't fully cover.
+
+### Security — encrypted-note lockdown
+
+The full set of changes that put encrypted notes back inside the encryption boundary:
+
+- **`cmd_save_note_on_path` refuses the save** when the slug's canonical main note is encrypted. Previously this lane wrote the body through `notes::serialize` + `path_content::write_override` (a plain `fs::write`), bypassing the encryption funnel in `notes::write_with_key`. The companion `cmd_read_note_on_path` used to hand back the leaked override with `encrypted: false` hardcoded — that's gone too. Comment at the call site is shouted in box-drawing characters so a future change can't quietly drop it. (`commands.rs`)
+- **`cmd_borrow_note` and `cmd_borrow_text` refuse at entry** when the slug's main is encrypted. Both used to call into `cmd_save_note_on_path` (now closed) AND `read_path_body` (also now path-encryption-aware), but the borrow IPCs are themselves user-callable from the frontend — they need their own gate so they can't (a) leak the decrypted body into a scenario's overlay or (b) write an empty body over the encrypted main when the source path has no override and the canonical read returns locked-empty. New shared helper `note_is_encrypted_on_main` — single source of truth so the gate's logic stays consistent across funnels. (`commands.rs`)
+- **`cmd_read_note_on_path` and `read_path_body`** consult main's frontmatter for `encrypted: true` before considering any override, so any leaked override from before 3.0.2 is ignored on read and the canonical sealed-or-decrypted main state is what reaches the editor. (`commands.rs`)
+- **One-shot working-tree cleanup** — on every `workspace::open`, `path_content::purge_overrides_for_encrypted_main` walks `.yarrow/path-content/` and deletes any override whose canonical main note is encrypted. We can't scrub git history from here (that needs `git filter-repo`), but we can stop the working tree from continuing to surface plaintext on every read and from being re-staged by the next auto-checkpoint's `add_all`. Idempotent — does nothing on a clean workspace; logs the count to stderr when it does work. (`workspace.rs`, `path_content.rs`)
+- **`.yarrow/path-content/` is in the workspace `.gitignore`** so the override directory stops being git-tracked on fresh workspaces. Defense-in-depth — even if a future code path re-introduces the leak, sync and history won't carry it. (`workspace.rs`)
+- **Frontend stub when an encrypted note is opened on a non-root path.** The editor (and reader) is replaced with a clear "Encrypted notes live on root" hero card and a "Switch to root" button. The user's keystrokes never enter a buffer that thinks it can save in the first place — the IPC gate is the security layer; this is the UX layer that prevents the user from typing into a no-op editor for 8 seconds before the toast surfaces. (`AppShell.svelte`, en/es/sv strings in `appshell.ts`)
+- **Pre-IPC guard in `handleSave`.** Even if a future UI surface re-mounts the editor on an encrypted note while off-root, `handleSave` checks the slug's `encrypted` flag in the workspace summary before hitting `api.saveNoteOnPath` — surfaces the `appshell.toast.encryptedOnPathBlocked` toast and bails. The decrypted body never crosses the IPC boundary. (`AppShell.svelte`)
+
+**For users affected by 3.0.1 or earlier:** the working-tree cleanup runs automatically on first open of 3.0.2. Plaintext overrides already in **git history** won't disappear on upgrade — once a commit is in history, scrubbing it requires `git filter-repo` or equivalent. If you used encryption and paths together, audit `git log -- .yarrow/path-content/` and remove anything sensitive before sharing or syncing the workspace further.
+
+### Reliability
+
+- **macOS Ctrl+Click context menu on left-sidebar note rows.** 3.0.1's tick-defer (`setTimeout(0)` before attaching the `click` listener) didn't reliably outrun the synthetic `click` that macOS WKWebView emits alongside `contextmenu` for trackpad Ctrl+Click — the menu still dismissed on the same gesture that opened it on some hardware. Replaced with a 250 ms timestamp guard on the close handler: any `click` that fires within 250 ms of the menu opening is ignored, but the listener attaches immediately so legitimate outside-click dismissal stays snappy (well past human cursor-to-dismiss reaction time). (`NoteList.svelte`)
+
 ## [3.0.1] — 2026-04-28
 
 A four-agent parallel review (backend, frontend, data integrity, IPC/a11y) surfaced 7 Critical, 8 High, and 14 Medium findings — all 29 fixed here. `svelte-check` 0/0/0 across 385 files; `cargo check` clean. Full audit in `BUG_AUDIT_2026-04-28.md`.

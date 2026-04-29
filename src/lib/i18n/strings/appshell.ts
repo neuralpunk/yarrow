@@ -210,6 +210,14 @@ export const appshellEN = {
   "appshell.locked.noAccounts": "no accounts",
   "appshell.locked.forgotPassphrase": "I forgot my passphrase",
 
+  // Encrypted-on-non-root hero — encrypted notes only live on the root path
+  "appshell.encryptedOnPath.title": "Encrypted notes live on root",
+  "appshell.encryptedOnPath.body":
+    "To keep your sealed notes from leaking plaintext into a scenario's overlay, we only let you read or edit them on the root path. Switch back to root to keep working.",
+  "appshell.encryptedOnPath.switchToRoot": "Switch to root",
+  "appshell.toast.encryptedOnPathBlocked":
+    "Encrypted notes can only be edited on the root path. Switch to root to save your changes.",
+
   // Empty workspace hero
   "appshell.empty.title": "A blank page, and everything ahead of it",
   "appshell.empty.body":
@@ -561,6 +569,14 @@ export const appshellES: Record<AppshellKey, string> = {
   "appshell.locked.noNetwork": "sin red",
   "appshell.locked.noAccounts": "sin cuentas",
   "appshell.locked.forgotPassphrase": "Olvidé mi frase de acceso",
+
+  // Encrypted-on-non-root hero
+  "appshell.encryptedOnPath.title": "Las notas cifradas viven en el camino raíz",
+  "appshell.encryptedOnPath.body":
+    "Para evitar que tus notas selladas filtren texto en claro a la copia de un escenario, solo te dejamos leerlas o editarlas en el camino raíz. Vuelve al raíz para seguir trabajando.",
+  "appshell.encryptedOnPath.switchToRoot": "Volver al raíz",
+  "appshell.toast.encryptedOnPathBlocked":
+    "Las notas cifradas solo pueden editarse en el camino raíz. Vuelve al raíz para guardar tus cambios.",
 
   // Empty workspace hero
   "appshell.empty.title": "Una página en blanco, y todo lo que viene después",
@@ -917,6 +933,14 @@ export const appshellSV: Record<AppshellKey, string> = {
   "appshell.locked.noNetwork": "inget nätverk",
   "appshell.locked.noAccounts": "inga konton",
   "appshell.locked.forgotPassphrase": "Jag har glömt min lösenfras",
+
+  // Encrypted-on-non-root hero
+  "appshell.encryptedOnPath.title": "Krypterade anteckningar bor på rotvägen",
+  "appshell.encryptedOnPath.body":
+    "För att förhindra att dina förseglade anteckningar läcker klartext in i ett scenarios överlägg, låter vi dig bara läsa eller redigera dem på rotvägen. Byt tillbaka till roten för att fortsätta arbeta.",
+  "appshell.encryptedOnPath.switchToRoot": "Byt till roten",
+  "appshell.toast.encryptedOnPathBlocked":
+    "Krypterade anteckningar kan bara redigeras på rotvägen. Byt till roten för att spara dina ändringar.",
 
   // Empty workspace hero
   "appshell.empty.title": "Ett tomt blad, och allt som väntar framför",

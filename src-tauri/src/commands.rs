@@ -1220,17 +1220,29 @@ pub fn cmd_read_note_on_path(
         });
 
     if let Some(name) = effective {
-        if let Ok(Some(raw)) = path_content::read_override(&root, name, &slug) {
-            // Parse override to yield a Note shape. Overrides are always
-            // plaintext — encryption isn't carried onto path scratch copies.
-            let (fm, body) = notes::parse(&raw);
-            return Ok(notes::Note {
-                slug,
-                frontmatter: fm,
-                body,
-                encrypted: false,
-                locked: false,
-            });
+        // Source-of-truth check: only PLAINTEXT notes may have per-path
+        // overrides. If main is encrypted, ignore any override on disk
+        // (a leaked artifact from before 3.0.2 — those files held the
+        // user's plaintext under a frontmatter that lied about being
+        // encrypted) and fall through to the canonical main read so the
+        // user sees the proper sealed/locked state.
+        let main_is_encrypted = notes::read_with_key(&root, &slug, None)
+            .ok()
+            .map(|n| n.frontmatter.encrypted)
+            .unwrap_or(false);
+        if !main_is_encrypted {
+            if let Ok(Some(raw)) = path_content::read_override(&root, name, &slug) {
+                // Parse override to yield a Note shape. Overrides are always
+                // plaintext — encryption isn't carried onto path scratch copies.
+                let (fm, body) = notes::parse(&raw);
+                return Ok(notes::Note {
+                    slug,
+                    frontmatter: fm,
+                    body,
+                    encrypted: false,
+                    locked: false,
+                });
+            }
         }
     }
     notes::read_with_key(&root, &slug, key.as_ref())
@@ -1270,6 +1282,26 @@ pub fn cmd_save_note_on_path(
     // the user may edit those per-path fields later.
     let main_note = notes::read_with_key(&root, &slug, None).ok();
     let fm = main_note.map(|n| n.frontmatter).unwrap_or_default();
+    // ╔═════════════════════════════════════════════════════════════════╗
+    // ║  ENCRYPTED-NOTE GATE — DO NOT REMOVE WITHOUT REREADING THE ║
+    // ║  3.0.2 CHANGELOG. Per-path overrides land in plaintext at      ║
+    // ║  .yarrow/path-content/. notes::serialize doesn't encrypt and   ║
+    // ║  write_override is a plain fs::write, so writing an encrypted   ║
+    // ║  note's decrypted body through this lane leaks the cleartext   ║
+    // ║  to disk (and — pre-3.0.2 — into git history, because the      ║
+    // ║  override directory wasn't gitignored). Refuse the save here   ║
+    // ║  so the frontend can route the user to "decrypt first or stay  ║
+    // ║  on root." This is the single most security-critical guard in  ║
+    // ║  the path-overlay layer; the read-side guards in               ║
+    // ║  cmd_read_note_on_path / read_path_body / the borrow guards    ║
+    // ║  exist to keep this invariant intact under adjacent flows.     ║
+    // ╚═════════════════════════════════════════════════════════════════╝
+    if fm.encrypted {
+        return Err(YarrowError::Invalid(
+            "encrypted notes can't have per-path overrides — \
+             decrypt the note first, or edit it on the root path so it stays sealed.".into(),
+        ));
+    }
     let full = notes::serialize(&fm, &body);
     path_content::write_override(&root, &name, &slug, &full)?;
     state.touch_activity();
@@ -1340,9 +1372,18 @@ fn read_path_body(
         _ => path_name.is_empty(),
     };
     if !on_root {
-        if let Ok(Some(raw)) = path_content::read_override(workspace, path_name, slug) {
-            let (_fm, body) = notes::parse(&raw);
-            return Ok(body);
+        // Same source-of-truth check as `cmd_read_note_on_path`: ignore
+        // overrides for encrypted notes; the canonical read below
+        // surfaces the locked-note error if the workspace is locked.
+        let main_is_encrypted = notes::read_with_key(workspace, slug, None)
+            .ok()
+            .map(|n| n.frontmatter.encrypted)
+            .unwrap_or(false);
+        if !main_is_encrypted {
+            if let Ok(Some(raw)) = path_content::read_override(workspace, path_name, slug) {
+                let (_fm, body) = notes::parse(&raw);
+                return Ok(body);
+            }
         }
     }
     // Fall through: read the canonical body. Encryption isn't crossed
@@ -1351,6 +1392,19 @@ fn read_path_body(
     // canonical read. That's the right failure mode.
     let n = notes::read_with_key(workspace, slug, None)?;
     Ok(n.body)
+}
+
+/// Hard gate: any IPC that would cross plaintext over an encrypted note
+/// (borrow, override, etc.) consults this. Returns true when the slug's
+/// canonical main note carries `encrypted: true`. Errors from the read
+/// (note doesn't exist, parse failure) are treated as "not encrypted" so
+/// fresh-on-path notes still work — the only case that matters is "main
+/// IS encrypted and we'd be flowing plaintext through a non-main lane."
+fn note_is_encrypted_on_main(workspace: &std::path::Path, slug: &str) -> bool {
+    notes::read_with_key(workspace, slug, None)
+        .ok()
+        .map(|n| n.frontmatter.encrypted)
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -1362,6 +1416,20 @@ pub fn cmd_borrow_note(
 ) -> Result<notes::Note> {
     notes::validate_slug(&slug)?;
     let root = state.require_root()?;
+    // Borrow flows the source body through `cmd_save_note_on_path` — for
+    // encrypted notes that means either (a) leaking decrypted plaintext
+    // into a non-root path's `.yarrow/path-content/` overlay, or (b)
+    // overwriting the encrypted main with an empty body (when source is
+    // a non-root path that has no override and main is locked-from-our-
+    // POV via key=None inside `read_path_body`). Both are unacceptable.
+    // Refuse at entry — the user must decrypt first or use the canonical
+    // root path for any borrow that touches an encrypted note.
+    if note_is_encrypted_on_main(&root, &slug) {
+        return Err(YarrowError::Invalid(
+            "Borrow can't operate on encrypted notes — they live only on \
+             the root path. Decrypt the note first, or work with it on root.".into(),
+        ));
+    }
     let body = read_path_body(&root, &slug, &source_path)?;
     // Reuse the existing path-aware save so checkpointing /
     // overlay-frontmatter-seeding behave the same as a regular edit on
@@ -1383,6 +1451,12 @@ pub fn cmd_borrow_text(
 ) -> Result<notes::Note> {
     notes::validate_slug(&slug)?;
     let root = state.require_root()?;
+    if note_is_encrypted_on_main(&root, &slug) {
+        return Err(YarrowError::Invalid(
+            "Borrow can't operate on encrypted notes — they live only on \
+             the root path. Decrypt the note first, or work with it on root.".into(),
+        ));
+    }
     let source_body = read_path_body(&root, &slug, &source_path)?;
     let mut dest_body = read_path_body(&root, &slug, &dest_path)?;
     // Clamp ranges to the actual byte lengths so a stale frontend
