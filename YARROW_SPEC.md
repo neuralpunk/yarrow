@@ -208,7 +208,7 @@ Opening an existing workspace: just open the folder. Yarrow detects `.yarrow/con
 ### 6.2 Auto-Checkpointing
 
 - Every note save triggers a git commit via git2-rs
-- Debounced: waits 3 seconds after last keystroke before committing
+- Debounced: waits 8 seconds after last keystroke before committing
 - Commit message is auto-generated as `checkpoint: <note-title> <timestamp>` — user never sees this
 - **Optional "What were you thinking?" prompt**: when a user closes a note (not on every save), a small non-modal toast appears at the bottom: `Leave a note about what you were thinking? (optional)` with a text input. If filled in, it is appended to the commit message. If ignored, it disappears after 5 seconds.
 
@@ -368,7 +368,7 @@ remote_type = "github"  # github | gitea | custom
 
 [preferences]
 decay_days = 60
-autocheckpoint_debounce_ms = 3000
+autocheckpoint_debounce_ms = 8000
 focus_mode_default = false
 ask_thinking_on_close = true
 ```

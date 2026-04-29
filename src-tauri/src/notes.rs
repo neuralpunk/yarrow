@@ -648,6 +648,15 @@ pub fn encrypt_note(root: &Path, slug: &str, key: &MasterKey) -> Result<Note> {
     fm.kdf = "argon2id".into();
     fm.nonce.clear(); // fresh nonce on seal
     fm.salt.clear(); // re-filled from workspace envelope
+    // Annotations are user prose that lived in plaintext frontmatter.
+    // They cannot survive the encryption flip — `serialize` skips the
+    // block when `fm.encrypted` is true, and writing back here would
+    // either silently drop them on disk or (worse) leave a stale
+    // plaintext copy in some sync state. Drop them explicitly so the
+    // intent is auditable and the in-memory `Note` we hand back to the
+    // caller matches what's on disk. The user's UI flow already warned
+    // them when invoking encrypt; this is the data-side enforcement.
+    fm.annotations.clear();
     write_with_key(root, slug, &existing.body, Some(fm), Some(key))
 }
 
@@ -698,6 +707,10 @@ fn atomic_write(path: &Path, contents: &[u8]) -> Result<()> {
         let _ = std::fs::remove_file(&tmp);
         return Err(e.into());
     }
+    // Make the rename itself durable across power loss — fsync of the
+    // tmp file alone isn't enough on POSIX; the directory inode entry
+    // for the rename also has to land. Best-effort.
+    let _ = workspace::fsync_dir(parent);
     Ok(())
 }
 
@@ -747,12 +760,41 @@ pub fn rename(
         }
         return Ok(updated);
     }
+    // Atomically reserve a free target slug so a concurrent writer can't
+    // race us into the same path between the existence check and the
+    // rename. `create_new(true)` returns `AlreadyExists` if the file is
+    // already there, taking the place of a TOCTOU-prone `exists()` probe.
+    // The placeholder file is then atomically replaced by `fs::rename`.
     let mut n = 1;
-    while note_path(root, &new_slug).exists() {
-        n += 1;
-        new_slug = format!("{}-{}", slug_from_title(new_title), n);
+    let target_path = loop {
+        let candidate = note_path(root, &new_slug);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(_) => break candidate,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                n += 1;
+                new_slug = format!("{}-{}", slug_from_title(new_title), n);
+                if n > 9999 {
+                    return Err(YarrowError::Other(
+                        "could not find a free slug for rename".into(),
+                    ));
+                }
+            }
+            Err(e) => return Err(e.into()),
+        }
+    };
+    if let Err(e) = std::fs::rename(note_path(root, old_slug), &target_path) {
+        // Drop the reservation if the actual rename failed so we don't
+        // leak an empty placeholder under the new slug.
+        let _ = std::fs::remove_file(&target_path);
+        return Err(e.into());
     }
-    std::fs::rename(note_path(root, old_slug), note_path(root, &new_slug))?;
+    if let Some(parent) = target_path.parent() {
+        let _ = workspace::fsync_dir(parent);
+    }
     // The old slug no longer exists on disk, so its cache row would
     // become a ghost if we didn't clear it. The subsequent `write` will
     // upsert under the new slug via the `touch_index_after_write` hook.
@@ -952,16 +994,27 @@ pub fn add_link(root: &Path, from: &str, to: &str, link_type: &str) -> Result<()
     Ok(())
 }
 
-pub fn remove_link(root: &Path, from: &str, to: &str) -> Result<()> {
+pub fn remove_link(root: &Path, from: &str, to: &str, link_type: &str) -> Result<()> {
+    // Match (target, type). `add_link` allows multiple typed edges between
+    // the same pair (e.g. A —supports→ B and A —challenges→ B); a previous
+    // shape stripped every edge whose target matched, blowing the others
+    // away as collateral damage.
     let mut from_note = read(root, from)?;
     let before = from_note.frontmatter.links.len();
-    from_note.frontmatter.links.retain(|l| l.target != to);
+    from_note
+        .frontmatter
+        .links
+        .retain(|l| !(l.target == to && l.link_type == link_type));
     if from_note.frontmatter.links.len() != before {
         write(root, from, &from_note.body, Some(from_note.frontmatter))?;
     }
+    let back_type = reciprocal_type(link_type);
     if let Ok(mut to_note) = read(root, to) {
         let before = to_note.frontmatter.links.len();
-        to_note.frontmatter.links.retain(|l| l.target != from);
+        to_note
+            .frontmatter
+            .links
+            .retain(|l| !(l.target == from && l.link_type == back_type));
         if to_note.frontmatter.links.len() != before {
             write(root, to, &to_note.body, Some(to_note.frontmatter))?;
         }
@@ -1076,7 +1129,16 @@ pub(crate) fn serialize(fm: &Frontmatter, body: &str) -> String {
             out.push_str(&format!("nonce: {}\n", yaml_escape(&fm.nonce)));
         }
     }
-    if !fm.annotations.is_empty() {
+    // Annotation bodies are user prose (margin commentary). Writing them
+    // in plaintext frontmatter on an encrypted note defeats the whole
+    // point of per-note encryption — anyone reading the .md file gets the
+    // marginalia even though the body is sealed. Skip the block entirely
+    // when `fm.encrypted` is true; `cmd_set_annotations` and
+    // `cmd_encrypt_note` enforce the dual invariant from the IPC side
+    // (refuse new annotations on encrypted notes; strip existing ones
+    // when encrypting). On disk + in transport, encrypted notes never
+    // carry plaintext annotations.
+    if !fm.annotations.is_empty() && !fm.encrypted {
         out.push_str("annotations:\n");
         for a in &fm.annotations {
             out.push_str(&format!("  - body: {}\n", yaml_escape(&a.body)));
@@ -1097,13 +1159,56 @@ pub(crate) fn serialize(fm: &Frontmatter, body: &str) -> String {
 }
 
 fn yaml_escape(s: &str) -> String {
-    if s.chars().any(|c| c == ':' || c == '#' || c == '"' || c == '\'' || c == '\n') {
-        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-    } else if s.is_empty() {
-        "\"\"".to_string()
-    } else {
-        s.to_string()
+    // Robust serializer for our minimal YAML emitter. The previous
+    // implementation only quoted strings containing `:`, `#`, `"`, `'`, or
+    // `\n` — it missed every YAML indicator character at the *start* of a
+    // string (`[`, `*`, `&`, `!`, `>`, `|`, `%`, `@`, `` ` ``, `?`, `-`,
+    // `{`, leading whitespace), reserved scalars (`true`/`false`/`null`/
+    // `yes`/`no`/`on`/`off`/`~`), and numeric-looking strings. A title like
+    // `[draft] note` would emit invalid YAML; on re-parse, the panic-catch
+    // in `parse()` falls back to a default frontmatter, *silently dropping
+    // the encryption flags / salt / nonce* — making the note unrecoverable.
+    if s.is_empty() {
+        return "\"\"".to_string();
     }
+    let first = s.chars().next().unwrap();
+    let last = s.chars().last().unwrap();
+    let lower = s.to_ascii_lowercase();
+    let needs_quotes =
+        s.chars().any(|c| matches!(c, ':' | '#' | '\n' | '\r' | '\t' | '"' | '\'' | '\\'))
+            || matches!(
+                first,
+                ' ' | '\t' | '-' | '?' | ':' | ',' | '[' | ']' | '{' | '}'
+                | '#' | '&' | '*' | '!' | '|' | '>' | '\'' | '"' | '%' | '@' | '`'
+            )
+            || first == ' '
+            || last == ' '
+            || matches!(
+                lower.as_str(),
+                "true" | "false" | "null" | "yes" | "no" | "on" | "off" | "~"
+            )
+            || s.parse::<f64>().is_ok()
+            || s.parse::<i64>().is_ok();
+
+    if !needs_quotes {
+        return s.to_string();
+    }
+    // Double-quoted YAML scalar: encode `\`, `"`, and control characters
+    // so the round-trip survives newlines / tabs / unicode-escape paste.
+    let mut buf = String::with_capacity(s.len() + 2);
+    buf.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => buf.push_str(r"\\"),
+            '"' => buf.push_str("\\\""),
+            '\n' => buf.push_str(r"\n"),
+            '\r' => buf.push_str(r"\r"),
+            '\t' => buf.push_str(r"\t"),
+            _ => buf.push(c),
+        }
+    }
+    buf.push('"');
+    buf
 }
 
 pub fn seed_note_markdown() -> String {

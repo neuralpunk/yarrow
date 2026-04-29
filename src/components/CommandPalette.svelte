@@ -98,6 +98,24 @@
     currentMode?: ModeId;
     onSetMode?: (id: ModeId) => void;
     onOpenModeSettings?: () => void;
+    // Plugin features. Wired always (not gated on the active persona) so
+    // the "modes are biases, not gates" invariant holds — every feature
+    // stays one ⌘K away regardless of which mode is active.
+    onOpenStreak?: () => void;
+    onOpenOpenQuestions?: () => void;
+    hasOpenQuestions?: boolean;
+    onOpenSources?: () => void;
+    onCreateSource?: () => void;
+    onOpenDecisionLog?: () => void;
+    onCreateAdr?: () => void;
+    onToggleCodeHighlight?: () => void;
+    codeHighlightOn?: boolean;
+    onOpenSensitive?: () => void;
+    onOpenFollowUps?: () => void;
+    onOpenSessionKit?: () => void;
+    onOpenRecipesLibrary?: () => void;
+    onToggleCookMode?: () => void;
+    cookModeOn?: boolean;
   }
 
   let props: Props = $props();
@@ -220,6 +238,21 @@
       ...(props.onPrintCurrentPath ? [{ kind: "command" as const, key: "print-current-path", label: t("modals.commandPalette.cmdPrintPath"), sublabel: t("modals.commandPalette.cmdPrintPathSub"), run: () => { onClose(); props.onPrintCurrentPath!(); } }] : []),
       ...(props.onClipRecipe ? [{ kind: "command" as const, key: "clip-recipe", label: t("modals.commandPalette.cmdClipRecipe"), sublabel: t("modals.commandPalette.cmdClipRecipeSub"), run: () => { onClose(); props.onClipRecipe!(); } }] : []),
       ...(props.onAddToShoppingList ? [{ kind: "command" as const, key: "add-to-shopping-list", label: t("modals.commandPalette.cmdAddToShoppingList"), sublabel: t("modals.commandPalette.cmdAddToShoppingListSub"), run: () => { onClose(); props.onAddToShoppingList!(); } }] : []),
+      // Persona-plugin commands. Each is gated on the prop being defined
+      // — AppShell pipes them all unconditionally so they're always
+      // reachable regardless of the active mode.
+      ...(props.onOpenStreak ? [{ kind: "command" as const, key: "writer-streak", label: t("modals.commandPalette.cmdStreak"), sublabel: t("modals.commandPalette.cmdStreakSub"), run: () => { onClose(); props.onOpenStreak!(); } }] : []),
+      ...(props.onOpenOpenQuestions ? [{ kind: "command" as const, key: "researcher-questions", label: t("modals.commandPalette.cmdOpenQuestions"), sublabel: props.hasOpenQuestions ? t("modals.commandPalette.cmdOpenQuestionsSub") : t("modals.commandPalette.cmdOpenQuestionsSubEmpty"), run: () => { onClose(); props.onOpenOpenQuestions!(); } }] : []),
+      ...(props.onOpenSources ? [{ kind: "command" as const, key: "researcher-sources", label: t("modals.commandPalette.cmdOpenSources"), sublabel: t("modals.commandPalette.cmdOpenSourcesSub"), run: () => { onClose(); props.onOpenSources!(); } }] : []),
+      ...(props.onCreateSource ? [{ kind: "command" as const, key: "researcher-new-source", label: t("modals.commandPalette.cmdNewSource"), sublabel: t("modals.commandPalette.cmdNewSourceSub"), run: () => { onClose(); props.onCreateSource!(); } }] : []),
+      ...(props.onOpenDecisionLog ? [{ kind: "command" as const, key: "developer-decision-log", label: t("modals.commandPalette.cmdDecisionLog"), sublabel: t("modals.commandPalette.cmdDecisionLogSub"), run: () => { onClose(); props.onOpenDecisionLog!(); } }] : []),
+      ...(props.onCreateAdr ? [{ kind: "command" as const, key: "developer-new-adr", label: t("modals.commandPalette.cmdNewAdr"), sublabel: t("modals.commandPalette.cmdNewAdrSub"), run: () => { onClose(); props.onCreateAdr!(); } }] : []),
+      ...(props.onToggleCodeHighlight ? [{ kind: "command" as const, key: "developer-code-highlight", label: props.codeHighlightOn ? t("modals.commandPalette.cmdCodeHighlightOff") : t("modals.commandPalette.cmdCodeHighlightOn"), sublabel: t("modals.commandPalette.cmdCodeHighlightSub"), run: () => { onClose(); props.onToggleCodeHighlight!(); } }] : []),
+      ...(props.onOpenSensitive ? [{ kind: "command" as const, key: "clinician-sensitive", label: t("modals.commandPalette.cmdSensitive"), sublabel: t("modals.commandPalette.cmdSensitiveSub"), run: () => { onClose(); props.onOpenSensitive!(); } }] : []),
+      ...(props.onOpenFollowUps ? [{ kind: "command" as const, key: "clinician-follow-ups", label: t("modals.commandPalette.cmdFollowUps"), sublabel: t("modals.commandPalette.cmdFollowUpsSub"), run: () => { onClose(); props.onOpenFollowUps!(); } }] : []),
+      ...(props.onOpenSessionKit ? [{ kind: "command" as const, key: "clinician-session-kit", label: t("modals.commandPalette.cmdSessionKit"), sublabel: t("modals.commandPalette.cmdSessionKitSub"), run: () => { onClose(); props.onOpenSessionKit!(); } }] : []),
+      ...(props.onOpenRecipesLibrary ? [{ kind: "command" as const, key: "cooking-recipes", label: t("modals.commandPalette.cmdRecipesLibrary"), sublabel: t("modals.commandPalette.cmdRecipesLibrarySub"), run: () => { onClose(); props.onOpenRecipesLibrary!(); } }] : []),
+      ...(props.onToggleCookMode ? [{ kind: "command" as const, key: "cooking-cook-mode", label: props.cookModeOn ? t("modals.commandPalette.cmdCookModeOff") : t("modals.commandPalette.cmdCookModeOn"), sublabel: t("modals.commandPalette.cmdCookModeSub"), run: () => { onClose(); props.onToggleCookMode!(); } }] : []),
     ];
 
     const enc = props.encryption;
@@ -393,7 +426,7 @@
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         cursor = Math.max(0, cursor - 1);
-      } else if (e.key === "Enter") {
+      } else if (e.key === "Enter" && !e.isComposing) {
         e.preventDefault();
         const a = actions[cursor];
         if (a) {
@@ -456,6 +489,21 @@
       ? baseHint + "  " + t("modals.commandPalette.didYouMean", { suggestion: guess })
       : baseHint;
   });
+
+  // Backdrop dismissal — close only when both `mousedown` and the
+  // matching `click` landed on the backdrop itself, so a drag that
+  // started inside the palette (text selection in the input, etc.)
+  // and bled out onto the backdrop doesn't dismiss.
+  let mouseDownOnBackdrop = false;
+  function onBackdropMouseDown(e: MouseEvent) {
+    mouseDownOnBackdrop = e.target === e.currentTarget;
+  }
+  function onBackdropClick(e: MouseEvent) {
+    if (mouseDownOnBackdrop && e.target === e.currentTarget) {
+      onClose();
+    }
+    mouseDownOnBackdrop = false;
+  }
 </script>
 
 {#snippet kbd(label: string)}
@@ -471,14 +519,16 @@
 {/snippet}
 
 {#if open}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="fixed inset-0 z-50 flex items-start justify-center bg-char/20 pt-24 animate-fadeIn"
-    onmousedown={onClose}
+    onmousedown={onBackdropMouseDown}
+    onclick={onBackdropClick}
     role="presentation"
   >
     <div
       class="w-[540px] max-w-[92vw] bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden animate-slideUp"
-      onmousedown={(e) => e.stopPropagation()}
       role="dialog"
       aria-modal="true"
       aria-label={t("modals.commandPalette.placeholder")}

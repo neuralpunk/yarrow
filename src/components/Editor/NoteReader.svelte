@@ -295,17 +295,30 @@
 
 <script module lang="ts">
   function rewriteWikilinks(html: string): string {
-    return html
-      .replace(/!\[\[([^\]\n]+)\]\]/g, (_m, raw: string) => {
-        const target = raw.split(/[|#]/)[0].trim();
-        const label = raw.split("|").pop() ?? raw;
-        return `<a class="yarrow-wikilink yarrow-embed" href="yarrow:${encodeURIComponent(target)}">${escapeHtml(label)}</a>`;
+    // Skip rewrites inside <code> / <pre> blocks so a literal
+    // `[[example]]` printed in a code sample doesn't turn into a
+    // wikilink. `String.split` with a capturing group keeps the matched
+    // boundaries in the output array — odd indices are the code/pre
+    // segments (left untouched), even indices are the surrounding
+    // markup we still want to transform.
+    const blockRe = /(<code[^>]*>[\s\S]*?<\/code>|<pre[^>]*>[\s\S]*?<\/pre>)/gi;
+    const parts = html.split(blockRe);
+    return parts
+      .map((part, i) => {
+        if (i % 2 === 1) return part;
+        return part
+          .replace(/!\[\[([^\]\n]+)\]\]/g, (_m, raw: string) => {
+            const target = raw.split(/[|#]/)[0].trim();
+            const label = raw.split("|").pop() ?? raw;
+            return `<a class="yarrow-wikilink yarrow-embed" href="yarrow:${encodeURIComponent(target)}">${escapeHtml(label)}</a>`;
+          })
+          .replace(/\[\[([^\]\n]+)\]\]/g, (_m, raw: string) => {
+            const target = raw.split(/[|#]/)[0].trim();
+            const label = raw.split("|").pop() ?? raw;
+            return `<a class="yarrow-wikilink" href="yarrow:${encodeURIComponent(target)}">${escapeHtml(label)}</a>`;
+          });
       })
-      .replace(/\[\[([^\]\n]+)\]\]/g, (_m, raw: string) => {
-        const target = raw.split(/[|#]/)[0].trim();
-        const label = raw.split("|").pop() ?? raw;
-        return `<a class="yarrow-wikilink" href="yarrow:${encodeURIComponent(target)}">${escapeHtml(label)}</a>`;
-      });
+      .join("");
   }
   function escapeHtml(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

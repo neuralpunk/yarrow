@@ -106,7 +106,7 @@
             bind:this={inputRef}
             type={showPw ? "text" : "password"}
             bind:value={password}
-            onkeydown={(e) => { if (e.key === "Enter") submit(); }}
+            onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) submit(); }}
             class="flex-1 px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm"
             placeholder={t("modals.unlock.passwordPlaceholder")}
           />
@@ -136,7 +136,7 @@
           id="unlock-newpw"
           type={showPw ? "text" : "password"}
           bind:value={newPw}
-          onkeydown={(e) => { if (e.key === "Enter") submit(); }}
+          onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) submit(); }}
           class="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-3"
           placeholder={t("modals.unlock.newPasswordPlaceholder")}
         />

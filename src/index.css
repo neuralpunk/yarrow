@@ -637,7 +637,12 @@ html[data-theme="dracula"] {
      so the wikilink / active-row pill reads on the canvas. */
   --yel:       #BD93F9;   /* active paths, pills, icons */
   --yel2:      #D6B4FB;   /* hover — lifted purple */
-  --yelp:      rgba(189, 147, 249, 0.18); /* pale-accent — active-row bg */
+  /* Opaque pale-accent. Was previously rgba(189,147,249,0.18) which
+     looked elegant for ::selection but turned the radial menu's
+     hovered wedge transparent — editor text behind the radial showed
+     through. The hex is the alpha-composited equivalent over `--s1`,
+     so the active-row tint reads almost identically. */
+  --yelp:      #3D3654;   /* pale-accent — active-row bg */
   --yeld:      #BD93F9;   /* dark-accent — text on yelp wash */
 
   /* ── supporting accents (Dracula vocabulary) ──────────── */
@@ -3147,11 +3152,6 @@ button, a {
   50%      { opacity: 1;    }
 }
 .saved-breath { animation: savedBreath 1.6s ease-in-out; }
-
-/* Subtle related-highlight on note list rows */
-.note-row[data-related="true"] {
-  box-shadow: inset 2px 0 0 var(--accent2-dim);
-}
 
 /* ─── Ley Lines: inline diff against main ────────────────────────── */
 .cm-ley-gutter {

@@ -135,7 +135,7 @@
             oninput={() => (error = null)}
             placeholder={t("modals.timerPicker.customPlaceholder")}
             onkeydown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.isComposing) {
                 e.preventDefault();
                 insertWith(duration);
               }

@@ -330,6 +330,7 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from "svelte";
   import WikilinkPreview, {
     cachePreview as sharedCachePreview,
     getCachedPreview as sharedGetCachedPreview,
@@ -516,10 +517,20 @@
   });
 
   // Title-revert nonce — pulls displayed title back to canonical when the
-  // parent rejects/cancels a rename.
+  // parent rejects/cancels a rename. The effect must depend ONLY on the
+  // nonce; reading `note.frontmatter.title` reactively would re-fire
+  // every time the parent passed a refreshed `note` prop (e.g. after a
+  // save round-trip) and clobber the user's mid-edit title input. We
+  // track the latest seen nonce ourselves and `untrack` the title read.
+  let lastTitleRevertNonce: number | null = null;
   $effect(() => {
-    if (titleRevertNonce == null) return;
-    title = note.frontmatter.title || note.slug;
+    const nonce = titleRevertNonce;
+    if (nonce == null) return;
+    if (nonce === lastTitleRevertNonce) return;
+    lastTitleRevertNonce = nonce;
+    untrack(() => {
+      title = note.frontmatter.title || note.slug;
+    });
   });
 
   function resolveWikilink(query: string): NoteSummary | undefined {
@@ -1741,7 +1752,7 @@
       bind:value={title}
       onblur={handleTitleBlur}
       onkeydown={(e) => {
-        if (e.key === "Enter")
+        if (e.key === "Enter" && !e.isComposing)
           (e.currentTarget as HTMLInputElement).blur();
       }}
       placeholder={t("editor.note.titlePlaceholder")}

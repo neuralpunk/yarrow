@@ -233,7 +233,7 @@
         type="text"
         bind:value={title}
         onkeydown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === "Enter" && !e.isComposing) {
             e.preventDefault();
             keepAsNote();
           }

@@ -81,7 +81,7 @@
       bind:this={inputRef}
       bind:value
       onkeydown={(e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
+        if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
           e.preventDefault();
           commit();
         }

@@ -138,7 +138,7 @@
           type="text"
           bind:value={newTitle}
           onkeydown={(e) => {
-            if (e.key === "Enter" && newTitle.trim()) createAndPick();
+            if (e.key === "Enter" && !e.isComposing && newTitle.trim()) createAndPick();
           }}
           placeholder={t("modals.mainNote.newPlaceholder")}
           class="flex-1 px-3 py-1.5 bg-s1 border border-bd rounded-md text-char text-sm placeholder:text-t3 focus:outline-hidden focus:border-yel"

@@ -117,7 +117,7 @@
           step="50"
           bind:value={goalDraft}
           onkeydown={(e) => {
-            if (e.key === "Enter") commit();
+            if (e.key === "Enter" && !e.isComposing) commit();
           }}
           class="flex-1 px-2.5 py-1.5 bg-bg border border-bd rounded-md text-char text-sm font-mono focus:outline-hidden focus:border-yel"
         />

@@ -258,8 +258,8 @@ export const api = {
   // links
   addLink: (from: string, to: string, linkType: LinkType) =>
     invoke<void>("cmd_add_link", { from, to, linkType }),
-  removeLink: (from: string, to: string) =>
-    invoke<void>("cmd_remove_link", { from, to }),
+  removeLink: (from: string, to: string, linkType: LinkType) =>
+    invoke<void>("cmd_remove_link", { from, to, linkType }),
 
   // paths
   listPaths: () => invoke<PathInfo[]>("cmd_list_paths"),

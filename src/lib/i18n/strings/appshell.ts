@@ -95,6 +95,7 @@ export const appshellEN = {
 
   // Print / locked / clipboard / dictionary toasts and errors
   "appshell.toast.printError": "Couldn't prepare print preview: {error}",
+  "appshell.toast.printNoNote": "Open a note before pressing Print.",
   "appshell.toast.copied": "Copied to clipboard",
   "appshell.toast.shoppingListAdded":
     "Added {added} ingredient(s) from {source} to Shopping List{dupes}",
@@ -439,6 +440,7 @@ export const appshellES: Record<AppshellKey, string> = {
   // Print / locked / clipboard / dictionary toasts and errors
   "appshell.toast.printError":
     "No se pudo preparar la vista previa de impresión: {error}",
+  "appshell.toast.printNoNote": "Abre una nota antes de pulsar Imprimir.",
   "appshell.toast.copied": "Copiado al portapapeles",
   "appshell.toast.shoppingListAdded":
     "Añadido(s) {added} ingrediente(s) de {source} a la Lista de la compra{dupes}",
@@ -790,6 +792,7 @@ export const appshellSV: Record<AppshellKey, string> = {
   // Print / locked / clipboard / dictionary toasts and errors
   "appshell.toast.printError":
     "Det gick inte att förbereda förhandsvisningen för utskrift: {error}",
+  "appshell.toast.printNoNote": "Öppna en anteckning innan du trycker Skriv ut.",
   "appshell.toast.copied": "Kopierat till urklipp",
   "appshell.toast.shoppingListAdded":
     "Lade till {added} ingrediens(er) från {source} i Inköpslistan{dupes}",

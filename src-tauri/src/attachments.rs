@@ -45,10 +45,17 @@ pub fn attachments_dir(root: &Path) -> PathBuf {
 
 /// Extensions we actively preview inline. Other types still attach and link,
 /// they just don't get an <img> widget.
+///
+/// SVG is deliberately excluded. Even when CSP blocks remote-script loads,
+/// SVG can carry inline `<script>`, `<foreignObject>` HTML, and event
+/// handlers; rendering as `<img>` sandboxes most of that in modern WebViews
+/// but a downstream change to `<object>` / `<iframe>` rendering (or a
+/// regression in CSP) would re-open the XSS surface. SVG attachments are
+/// still uploaded and linked — they just don't get an inline preview.
 pub fn is_image_ext(ext: &str) -> bool {
     matches!(
         ext.to_ascii_lowercase().as_str(),
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "avif",
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "avif",
     )
 }
 

@@ -1358,6 +1358,10 @@ fn sync_with_remote(
     let mut per_ref_rejections: Vec<String>;
     let mut retries = 0usize;
     loop {
+        // Fresh accumulator every iteration. After a retry, prior-iteration
+        // rejections must NOT carry over into the post-loop diagnostic — a
+        // shared mutex would leak the pre-retry "non-fast-forward" message
+        // into the success branch.
         let rejections: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
             std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut push_opts = PushOptions::new();
@@ -1514,6 +1518,13 @@ fn changed_paths_between(repo: &Repository, from: Oid, to: Oid) -> Vec<String> {
 /// True when a per-ref rejection looks like "another client raced us
 /// to the server" rather than a real user-actionable error (auth fail,
 /// quota exceeded, hook decline).
+///
+/// IMPORTANT: do NOT match the bare token "rejected". Pre-receive hooks
+/// (quota / branch protection / validation) emit messages that contain
+/// "rejected" but are NOT ref races — retrying with a force-checkout
+/// would discard any working-tree state diverged in between, and the
+/// retry would just hit the same hook decline anyway. Whitelist on the
+/// precise libgit2 / git-protocol race shapes only.
 fn is_ref_race(msg: &str) -> bool {
     let l = msg.to_ascii_lowercase();
     l.contains("non-fast-forward")
@@ -1522,7 +1533,6 @@ fn is_ref_race(msg: &str) -> bool {
         || l.contains("incorrect old value")
         || l.contains("failed to update ref")
         || l.contains("stale info")
-        || l.contains("rejected")
 }
 
 enum MergeResult {
@@ -2832,34 +2842,47 @@ fn list_keepsakes_oids(repo: &Repository) -> std::collections::HashSet<Oid> {
     out
 }
 
-/// Best-effort: ask the system `git` to prune unreachable objects so the
-/// plaintext blobs no longer sit in `.git/objects`. If `git` isn't on PATH
-/// we quietly skip — the rewrite still severed every reference, the loose
-/// objects just linger until the user runs `git gc` themselves.
-pub fn gc_unreachable(repo: &Repository) -> Result<()> {
+/// Outcome of an unreachable-objects prune. Encryption-at-history needs
+/// to know whether `git gc` actually ran — without the prune, plaintext
+/// blobs stay in `.git/objects/` recoverable via `git fsck --unreachable`,
+/// and the UI's "history sealed" promise becomes a lie.
+#[derive(Debug)]
+pub enum GcOutcome {
+    /// `git gc --prune=now` ran and exited 0.
+    Pruned,
+    /// `git` is not on PATH. The rewrite + reflog drop still ran, but
+    /// loose plaintext blobs persist until the user installs git and runs
+    /// `git gc --prune=now` themselves.
+    GitNotAvailable,
+    /// `git` ran but exited non-zero, or some other I/O failure.
+    GcFailed(String),
+}
+
+/// Ask the system `git` to prune unreachable objects so the plaintext
+/// blobs no longer sit in `.git/objects/`. Returns a `GcOutcome` so the
+/// caller can decide whether to surface the result — encryption-at-history
+/// needs to refuse the operation if the prune was skipped, but plain
+/// housekeeping callers can ignore the outcome.
+pub fn gc_unreachable(repo: &Repository) -> Result<GcOutcome> {
     let Some(workdir) = repo.workdir() else {
-        return Ok(());
+        return Ok(GcOutcome::Pruned);
     };
-    // `--prune=now` drops all unreachable loose objects immediately.
-    // `--quiet` keeps the subprocess silent on stdout.
-    let status = std::process::Command::new("git")
+    let result = std::process::Command::new("git")
         .arg("-C")
         .arg(workdir)
         .arg("gc")
         .arg("--prune=now")
         .arg("--quiet")
         .status();
-    match status {
-        Ok(s) if s.success() => Ok(()),
-        _ => {
-            // Not a hard failure — the sever is the essential part, gc is
-            // just cleanup. We log but don't propagate.
-            eprintln!(
-                "yarrow: `git gc` unavailable or failed; plaintext objects \
-                 remain loose until the user runs `git gc --prune=now` in \
-                 the workspace."
-            );
-            Ok(())
+    match result {
+        Ok(s) if s.success() => Ok(GcOutcome::Pruned),
+        Ok(s) => Ok(GcOutcome::GcFailed(format!(
+            "git gc exited with status {}",
+            s.code().map(|c| c.to_string()).unwrap_or_else(|| "<signal>".into())
+        ))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Ok(GcOutcome::GitNotAvailable)
         }
+        Err(e) => Ok(GcOutcome::GcFailed(format!("git gc failed: {}", e))),
     }
 }

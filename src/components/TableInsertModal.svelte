@@ -87,7 +87,7 @@
       commit();
       return;
     }
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.isComposing) {
       e.preventDefault();
       if (row === -1) focusCell(0, col);
       else if (row < rows - 1) focusCell(row + 1, col);

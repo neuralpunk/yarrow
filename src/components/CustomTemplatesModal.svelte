@@ -85,7 +85,7 @@
           bind:this={titleInputEl}
           bind:value={title}
           onkeydown={(e) => {
-            if (e.key === "Enter") commitPending();
+            if (e.key === "Enter" && !e.isComposing) commitPending();
             else if (e.key === "Escape") pending = null;
           }}
           placeholder={pendingTpl ? defaultTitleFor(pendingTpl) : ""}

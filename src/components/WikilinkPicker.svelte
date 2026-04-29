@@ -68,7 +68,7 @@
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       cursor = Math.max(cursor - 1, 0);
-    } else if (e.key === "Enter") {
+    } else if (e.key === "Enter" && !e.isComposing) {
       e.preventDefault();
       commit();
     }

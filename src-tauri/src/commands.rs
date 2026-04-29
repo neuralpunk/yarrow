@@ -1627,6 +1627,19 @@ pub fn cmd_set_annotations(
     notes::validate_slug(&slug)?;
     let root = state.require_root()?;
     let mut note = notes::read(&root, &slug)?;
+    // Annotations live in plaintext frontmatter. Refuse to write them on
+    // an encrypted note — the bodies are user prose and would defeat
+    // per-note encryption. `serialize` enforces the same invariant on
+    // the disk side; this gives the IPC caller a clear error instead of
+    // a silent drop.
+    if note.frontmatter.encrypted {
+        return Err(YarrowError::Other(
+            "Annotations can't be added to encrypted notes — their bodies would \
+             land in plaintext frontmatter. Decrypt the note first, or move the \
+             commentary into the body itself."
+                .into(),
+        ));
+    }
     // Normalize: drop entries that are *fully* empty (no anchor AND no
     // body) — those are garbage. Keep empty-body entries that have an
     // anchor, because that's the state right after the user clicks
@@ -2450,7 +2463,19 @@ pub fn cmd_unlock_encryption(
             .migrate_password_wrap_with_password(&master, &password)
             .is_ok()
         {
-            let _ = workspace::write_security(&root, &env);
+            // The migration is invisible to the user, so we don't fail
+            // the unlock when persistence fails — the in-memory key
+            // already worked and the next unlock will simply re-attempt
+            // migration. But we DO want a stderr trace: a silent `let _ =`
+            // here meant a chronic "migration never lands on disk"
+            // failure mode (read-only `.yarrow/`, full disk, AV scanner
+            // holding the file) was undiagnosable.
+            if let Err(e) = workspace::write_security(&root, &env) {
+                eprintln!(
+                    "yarrow: KDF migration succeeded but persisting security.toml failed: {}",
+                    e
+                );
+            }
         }
     }
     state.set_session_key(master);
@@ -2583,10 +2608,35 @@ pub fn cmd_disable_encryption(password: String, state: State<AppState>) -> Resul
     let master = env.unlock_with_password(&password)?;
 
     state.with_repo_locked(|| -> Result<()> {
-        // Walk every encrypted note and rewrite it as plaintext.
+        // Walk every encrypted note and rewrite it as plaintext. If ANY
+        // decrypt fails we MUST keep the security envelope — otherwise
+        // `clear_security` strips the master key and orphans every note we
+        // didn't manage to decrypt. Better to refuse the whole operation
+        // and let the user resolve the failure first.
+        let mut failures: Vec<(String, String)> = Vec::new();
         for summary in notes::list(&root)? {
             if !summary.encrypted { continue; }
-            let _ = notes::decrypt_note(&root, &summary.slug, &master);
+            if let Err(e) = notes::decrypt_note(&root, &summary.slug, &master) {
+                failures.push((summary.slug.clone(), e.to_string()));
+            }
+        }
+        if !failures.is_empty() {
+            let preview = failures
+                .iter()
+                .take(3)
+                .map(|(slug, err)| format!("{} ({})", slug, err))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let extra = if failures.len() > 3 {
+                format!(" (+{} more)", failures.len() - 3)
+            } else {
+                String::new()
+            };
+            return Err(YarrowError::Other(format!(
+                "Refusing to disable encryption: {} note(s) failed to decrypt — {}{}. \
+                 The master key has been kept in place. Resolve the failures and try again.",
+                failures.len(), preview, extra
+            )));
         }
         workspace::clear_security(&root)?;
         state.lock_session();
@@ -2633,9 +2683,32 @@ pub fn cmd_encrypt_note(slug: String, state: State<AppState>) -> Result<notes::N
         }
         // Reflogs and unreachable loose objects are the other two recovery
         // paths. Drop reflogs outright (we never surface them to users) and
-        // ask `git gc` to prune loose objects best-effort.
+        // ask `git gc` to prune loose objects.
         let _ = git::clear_reflogs(&repo);
-        let _ = git::gc_unreachable(&repo);
+        // Unlike checkpoint-prune cleanup (where gc is "nice to have"), the
+        // encryption-at-history seal needs gc to actually run — without it,
+        // plaintext blobs sit loose in `.git/objects/` recoverable via
+        // `git fsck --unreachable`, and the UI's "history sealed" promise
+        // becomes a lie. Surface skip-or-failure as a typed error.
+        match git::gc_unreachable(&repo)? {
+            git::GcOutcome::Pruned => {}
+            git::GcOutcome::GitNotAvailable => {
+                return Err(crate::error::YarrowError::Other(
+                    "Encrypted the note and severed history references, but `git` is not on PATH \
+                     so the unreachable plaintext blobs cannot be pruned from .git/objects/. \
+                     Install `git`, then run `git gc --prune=now` in the workspace folder to \
+                     complete the seal."
+                        .to_string(),
+                ));
+            }
+            git::GcOutcome::GcFailed(msg) => {
+                return Err(crate::error::YarrowError::Other(format!(
+                    "Encrypted the note and severed history references, but the unreachable-blob \
+                     prune failed: {msg}. Run `git gc --prune=now` in the workspace folder \
+                     manually to complete the seal."
+                )));
+            }
+        }
 
         let _ = graph::build(&root);
         Ok(note)
@@ -2905,15 +2978,20 @@ pub fn cmd_add_link(
 }
 
 #[tauri::command]
-pub fn cmd_remove_link(from: String, to: String, state: State<AppState>) -> Result<()> {
+pub fn cmd_remove_link(
+    from: String,
+    to: String,
+    link_type: String,
+    state: State<AppState>,
+) -> Result<()> {
     notes::validate_slug(&from)?;
     notes::validate_slug(&to)?;
     let root = state.require_root()?;
-    notes::remove_link(&root, &from, &to)?;
+    notes::remove_link(&root, &from, &to, &link_type)?;
     let repo = open_repo(&root)?;
     git::checkpoint(
         &repo,
-        &format!("checkpoint: disconnect {} → {}", from, to),
+        &format!("checkpoint: disconnect {} → {} ({})", from, to, link_type),
     )?;
     let _ = graph::build(&root);
     Ok(())

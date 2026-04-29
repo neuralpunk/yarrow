@@ -139,7 +139,7 @@
         if (error) error = null;
       }}
       onkeydown={(e) => {
-        if (e.key === "Enter" && !busy) {
+        if (e.key === "Enter" && !e.isComposing && !busy) {
           e.preventDefault();
           void submit();
         }

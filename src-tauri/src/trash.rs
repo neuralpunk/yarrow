@@ -157,7 +157,19 @@ pub fn restore(root: &Path, slug: &str) -> Result<String> {
     let mut n: u32 = 1;
     while notes::note_path(root, &final_slug).exists() {
         n += 1;
-        final_slug = format!("{target_slug}-restored-{n}");
+        // Daily slugs (`daily/YYYY-MM-DD`) have a strict 10-char date
+        // suffix that `slug_is_filesystem_safe` enforces. Adding
+        // `-restored-N` would fail that check and cause `note_path` to
+        // route the restore to the POISON_SLUG path
+        // (`notes/__yarrow_invalid_slug__.md`), silently overwriting
+        // whatever was already at that poison location. Route daily
+        // collisions to a regular slug outside the daily/ folder
+        // instead so the restored content lands somewhere addressable.
+        final_slug = if let Some(date) = target_slug.strip_prefix("daily/") {
+            format!("daily-{date}-restored-{n}")
+        } else {
+            format!("{target_slug}-restored-{n}")
+        };
         if n > 9999 {
             return Err(YarrowError::Other(
                 "could not find a free slug to restore into".into(),
@@ -169,6 +181,24 @@ pub fn restore(root: &Path, slug: &str) -> Result<String> {
     fs::copy(&body, &live)?;
     fs::remove_file(&body).ok();
     fs::remove_file(meta_path(root, slug)).ok();
+
+    // Re-establish reciprocal backlinks. `notes::delete` stripped every
+    // incoming backlink to the original slug when the note went to trash,
+    // so the restored note's outgoing `links` are dangling — the targets
+    // no longer carry the matching back-edges. Replay each outgoing link
+    // through `add_link`, keyed on `final_slug` (which may differ from
+    // the original target slug if the slot was taken). `add_link` is
+    // dedupe-safe, so the forward direction stays a no-op while the
+    // reciprocal gets reconstructed under the correct (possibly suffixed)
+    // slug. Best-effort per link — a single missing target shouldn't fail
+    // the whole restore (e.g. a target that was itself trashed since).
+    if let Ok(restored_note) = notes::read(root, &final_slug) {
+        let outgoing: Vec<notes::Link> = restored_note.frontmatter.links.clone();
+        for link in outgoing {
+            let _ = notes::add_link(root, &final_slug, &link.target, &link.link_type);
+        }
+    }
+
     Ok(final_slug)
 }
 

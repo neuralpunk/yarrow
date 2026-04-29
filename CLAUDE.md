@@ -42,7 +42,7 @@ Hard constraints from the spec — violating any of these breaks product identit
 
 **Notes are `.md` files. No database.** The git repo IS the database. `.yarrow/index.json` is a derived cache rebuilt from frontmatter on every save and is gitignored. Links live in YAML frontmatter and are reciprocated on creation (`notes::add_link` writes both directions).
 
-**Auto-checkpointing is debounced (default 3s) and silent.** Users never write commit messages. The optional "What were you thinking?" prompt fires on note close, not every save, and is appended to the auto-generated message.
+**Auto-checkpointing is debounced (default 8s) and silent.** Users never write commit messages. The optional "What were you thinking?" prompt fires on note close, not every save, and is appended to the auto-generated message.
 
 **Scratchpad is gitignored.** `.yarrow/scratchpad.md` lives in `.gitignore` by design — "nothing here is saved permanently." Don't "fix" this.
 

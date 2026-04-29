@@ -58,7 +58,7 @@
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         cursor = Math.max(0, cursor - 1);
-      } else if (e.key === "Enter") {
+      } else if (e.key === "Enter" && !e.isComposing) {
         e.preventDefault();
         const pick = matches[cursor];
         if (pick) {
@@ -118,17 +118,34 @@
       post: target.slice(idx + lq.length),
     };
   }
+
+  // Backdrop dismissal — close only when both `mousedown` and the
+  // matching `click` landed on the backdrop itself, so a drag that
+  // started inside the switcher (text selection in the input) and
+  // bled out onto the backdrop doesn't dismiss.
+  let mouseDownOnBackdrop = false;
+  function onBackdropMouseDown(e: MouseEvent) {
+    mouseDownOnBackdrop = e.target === e.currentTarget;
+  }
+  function onBackdropClick(e: MouseEvent) {
+    if (mouseDownOnBackdrop && e.target === e.currentTarget) {
+      onClose();
+    }
+    mouseDownOnBackdrop = false;
+  }
 </script>
 
 {#if open}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="fixed inset-0 z-50 flex items-start justify-center bg-char/20 pt-28 animate-fadeIn"
-    onmousedown={onClose}
+    onmousedown={onBackdropMouseDown}
+    onclick={onBackdropClick}
     role="presentation"
   >
     <div
       class="w-[520px] max-w-[92vw] bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden animate-slideUp"
-      onmousedown={(e) => e.stopPropagation()}
       role="dialog"
       aria-modal="true"
       tabindex="-1"

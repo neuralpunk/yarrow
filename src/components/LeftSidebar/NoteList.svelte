@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, onDestroy } from "svelte";
   import type { NoteSummary } from "../../lib/types";
   import { prefetchNote } from "../../lib/notePrefetch";
   import { tagPillClass } from "../../lib/tagStyles";
@@ -25,7 +25,6 @@
     mainNoteSlug?: string | null;
     orphans: Set<string>;
     decayDays: number;
-    neighbors: Record<string, Set<string>>;
     onSelect: (slug: string) => void;
     onOpenInNewTab?: (slug: string) => void;
     onCreate: () => void;
@@ -53,7 +52,6 @@
     mainNoteSlug,
     orphans,
     decayDays,
-    neighbors,
     onSelect,
     onOpenInNewTab,
     onCreate,
@@ -100,15 +98,6 @@
   });
 
   let showOrphans = $state(false);
-  let hoveredSlug = $state<string | null>(null);
-  // Separate debounced slug that drives the "related notes" cascade.
-  // Cascading the related-row halo on every mouseenter made fast mouse
-  // passes look like the highlight was "bouncing" between unrelated
-  // notes — the related halo lit up rows the mouse never landed on.
-  // Delaying the cascade by ~140 ms means a quick scroll across the
-  // list never triggers it; a deliberate hover still does.
-  let relatedHoverSlug = $state<string | null>(null);
-  let relatedHoverTimer: number | null = null;
   let hoverPrefetchTimer: number | null = null;
   let renameState = $state<{ slug: string; title: string } | null>(null);
   let selectMode = $state(false);
@@ -182,10 +171,17 @@
   $effect(() => {
     if (!menu) return;
     const close = () => (menu = null);
-    window.addEventListener("click", close);
+    // Defer the click-close registration by a tick. macOS WebKit emits
+    // a `click` event after Ctrl+Click (alongside `contextmenu`), and
+    // without this defer that click would close the menu the same beat
+    // it opened. The user had to keep Ctrl held to keep the menu alive.
+    const timer = window.setTimeout(() => {
+      window.addEventListener("click", close);
+    }, 0);
     window.addEventListener("resize", close);
     window.addEventListener("scroll", close, true);
     return () => {
+      window.clearTimeout(timer);
       window.removeEventListener("click", close);
       window.removeEventListener("resize", close);
       window.removeEventListener("scroll", close, true);
@@ -225,10 +221,24 @@
   });
 
   let orphanCount = $derived(orphans.size);
-  let now = Date.now();
+  // Reactive clock. NoteList persists for the entire session; if `now`
+  // were a plain `let`, the time buckets ("Today / Yesterday / This
+  // week") and the decay-cutoff would freeze at component init and
+  // start lying after midnight (or after the user leaves the app open
+  // for a few hours). Refresh on a coarse 5-minute interval so the
+  // buckets re-evaluate without paying for a derived re-run on every
+  // animation frame.
+  let now = $state(Date.now());
+  $effect(() => {
+    const id = window.setInterval(() => { now = Date.now(); }, 300_000);
+    return () => window.clearInterval(id);
+  });
   let decayCutoff = $derived(now - decayDays * 86400 * 1000);
 
   let bucketBounds = $derived.by(() => {
+    // Read `now` so the derived re-evaluates whenever the tick fires
+    // — without it, the day-boundary calc wouldn't advance.
+    void now;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tt = today.getTime();
@@ -255,8 +265,6 @@
       return { ...n, mTime, stale, daysOld, isOrphan, bucket };
     });
   });
-
-  let relatedToHovered = $derived(relatedHoverSlug ? neighbors[relatedHoverSlug] : null);
 
   function sortByMTime<T extends { mTime: number }>(arr: T[]): T[] {
     return arr.slice().sort((a, b) => b.mTime - a.mTime);
@@ -370,22 +378,28 @@
   }
 
   function hoverEnter(slug: string) {
-    hoveredSlug = slug;
-    if (relatedHoverTimer) window.clearTimeout(relatedHoverTimer);
-    relatedHoverTimer = window.setTimeout(() => {
-      relatedHoverSlug = slug;
-    }, 140);
     if (hoverPrefetchTimer) window.clearTimeout(hoverPrefetchTimer);
     hoverPrefetchTimer = window.setTimeout(() => {
+      hoverPrefetchTimer = null;
       if (slug !== activeSlug) prefetchNote(slug);
     }, 120);
   }
   function hoverLeave() {
-    hoveredSlug = null;
-    if (relatedHoverTimer) window.clearTimeout(relatedHoverTimer);
-    relatedHoverSlug = null;
-    if (hoverPrefetchTimer) window.clearTimeout(hoverPrefetchTimer);
+    if (hoverPrefetchTimer) {
+      window.clearTimeout(hoverPrefetchTimer);
+      hoverPrefetchTimer = null;
+    }
   }
+  onDestroy(() => {
+    // The hover-prefetch timer fires 120 ms after a row enters; if the
+    // user navigates away (workspace switch, sidebar collapse) within
+    // that window, the pending timer would otherwise call
+    // `prefetchNote` against a torn-down sidebar instance.
+    if (hoverPrefetchTimer) {
+      window.clearTimeout(hoverPrefetchTimer);
+      hoverPrefetchTimer = null;
+    }
+  });
 
   let menuNote = $derived(menu ? enriched.find((n) => n.slug === menu!.slug) ?? null : null);
 
@@ -498,7 +512,6 @@
   {@const active = n.slug === activeSlug}
   {@const isMain = !!mainNoteSlug && n.slug === mainNoteSlug}
   {@const isSelected = selected.has(n.slug)}
-  {@const related = !active && !!relatedToHovered && hoveredSlug !== n.slug && relatedToHovered.has(n.slug)}
   {@const ph = pathHighlight === null ? "none" : pathHighlight.has(n.slug) ? "in" : "out"}
   <li
     data-path-highlight={ph}
@@ -526,7 +539,6 @@
         e.stopPropagation();
         menu = { slug: n.slug, x: e.clientX, y: e.clientY };
       }}
-      data-related={related ? "true" : "false"}
       title={n.stale
         ? t("sidebar.notes.staleTooltip", { days: String(n.daysOld) })
         : n.isOrphan
@@ -536,11 +548,9 @@
         ? 'bg-yelp/60 text-char'
         : active
           ? 'bg-black/[0.07] dark:bg-black/32 text-char shadow-[inset_3px_0_0_var(--yel)]'
-          : related
-            ? 'bg-accent2-dim/20 text-ch2 hover:bg-s3 hover:text-char hover:shadow-[inset_3px_0_0_var(--yel)]'
-            : n.stale
-              ? 'text-t2 hover:bg-s3 hover:text-ch2 hover:shadow-[inset_3px_0_0_var(--yel)]'
-              : 'text-ch2 hover:bg-s3 hover:text-char hover:shadow-[inset_3px_0_0_var(--yel)]'}"
+          : n.stale
+            ? 'text-t2 hover:bg-s3 hover:text-ch2 hover:shadow-[inset_3px_0_0_var(--yel)]'
+            : 'text-ch2 hover:bg-s3 hover:text-char hover:shadow-[inset_3px_0_0_var(--yel)]'}"
       style={isMain ? "box-shadow: inset 2px 0 0 0 var(--home-ring);" : undefined}
     >
       <div class="flex items-center gap-2">
@@ -1083,7 +1093,7 @@
           if (renameState) renameState = { ...renameState, title: (e.currentTarget as HTMLInputElement).value };
         }}
         onkeydown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === "Enter" && !e.isComposing) {
             const next = renameState?.title.trim();
             if (renameState && next) {
               onRename(renameState.slug, next);
@@ -1166,7 +1176,7 @@
                 autofocus
                 bind:value={folderNewName}
                 onkeydown={(e) => {
-                  if (e.key === "Enter") commitFolderNew();
+                  if (e.key === "Enter" && !e.isComposing) commitFolderNew();
                   if (e.key === "Escape") {
                     folderCreating = false;
                     folderNewName = "";
@@ -1214,7 +1224,7 @@
           autofocus
           bind:value={newFolderName}
           onkeydown={(e) => {
-            if (e.key === "Enter") commitNewFolder();
+            if (e.key === "Enter" && !e.isComposing) commitNewFolder();
             if (e.key === "Escape") cancelNewFolder();
           }}
           placeholder={t("sidebar.folders.namePlaceholder")}

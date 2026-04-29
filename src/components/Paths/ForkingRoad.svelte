@@ -1307,7 +1307,7 @@
                   bind:this={pendingInputRef}
                   bind:value={pendingValue}
                   onkeydown={(e) => {
-                    if (e.key === "Enter") {
+                    if (e.key === "Enter" && !e.isComposing) {
                       e.preventDefault();
                       onCommitPendingFork(pendingValue);
                     } else if (e.key === "Escape") {

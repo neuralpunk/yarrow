@@ -102,54 +102,70 @@ function scheduleSync() {
   requestAnimationFrame(syncViewportHeight);
 }
 
-syncViewportHeight();
-window.addEventListener("resize", scheduleSync);
-window.addEventListener("orientationchange", scheduleSync);
-window.addEventListener("focus", scheduleSync);
-document.addEventListener("visibilitychange", scheduleSync);
-window.visualViewport?.addEventListener("resize", scheduleSync);
-// Settings → Appearance → "macOS bottom-edge correction" dispatches
-// this when the user picks a different preset. Resync immediately so
-// the layout reflows on the spot — no reload required.
-window.addEventListener(VP_FUDGE_CHANGED_EVENT, scheduleSync);
-
-// Catch-all: any layout-affecting change to <html> height retriggers
-// the sync. We route through `scheduleSync` (RAF-coalesced) rather than
-// the synchronous `syncViewportHeight` so dragging/resizing — where the
-// observer fires per layout pass — doesn't write the CSS variable on
-// every tick and force unnecessary style recalcs.
-if (typeof ResizeObserver !== "undefined") {
-  new ResizeObserver(scheduleSync).observe(document.documentElement);
-}
-
-// Post-load polling — covers the macOS Tahoe launch-animation tail
-// where the window settles into its final size only after first paint.
-// We run a fixed schedule rather than a recursive RAF loop so the cost
-// is bounded and the page eventually returns to event-driven updates.
-window.addEventListener("load", () => {
-  scheduleSync();
-  for (const ms of [50, 200, 500, 1500]) {
-    window.setTimeout(syncViewportHeight, ms);
+// Hot-reload guard. main.ts re-evaluates every Vite HMR pass; without
+// this, every save in dev doubles every listener (six on `window`, one
+// on `document`, one on `visualViewport`, plus a `ResizeObserver`, plus
+// the Tauri `onResized` / `onFocusChanged` subscriptions). After 30+
+// saves the dev session was filing 30× duplicate handlers on every
+// resize. Cache an `_installed` flag on `window` and short-circuit on
+// re-evaluation. Production single-mount is unaffected.
+declare global {
+  interface Window {
+    __yarrow_main_installed?: boolean;
   }
-});
+}
+if (!window.__yarrow_main_installed) {
+  window.__yarrow_main_installed = true;
 
-// Tauri-level resize signal. The Cocoa-side `windowDidResize` fires
-// before WKWebView's `visualViewport` has updated, so we schedule a
-// sync for the next frame. Wrapped in a dynamic import so the build
-// doesn't require the API for the future web target.
-import("@tauri-apps/api/window")
-  .then(({ getCurrentWindow }) => {
-    try {
-      const w = getCurrentWindow();
-      w.onResized(scheduleSync).catch(() => {});
-      w.onFocusChanged(scheduleSync).catch(() => {});
-    } catch {
-      /* not running inside Tauri (vite preview, tests) */
+  syncViewportHeight();
+  window.addEventListener("resize", scheduleSync);
+  window.addEventListener("orientationchange", scheduleSync);
+  window.addEventListener("focus", scheduleSync);
+  document.addEventListener("visibilitychange", scheduleSync);
+  window.visualViewport?.addEventListener("resize", scheduleSync);
+  // Settings → Appearance → "macOS bottom-edge correction" dispatches
+  // this when the user picks a different preset. Resync immediately so
+  // the layout reflows on the spot — no reload required.
+  window.addEventListener(VP_FUDGE_CHANGED_EVENT, scheduleSync);
+
+  // Catch-all: any layout-affecting change to <html> height retriggers
+  // the sync. We route through `scheduleSync` (RAF-coalesced) rather than
+  // the synchronous `syncViewportHeight` so dragging/resizing — where the
+  // observer fires per layout pass — doesn't write the CSS variable on
+  // every tick and force unnecessary style recalcs.
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(scheduleSync).observe(document.documentElement);
+  }
+
+  // Post-load polling — covers the macOS Tahoe launch-animation tail
+  // where the window settles into its final size only after first paint.
+  // We run a fixed schedule rather than a recursive RAF loop so the cost
+  // is bounded and the page eventually returns to event-driven updates.
+  window.addEventListener("load", () => {
+    scheduleSync();
+    for (const ms of [50, 200, 500, 1500]) {
+      window.setTimeout(syncViewportHeight, ms);
     }
-  })
-  .catch(() => {
-    /* @tauri-apps/api/window not present in non-desktop bundle */
   });
+
+  // Tauri-level resize signal. The Cocoa-side `windowDidResize` fires
+  // before WKWebView's `visualViewport` has updated, so we schedule a
+  // sync for the next frame. Wrapped in a dynamic import so the build
+  // doesn't require the API for the future web target.
+  import("@tauri-apps/api/window")
+    .then(({ getCurrentWindow }) => {
+      try {
+        const w = getCurrentWindow();
+        w.onResized(scheduleSync).catch(() => {});
+        w.onFocusChanged(scheduleSync).catch(() => {});
+      } catch {
+        /* not running inside Tauri (vite preview, tests) */
+      }
+    })
+    .catch(() => {
+      /* @tauri-apps/api/window not present in non-desktop bundle */
+    });
+}
 
 // 3.0 visual polish — Linux desktop-environment detection.
 // Reads XDG_CURRENT_DESKTOP via a Rust command and stamps the result

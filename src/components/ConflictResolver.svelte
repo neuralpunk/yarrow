@@ -29,13 +29,25 @@
     error = null;
     const c = cur;
     if (!c) return;
+    // Epoch guard: rapid "Accept and next" can fire two `getConflict`
+    // calls back-to-back across N conflicts, and without an alive
+    // check the older promise can land AFTER the newer one,
+    // overwriting the freshly-loaded conflict (and the user's edited
+    // `combined` buffer) with stale `working`/`ours`/`theirs`. Capture
+    // `c` in closure scope and bail if `cur` has moved on.
+    let cancelled = false;
     api
       .getConflict(c)
       .then((res) => {
+        if (cancelled || cur !== c) return;
         conflict = res;
         combined = res.working ?? res.ours ?? res.theirs ?? "";
       })
-      .catch((e) => (error = String(e)));
+      .catch((e) => {
+        if (cancelled || cur !== c) return;
+        error = String(e);
+      });
+    return () => { cancelled = true; };
   });
 
   async function accept() {

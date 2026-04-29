@@ -281,7 +281,7 @@ fn build_native_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<
         .website(Some("https://github.com/neuralpunk/yarrow"))
         .website_label(Some("Source on GitHub"))
         .license(Some("MIT"))
-        .credits(Some("Built with Tauri 2, React 19, CodeMirror 6, and D3."))
+        .credits(Some("Built with Tauri 2, Svelte 5, CodeMirror 6, and D3."))
         .build();
 
     let app_submenu = SubmenuBuilder::new(app, "Yarrow")

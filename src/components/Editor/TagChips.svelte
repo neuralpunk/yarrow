@@ -69,7 +69,7 @@
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Enter" || e.key === "," || (e.key === " " && draft.trim())) {
+    if (!e.isComposing && (e.key === "Enter" || e.key === "," || (e.key === " " && draft.trim()))) {
       e.preventDefault();
       addTag(draft);
       draft = "";

@@ -161,8 +161,24 @@
 
   let half = SVG_SIZE / 2;
 
-  let clampedX = $derived(Math.min(Math.max(4, x), window.innerWidth - 4));
-  let clampedY = $derived(Math.min(Math.max(4, y), window.innerHeight - 4));
+  // Reactive viewport mirror. `window.innerWidth` / `innerHeight` are
+  // not Svelte proxies, so a `$derived` reading them only re-runs when
+  // its other deps change — open the radial near the right edge and
+  // shrink the window, and the menu sticks past the new boundary.
+  // Mirror the dimensions into `$state` and refresh on resize.
+  let viewportW = $state(typeof window !== "undefined" ? window.innerWidth : 0);
+  let viewportH = $state(typeof window !== "undefined" ? window.innerHeight : 0);
+  $effect(() => {
+    const onResize = () => {
+      viewportW = window.innerWidth;
+      viewportH = window.innerHeight;
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  });
+
+  let clampedX = $derived(Math.min(Math.max(4, x), viewportW - 4));
+  let clampedY = $derived(Math.min(Math.max(4, y), viewportH - 4));
 
   let wedges = $derived.by(() => {
     const N = items.length;

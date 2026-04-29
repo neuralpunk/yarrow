@@ -497,7 +497,7 @@
           <input
             bind:value={pinLabel}
             onkeydown={(e) => {
-              if (e.key === "Enter" && pinLabel.trim()) {
+              if (e.key === "Enter" && !e.isComposing && pinLabel.trim()) {
                 e.preventDefault();
                 onPin?.(pinPrompt!.oid, pinLabel.trim(), pinNote.trim() || undefined);
                 pinPrompt = null;

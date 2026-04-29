@@ -463,6 +463,31 @@ fn atomic_write_inner(path: &Path, contents: &[u8], secret: bool) -> std::io::Re
         f.sync_all()?;
     }
     std::fs::rename(&tmp, path)?;
+    // Power-loss durability: on POSIX, `rename(2)` updates the parent
+    // directory inode's entries — a crash before that inode page is
+    // flushed can roll the rename back even though the data file's
+    // contents were already synced. Fsyncing the parent directory makes
+    // the rename itself durable. On non-Unix this is a best-effort
+    // no-op.
+    if let Some(parent) = path.parent() {
+        let _ = fsync_dir(parent);
+    }
+    Ok(())
+}
+
+/// fsync a directory so previously-issued renames / unlinks within it
+/// are durable across power loss. Best-effort: directory fsync is the
+/// standard POSIX durability primitive, but Windows and certain Linux
+/// filesystems (e.g. some FUSE mounts) don't honor it. Errors are
+/// swallowed at the call sites — durability is a hardening property,
+/// not a correctness one.
+#[cfg(unix)]
+pub(crate) fn fsync_dir(dir: &Path) -> std::io::Result<()> {
+    let f = std::fs::File::open(dir)?;
+    f.sync_all()
+}
+#[cfg(not(unix))]
+pub(crate) fn fsync_dir(_dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

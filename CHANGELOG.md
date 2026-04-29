@@ -6,6 +6,62 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and the project aims to follow [Semantic Versioning](https://semver.org/) once
 it reaches 1.0.
 
+## [3.0.1] — 2026-04-28
+
+A four-agent parallel review (backend, frontend, data integrity, IPC/a11y) surfaced 7 Critical, 8 High, and 14 Medium findings — all 29 fixed here. `svelte-check` 0/0/0 across 385 files; `cargo check` clean. Full audit in `BUG_AUDIT_2026-04-28.md`.
+
+### Changed
+
+- **macOS bottom-edge correction default now 0 px.** New installs no longer pre-apply a viewport fudge; the Settings → Appearance slider still offers None / Small / Medium / Large / X-Large. Existing users keep their setting.
+- **`api.removeLink` IPC contract now carries `linkType`** so removing one typed edge leaves any other edges between the same pair intact (see Reliability).
+
+### Security
+
+- **Strict CSP restored.** `default-src 'self'` with narrow allowances for Google Fonts, Tauri IPC, and the asset protocol. Inline FOUC blocker extracted to `public/fouc.js` so `script-src 'self'` (no `'unsafe-inline'`) is sufficient. (`tauri.conf.json`, `index.html`, `public/fouc.js`)
+- **YAML escape gap closed (encryption-metadata-eating bug).** Titles starting with YAML indicator chars, reserved scalars, or numeric-looking strings produced invalid YAML — the next read fell back to defaults and the next save rewrote the on-disk ciphertext as `encrypted=false`, losing salt + nonce. Escape rewritten to round-trip cleanly. (`notes.rs`)
+- **`cmd_disable_encryption` no longer orphans notes on partial decrypt failure.** Now collects per-note failures and aborts before clearing the master envelope when any survived. (`commands.rs`)
+- **`gc_unreachable` no longer silently lies about sealed history** when `git` isn't on `PATH`. Returns a typed `GcOutcome::{Pruned, GitNotAvailable, GcFailed}`; `cmd_encrypt_note` raises an error instead of falsely reporting success. (`git.rs`, `commands.rs`)
+- **Annotation bodies no longer leak in plaintext on encrypted notes.** `serialize()` skips annotations when `fm.encrypted`; `encrypt_note()` clears them before sealing; `cmd_set_annotations` errors on encrypted notes. (`notes.rs`, `commands.rs`)
+- **SVG dropped from inline-image whitelist.** SVG attachments still upload and link, but no inline `<img>` preview — defense-in-depth against XSS. (`attachments.rs`)
+- **`is_ref_race` whitelist tightened.** Pre-receive hook denials include "rejected"; the previous match retried (and discarded local state) on hook declines. Now matches precise libgit2 / git-protocol race shapes only. (`git.rs`)
+- **Encryption cache hardened.** `handleLockEncryption` now calls `invalidateAllNotes()` before awaiting `api.lockEncryption()`, closing the window where an in-flight prefetch could resolve into cache after the backend lock fired. (`AppShell.svelte`)
+
+### Accessibility
+
+- **Modal focus trap, focus-on-open, focus return, `aria-labelledby`.** Plus per-instance random-id `<h2>` titling; fallback `aria-label="Dialog"`. New `modals.modal.dialog` key in en/es/sv. (`Modal.svelte`)
+- **IME composition guard on 35 Enter-submit handlers.** `if (e.isComposing) return;` added across QuickSwitcher, CommandPalette, every Enter-submitting modal, AppShell, Settings, and the NoteEditor title input — CJK/IME users no longer lose their conversion-commit Enter keystroke.
+- **Modal / CommandPalette / QuickSwitcher backdrop closes on completed click only** (matching `mousedown` + `click` on the backdrop). Text-selection drag-outs no longer dismiss.
+
+### Reliability
+
+- **Every persona-plugin feature reachable via ⌘K.** CommandPalette gained 13 new entries (Streak, Open Questions, Sources, New Source, Decision Log, New ADR, Code Highlight, Sensitive, Follow-Ups, Session Kit, Recipes Library, Cook Mode, plus ungating Clip Recipe / Add to Shopping List). Restores the "modes are biases, not gates" invariant. en/es/sv. (`CommandPalette.svelte`, `AppShell.svelte`)
+- **`remove_link` matches by `(target, type)` instead of `target` alone**, so multiple typed edges between the same pair (e.g. A —supports→ B AND A —challenges→ B) survive when one is removed. (`notes.rs`, `commands.rs`, `lib/tauri.ts`, `LinkedNotesList.svelte`, `AppShell.svelte`)
+- **Trash restore re-establishes reciprocal backlinks** by replaying outgoing links through `add_link`, keyed on the possibly-suffixed `final_slug`. (`trash.rs`)
+- **Trash restore daily-note collisions land at a real path.** Daily collisions now route to `daily-{date}-restored-{n}` (no `daily/` prefix) so the suffix stays filesystem-safe. (`trash.rs`)
+- **Note rename TOCTOU closed.** Free-slug search now uses `create_new(true)` to atomically reserve each candidate before `fs::rename`. (`notes.rs`)
+- **Parent-directory fsync after every atomic-rename.** New `workspace::fsync_dir(parent)`; POSIX-only, best-effort durability hardening. (`workspace.rs`, `notes.rs`)
+- **`extract_snippet` is char-aligned for non-ASCII.** Now does case-insensitive matching against the original body (not `body.to_lowercase()` byte offsets, which drift on `ß`/Turkish `İ`/etc.) and computes window edges from `char_indices()`. (`search.rs`)
+- **ConflictResolver no longer overwrites the user's edited buffer with stale state** from rapid "Accept and next" clicks. Per-effect `cancelled` guard. (`ConflictResolver.svelte`)
+- **NoteList time buckets and decay re-evaluate at midnight** via a 5-minute `setInterval` instead of a frozen `let now`. (`NoteList.svelte`)
+- **RadialMenu reflows when the window shrinks.** Now reads `$state` mirrors of `innerWidth`/`innerHeight` updated on resize. (`Editor/RadialMenu.svelte`)
+- **NoteEditor title input no longer flickers back to canonical mid-edit.** Title-revert effect tracks only `titleRevertNonce`; the title read happens inside `untrack(...)`. (`NoteEditor.svelte`)
+- **NoteReader wikilink rewrite skips code blocks.** Splits on `<code>` / `<pre>` boundaries before transforming `[[…]]`. (`NoteReader.svelte`)
+- **AppShell setTimeouts cleared on workspace switch.** New `pendingTimers` Set + `setManagedTimeout` helper, plus explicit cleanup in `onDestroy`. (`AppShell.svelte`)
+- **Note-prefetch cache invalidated on workspace teardown.** Plus NoteList's hover-prefetch timer is cleared on unmount and after fire. (`AppShell.svelte`, `NoteList.svelte`)
+- **`theme.svelte.ts` matchMedia + Linux DE override flow through `resolved`.** Constructor's apply effect is now the single point of truth so `theme.resolved` consumers always see the current value. (`theme.svelte.ts`)
+- **`main.ts` global listeners de-duped on hot-reload** via a `window.__yarrow_main_installed` flag. Production unaffected. (`main.ts`)
+- **KDF migration write failures now log to stderr** instead of being swallowed by `let _ = workspace::write_security(...)`. (`commands.rs`)
+- **Ref-race retry accumulator clarified** with a comment so future readers don't reintroduce a shared accumulator across loop iterations. (`git.rs`)
+- **⌘P always swallowed; toasts a hint when no note is active**, instead of falling through to `window.print()` of the whole app chrome. New `appshell.toast.printNoNote` key in en/es/sv. (`AppShell.svelte`)
+
+### Fixed
+
+- **Left-sidebar related-notes halo removed.** Hovering a note row no longer lights up linked neighbours; only the hovered row highlights now. (`NoteList.svelte`, `AppShell.svelte`)
+- **macOS right-click on left-sidebar note rows no longer requires holding Ctrl.** Click-close registration is deferred by a tick so the opening click is consumed before the close listener attaches.
+- **Settings → Workspace "Show full scenario" relabelled to "Show full path"** (en + es). The toggle reveals the on-disk folder path. Swedish was already correct.
+- **Radial menu hovered wedge no longer goes transparent on Dracula.** `--yelp` promoted from `rgba(189,147,249,0.18)` to its opaque equivalent (`#3D3654`).
+- **About panel credits line on macOS** — `React 19` → `Svelte 5`. Stale leftover from the 3.0 rewrite.
+
 ## [3.0.0] — 2026-04-27
 
 The first release of the 3.x line and a rewrite from the inside out. Three things land at once:

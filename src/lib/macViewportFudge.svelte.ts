@@ -12,7 +12,7 @@ import type { StringKey } from "./i18n/index.svelte";
 
 const STORAGE_KEY = "yarrow:vp-fudge";
 
-export const DEFAULT_MAC_VP_FUDGE_PX = 100;
+export const DEFAULT_MAC_VP_FUDGE_PX = 0;
 
 export const VP_FUDGE_CHANGED_EVENT = "yarrow:vp-fudge-changed";
 
@@ -62,7 +62,7 @@ export function setMacViewportFudge(px: number): void {
 }
 
 class MacFudgePresetStore {
-  active = $state<MacFudgePresetId | "custom">("medium");
+  active = $state<MacFudgePresetId | "custom">("none");
 
   constructor() {
     const p = getActiveMacFudgePreset();

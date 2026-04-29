@@ -860,7 +860,7 @@
           autofocus
           bind:value={promotePhrase}
           onkeydown={(e) => {
-            if (e.key === "Enter" && promoteMatches) {
+            if (e.key === "Enter" && !e.isComposing && promoteMatches) {
               const name = promoteTarget;
               promoteTarget = null;
               if (name) void handlePromote(name);

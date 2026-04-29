@@ -647,8 +647,8 @@ export const settingsEN = {
   "settings.workspace.folder.label": "Folder",
   "settings.workspace.folder.hint":
     "Where your notes are saved as .md files.",
-  "settings.workspace.folder.showFull": "Show full scenario",
-  "settings.workspace.folder.hideFull": "Hide full scenario",
+  "settings.workspace.folder.showFull": "Show full path",
+  "settings.workspace.folder.hideFull": "Hide full path",
   "settings.workspace.created.label": "Created",
   "settings.workspace.import.title":
     "Import notes from another app",
@@ -973,6 +973,15 @@ export const settingsEN = {
     "Text scale, contrast, motion, hit-target size, dyslexia font, reading guide, color-blind palette, focus-ring style — all return to defaults. Nothing else changes.",
   "settings.about.resetA11y.confirmBtn": "Reset accessibility",
   "settings.about.resetA11y.done": "Reset done — all defaults restored.",
+  "settings.about.resetWorkspace.title": "Reset all workspace settings",
+  "settings.about.resetWorkspace.body":
+    "Forget the per-workspace preferences stored in this workspace's config.toml — autocheckpoint debounce, decay days, editor font size, idle-lock timeout, autosync cadence, trash retention. Sync URL and any server connection are left alone. Your notes aren't touched.",
+  "settings.about.resetWorkspace.button": "Reset workspace settings…",
+  "settings.about.resetWorkspace.confirmTitle":
+    "Reset workspace settings to defaults?",
+  "settings.about.resetWorkspace.confirmBody":
+    "Autocheckpoint debounce returns to 8 s, decay to 60 days, font size to 16, idle-lock to 15 min, autosync to 5 min, trash retention to 30 days. Sync remote and server token stay intact. Notes are not touched.",
+  "settings.about.resetWorkspace.confirmBtn": "Reset workspace settings",
 
   // ── gestures (2.2.0) ──
   "settings.gestures.title": "The Still Point",
@@ -1741,8 +1750,8 @@ export const settingsES: Record<SettingsKey, string> = {
   "settings.workspace.folder.label": "Carpeta",
   "settings.workspace.folder.hint":
     "Donde se guardan tus notas como archivos .md.",
-  "settings.workspace.folder.showFull": "Mostrar escenario completa",
-  "settings.workspace.folder.hideFull": "Ocultar escenario completa",
+  "settings.workspace.folder.showFull": "Mostrar ruta completa",
+  "settings.workspace.folder.hideFull": "Ocultar ruta completa",
   "settings.workspace.created.label": "Creado",
   "settings.workspace.import.title":
     "Importar notas desde otra app",
@@ -2090,6 +2099,15 @@ export const settingsES: Record<SettingsKey, string> = {
     "Escala de texto, contraste, movimiento, tamaño de objetivos, fuente para dislexia, guía de lectura, paleta para daltonismo, anillo de foco — todo vuelve a los valores predeterminados. Nada más cambia.",
   "settings.about.resetA11y.confirmBtn": "Restablecer accesibilidad",
   "settings.about.resetA11y.done": "Listo — todos los valores predeterminados están restaurados.",
+  "settings.about.resetWorkspace.title": "Restablecer ajustes del espacio de trabajo",
+  "settings.about.resetWorkspace.body":
+    "Olvidar las preferencias propias de este espacio de trabajo guardadas en su config.toml — debounce de checkpoint, días de decaimiento, tamaño de fuente del editor, tiempo de inactividad, cadencia de sincronización, retención de papelera. La URL de sincronización y la conexión al servidor no se tocan. Tus notas tampoco.",
+  "settings.about.resetWorkspace.button": "Restablecer ajustes del espacio…",
+  "settings.about.resetWorkspace.confirmTitle":
+    "¿Restablecer los ajustes del espacio de trabajo?",
+  "settings.about.resetWorkspace.confirmBody":
+    "El debounce vuelve a 8 s, decaimiento a 60 días, tamaño de fuente a 16, inactividad a 15 min, sincronización a 5 min, retención de papelera a 30 días. El remoto de sincronización y el token del servidor permanecen intactos. Las notas no se tocan.",
+  "settings.about.resetWorkspace.confirmBtn": "Restablecer ajustes del espacio",
 
   // ── gestures (2.2.0) ──
   "settings.gestures.title": "El Punto Quieto",
@@ -3236,6 +3254,15 @@ export const settingsSV: Record<SettingsKey, string> = {
     "Textstorlek, kontrast, rörelse, träffytestorlek, dyslexityp, läsguide, palett för färgblindhet, fokusring — allt återgår till standard. Inget annat ändras.",
   "settings.about.resetA11y.confirmBtn": "Återställ tillgänglighet",
   "settings.about.resetA11y.done": "Klart — alla standardvärden återställda.",
+  "settings.about.resetWorkspace.title": "Återställ arbetsytans inställningar",
+  "settings.about.resetWorkspace.body":
+    "Glöm de inställningar som ligger i arbetsytans config.toml — autocheckpoint-debounce, decay-dagar, redigerarens teckenstorlek, idle-lås, synktakt, papperskorgens retention. Synk-URL och serveranslutning lämnas orörda. Dina anteckningar berörs inte.",
+  "settings.about.resetWorkspace.button": "Återställ arbetsytans inställningar…",
+  "settings.about.resetWorkspace.confirmTitle":
+    "Återställa arbetsytans inställningar till standard?",
+  "settings.about.resetWorkspace.confirmBody":
+    "Autocheckpoint-debounce till 8 s, decay till 60 dagar, teckenstorlek till 16, idle-lås till 15 min, synk till 5 min, papperskorgsretention till 30 dagar. Synk-fjärr och servertoken förblir intakta. Anteckningarna berörs inte.",
+  "settings.about.resetWorkspace.confirmBtn": "Återställ arbetsytan",
 
   // ── gestures (2.2.0) ──
   "settings.gestures.title": "Den Stilla Punkten",

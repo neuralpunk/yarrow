@@ -5,7 +5,7 @@
   import "../lib/uiPrefs.svelte";
   import "../lib/paperPrefs.svelte";
 
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { api } from "../lib/tauri";
   import { tr } from "../lib/i18n/index.svelte";
   import { theme } from "../lib/theme.svelte";
@@ -17,7 +17,7 @@
     livePreview,
     cookMode,
   } from "../lib/editorPrefs.svelte";
-  import { extraRadialMenu } from "../lib/extraPrefs.svelte";
+  import { extraRadialMenu, extraCodeHighlight } from "../lib/extraPrefs.svelte";
   import { guidance } from "../lib/guidanceStore.svelte";
   import { recordWords } from "../plugins/writer/streak.svelte";
   import { newSourceBody, newSourceTitle } from "../plugins/researcher/sources";
@@ -205,6 +205,43 @@
   // 3.0 — active mode/persona is exposed via the singleton store.
   let modeId = $derived(mode.id);
   let modeConfig = $derived(mode.config);
+
+  // Tracks every fire-and-forget setTimeout AppShell sets so an unmount
+  // (workspace switch via App.svelte's `{#key workspacePath}`) can
+  // cancel them all in one sweep. Anything that's already tracked in
+  // a dedicated variable (e.g. `topologyRefreshTimer`) is cleared
+  // explicitly in `onDestroy` instead.
+  const pendingTimers = new Set<number>();
+  function setManagedTimeout(fn: () => void, ms: number): number {
+    const id = window.setTimeout(() => {
+      pendingTimers.delete(id);
+      fn();
+    }, ms);
+    pendingTimers.add(id);
+    return id;
+  }
+  onDestroy(() => {
+    for (const id of pendingTimers) window.clearTimeout(id);
+    pendingTimers.clear();
+    // Topology + left-off bookmark timers live in dedicated variables
+    // because they're explicitly de-bounced by other code paths. They
+    // still need to be cancelled here so a workspace switch (App.svelte
+    // remounts AppShell via `{#key workspacePath}`) doesn't leak a
+    // 1.5 s topology fetch into the new workspace's IPC stream.
+    if (topologyRefreshTimer) {
+      window.clearTimeout(topologyRefreshTimer);
+      topologyRefreshTimer = null;
+    }
+    if (leftOffWriteTimer) {
+      window.clearTimeout(leftOffWriteTimer);
+      leftOffWriteTimer = null;
+    }
+    // The note-prefetch cache is keyed by slug only — slugs are
+    // workspace-local, so a stale entry from the workspace we just
+    // left could surface a wrong note's body if the new workspace
+    // happens to have the same slug. Clear it on every teardown.
+    invalidateAllNotes();
+  });
 
   // First-launch mode picker.
   let modePickerOpen = $state(false);
@@ -500,7 +537,7 @@
   function announce(msg: string) {
     if (!verboseAnnouncementsOn) return;
     verboseAnnouncement = "";
-    window.setTimeout(() => { verboseAnnouncement = msg; }, 30);
+    setManagedTimeout(() => { verboseAnnouncement = msg; }, 30);
   }
   // svelte-ignore state_referenced_locally
   let lastSyncedAt = $state<number | null>(
@@ -1009,6 +1046,14 @@
   }
 
   async function handleLockEncryption() {
+    // Drop the prefetch cache BEFORE asking the backend to lock. If a
+    // hover-prefetched encrypted-note read is still in flight when lock
+    // fires, the promise was created while the session was unlocked and
+    // resolves to plaintext; without this clear, a follow-up `getCachedOrReadNote`
+    // would hit that in-flight promise and serve plaintext post-lock.
+    // The backend's `lock_session` then zeroes the master key + history
+    // cache; together this closes the cache window on both sides.
+    invalidateAllNotes();
     try { await api.lockEncryption(); } catch { /* best effort */ }
     await broadcastEncryptionChanged();
     if (activeSlug && activeNote?.encrypted) {
@@ -1572,7 +1617,7 @@
       currentPath = name;
       forkMoment = name;
       announce(t("appshell.announce.pathCreated", { name }));
-      setTimeout(() => {
+      setManagedTimeout(() => {
         guidance.trigger("path.create", {
           onPrimary: () => {},
           onSecondary: () => { currentPath = rootName; },
@@ -1684,9 +1729,9 @@
     }
   }
 
-  async function handleRemoveConnection(to: string) {
+  async function handleRemoveConnection(to: string, linkType: LinkType) {
     if (!activeSlug) return;
-    await api.removeLink(activeSlug, to);
+    await api.removeLink(activeSlug, to, linkType);
     const [note, g, orphansList] = await Promise.all([
       api.readNote(activeSlug),
       fetchGraph(),
@@ -2015,17 +2060,6 @@
     return m;
   });
 
-  let neighbors = $derived.by(() => {
-    const m: Record<string, Set<string>> = {};
-    if (graph) {
-      for (const e of graph.links) {
-        (m[e.from] ??= new Set()).add(e.to);
-        (m[e.to] ??= new Set()).add(e.from);
-      }
-    }
-    return m;
-  });
-
   let questions = $derived(openQuestions(currentBody));
 
   let noteWordCount = $derived.by(() => {
@@ -2056,6 +2090,25 @@
   let mainNoteSet = $derived(!!config?.mapping?.main_note);
   let needsMainNote = $derived(mappingEnabled && !mainNoteSet);
   let pathChromeVisible = $derived(mappingEnabled && modeConfig.pathFeatures);
+
+  // Reconcile the workspace's mapping.mode with the active app mode so
+  // switching to a path-bearing mode/persona on a workspace that was
+  // previously flipped to "basic" actually brings the path chrome back
+  // (and vice versa). Without this, mappingEnabled stays false forever
+  // because there's no other UI that flips the workspace back to mapped.
+  let mappingSyncBusy = $state(false);
+  $effect(() => {
+    if (!config) return;
+    const desired = modeConfig.pathFeatures ? "mapped" : "basic";
+    const current = config.mapping?.mode ?? "mapped";
+    if (current === desired || mappingSyncBusy) return;
+    mappingSyncBusy = true;
+    api
+      .setWorkspaceMode(desired)
+      .then((cfg) => { config = cfg; })
+      .catch(() => { /* leave config as-is; next mode change retries */ })
+      .finally(() => { mappingSyncBusy = false; });
+  });
 
   function tbBranchFromHere() {
     if (needsMainNote) {
@@ -2357,11 +2410,18 @@
         return;
       }
       if (mod && !e.shiftKey && e.key.toLowerCase() === "p") {
+        // Always swallow the keystroke. Without `preventDefault`, the
+        // WebView's native ⌘P falls through to `window.print()` of the
+        // whole app chrome (sidebar, toolbar, inspector) — never what
+        // the user wants. With an active note we print that; without
+        // one we hint at how to use this shortcut.
+        e.preventDefault();
         if (activeSlug) {
-          e.preventDefault();
           void printActiveNote(activeSlug);
-          return;
+        } else {
+          toast = t("appshell.toast.printNoNote");
         }
+        return;
       }
       if (mod && !e.shiftKey && e.key.toLowerCase() === "l") {
         if (encryption.enabled) {
@@ -2988,7 +3048,6 @@
             mainNoteSlug={config?.mapping?.main_note ?? null}
             orphans={orphanSet}
             decayDays={config?.preferences.decay_days ?? 60}
-            {neighbors}
             onSelect={selectSlug}
             onOpenInNewTab={openInNewTab}
             onCreate={handleCreateNote}
@@ -4183,12 +4242,27 @@
         livePreview.set(!livePreview.value);
       }}
       onPrintCurrentPath={currentPath ? () => { void printActivePath(currentPath); } : undefined}
-      onClipRecipe={cookingOn ? () => { recipeClipperOpen = true; } : undefined}
-      onAddToShoppingList={cookingOn && activeSlug ? handleAddToShoppingList : undefined}
+      onClipRecipe={() => { recipeClipperOpen = true; }}
+      onAddToShoppingList={activeSlug ? handleAddToShoppingList : undefined}
       {mappingEnabled}
       currentMode={modeId}
       onSetMode={(id) => mode.set(id)}
       onOpenModeSettings={() => { settingsOpen = { open: true, tab: "mode" }; }}
+      onOpenStreak={() => { streakModalOpen = true; }}
+      onOpenOpenQuestions={() => { researcherQuestionsOpen = true; }}
+      hasOpenQuestions={questions.length > 0}
+      onOpenSources={() => { sourcesOpen = true; }}
+      onCreateSource={handleCreateSource}
+      onOpenDecisionLog={() => { decisionLogOpen = true; }}
+      onCreateAdr={handleCreateAdr}
+      onToggleCodeHighlight={() => extraCodeHighlight.toggle()}
+      codeHighlightOn={extraCodeHighlight.value}
+      onOpenSensitive={() => { sensitiveOpen = true; }}
+      onOpenFollowUps={() => { followUpsOpen = true; }}
+      onOpenSessionKit={() => { sessionKitOpen = true; }}
+      onOpenRecipesLibrary={() => { recipesOpen = true; }}
+      onToggleCookMode={() => cookMode.set(!cookMode.value)}
+      cookModeOn={cookModeValue}
     />
   {/if}
 
@@ -4368,7 +4442,7 @@
       id="new-path-condition-input"
       bind:value={newPathCondition}
       onkeydown={(e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
+        if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
           e.preventDefault();
           void handleCreatePath();
         }
@@ -4397,7 +4471,7 @@
       </summary>
       <input
         bind:value={newPathName}
-        onkeydown={(e) => { if (e.key === "Enter") void handleCreatePath(); }}
+        onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) void handleCreatePath(); }}
         placeholder={newPathCondition ? t("appshell.newPath.namePlaceholderAuto") : t("appshell.newPath.namePlaceholderEmpty")}
         class="mt-2 w-full px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-xs"
       />
@@ -4538,7 +4612,7 @@
         <input
           id="new-note-title-input"
           bind:value={newNoteTitle}
-          onkeydown={(e) => { if (e.key === "Enter") void confirmCreateNote(); }}
+          onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) void confirmCreateNote(); }}
           placeholder={t("appshell.newNote.titlePlaceholder")}
           class="w-full px-4 py-2.5 bg-bg border border-bd rounded-full text-sm text-char placeholder:text-t3 focus:outline-hidden focus:border-bd2 transition"
         />
@@ -4594,7 +4668,7 @@
     </p>
     <input
       bind:value={templateTitle}
-      onkeydown={(e) => { if (e.key === "Enter") void confirmCreateFromTemplate(); }}
+      onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) void confirmCreateFromTemplate(); }}
       placeholder={t("appshell.templateName.placeholder")}
       class="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char"
     />

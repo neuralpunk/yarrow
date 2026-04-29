@@ -92,24 +92,41 @@ const DEFAULT_CONFIG: ThemeConfig = {
   darkTheme: DEFAULT_DARK,
 };
 
-function systemPrefersDark(): boolean {
-  // matchMedia first — modern WebKit2GTK / WKWebView / Edge all
-  // honour `prefers-color-scheme` directly. The Rust DE probe runs
-  // out of band and pushes its result into `linuxDeOverride` once
-  // it resolves; that flag wins only when the OS query reports
-  // genuine "no preference" rather than an explicit light/dark.
-  if (linuxDeOverride !== null) {
-    const explicit = window.matchMedia("(prefers-color-scheme: light)").matches
-      || window.matchMedia("(prefers-color-scheme: dark)").matches;
-    if (!explicit) return linuxDeOverride === "dark";
-  }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
+// Both signals feed the `resolved` derived through `systemPrefersDark`.
+// Using `$state` makes them reactive — a previous shape held them as
+// plain `let` and updated them from matchMedia / detectColorScheme
+// listeners, which forced those listeners to call `apply()` directly
+// and bypass the `resolved` derived. Anything reading `theme.resolved`
+// (e.g. `theme.isDark`, ConnectionGraph's theme-aware colours) saw a
+// stale value because the derived had no dependency to invalidate on.
+let systemDark = $state<boolean>(
+  typeof window !== "undefined"
+    ? window.matchMedia("(prefers-color-scheme: dark)").matches
+    : false,
+);
+let systemHasExplicitPreference = $state<boolean>(
+  typeof window !== "undefined"
+    ? window.matchMedia("(prefers-color-scheme: light)").matches
+      || window.matchMedia("(prefers-color-scheme: dark)").matches
+    : false,
+);
 
 // Theme system spec §9.3 — populated asynchronously on boot from
 // `cmd_detect_color_scheme`. Acts as a fallback for old Linux DEs
 // where the WebView reports no preference.
-let linuxDeOverride: "light" | "dark" | null = null;
+let linuxDeOverride = $state<"light" | "dark" | null>(null);
+
+function systemPrefersDark(): boolean {
+  // matchMedia first — modern WebKit2GTK / WKWebView / Edge all honour
+  // `prefers-color-scheme` directly. The Rust DE probe pushes its
+  // result into `linuxDeOverride` once it resolves; that flag wins
+  // only when the OS query reports genuine "no preference" rather than
+  // an explicit light/dark.
+  if (linuxDeOverride !== null && !systemHasExplicitPreference) {
+    return linuxDeOverride === "dark";
+  }
+  return systemDark;
+}
 
 function isLightThemeName(v: unknown): v is LightThemeName {
   return v === "vellum" || v === "linen" || v === "ashrose";
@@ -257,20 +274,24 @@ class ThemeStore {
 
     // Spec §9.3 — kick off the Linux DE probe in the background.
     // Resolves to "light"/"dark"/"unknown"; only the concrete answers
-    // arm the matchMedia fallback, and we re-apply the resolved
-    // palette once so a stale first paint is corrected immediately.
+    // arm the matchMedia fallback. Setting the `$state` mirror
+    // invalidates the `resolved` derived; the apply effect below
+    // re-runs naturally and corrects a stale first paint.
     void api
       .detectColorScheme()
       .then((result) => {
         if (result === "light" || result === "dark") {
           linuxDeOverride = result;
-          if (this.config.mode === "auto") apply(resolvePalette(this.config));
         }
       })
       .catch(() => {});
 
     $effect.root(() => {
-      // Apply + persist whenever any field of config changes.
+      // Apply + persist whenever the resolved palette changes — that
+      // includes every input that feeds it: `config.mode`, the two
+      // sub-theme picks, the system `prefers-color-scheme` mirror,
+      // and the Linux DE probe override. Centralising the apply path
+      // here means no listener has to call `apply()` directly.
       $effect(() => {
         const palette = this.resolved;
         apply(palette);
@@ -306,13 +327,27 @@ class ThemeStore {
         }
       });
 
-      // Track system preference whenever Auto could be load-bearing.
+      // Mirror the OS `prefers-color-scheme` query into the `$state`
+      // signals that feed `resolved`. Two media queries because we
+      // also need to know whether the OS reported an *explicit*
+      // preference (so the Linux DE override only kicks in when it
+      // didn't). Listeners always run; the derived ignores them when
+      // `mode !== "auto"` because `resolvePalette` only reads
+      // `systemPrefersDark()` in the auto branch.
       $effect(() => {
-        if (this.config.mode !== "auto") return;
-        const mq = window.matchMedia("(prefers-color-scheme: dark)");
-        const onChange = () => apply(resolvePalette(this.config));
-        mq.addEventListener("change", onChange);
-        return () => mq.removeEventListener("change", onChange);
+        const dark = window.matchMedia("(prefers-color-scheme: dark)");
+        const light = window.matchMedia("(prefers-color-scheme: light)");
+        const sync = () => {
+          systemDark = dark.matches;
+          systemHasExplicitPreference = dark.matches || light.matches;
+        };
+        sync();
+        dark.addEventListener("change", sync);
+        light.addEventListener("change", sync);
+        return () => {
+          dark.removeEventListener("change", sync);
+          light.removeEventListener("change", sync);
+        };
       });
     });
   }

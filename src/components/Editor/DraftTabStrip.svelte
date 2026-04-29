@@ -144,7 +144,7 @@
           bind:this={modalInputRef}
           bind:value={modalValue}
           onkeydown={(e) => {
-            if (e.key === "Enter") {
+            if (e.key === "Enter" && !e.isComposing) {
               e.preventDefault();
               submitModal();
             }

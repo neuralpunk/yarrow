@@ -67,7 +67,7 @@
         cursor = Math.max(cursor - 1, 0);
         return;
       }
-      if (e.key === "Enter" && selectable[cursor]) {
+      if (e.key === "Enter" && !e.isComposing && selectable[cursor]) {
         e.preventDefault();
         handleSwitch(selectable[cursor].path);
       }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Link } from "../../lib/types";
+  import type { Link, LinkType } from "../../lib/types";
   import { LINK_TYPE_COLORS, LINK_TYPE_LABELS } from "../../lib/types";
   import { PlusIcon, XIcon } from "../../lib/iconsSvelte";
   import EmptyState from "../EmptyState.svelte";
@@ -11,7 +11,7 @@
     snippetMap: Record<string, string>;
     onNavigate: (slug: string) => void;
     onAdd: () => void;
-    onRemove: (to: string) => void;
+    onRemove: (to: string, linkType: LinkType) => void;
   }
 
   let { links, titleMap, snippetMap, onNavigate, onAdd, onRemove }: Props = $props();
@@ -63,7 +63,7 @@
           <button
             onclick={(e) => {
               e.stopPropagation();
-              onRemove(l.target);
+              onRemove(l.target, l.type);
             }}
             class="ml-auto text-t3 hover:text-danger opacity-0 group-hover:opacity-100 transition"
             title={t("sidebar.linked.removeTitle")}

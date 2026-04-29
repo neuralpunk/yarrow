@@ -207,7 +207,7 @@
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         selectedIdx = Math.max(0, selectedIdx - 1);
-      } else if (e.key === "Enter") {
+      } else if (e.key === "Enter" && !e.isComposing) {
         const target = visibleRecents[selectedIdx];
         if (target) {
           e.preventDefault();
@@ -726,7 +726,7 @@
                       langOpen = false;
                     }}
                     onkeydown={(e) => {
-                      if (e.key === "Enter") {
+                      if (e.key === "Enter" && !e.isComposing) {
                         language.set(l.id as LanguageCode);
                         langOpen = false;
                       }
@@ -805,7 +805,7 @@
           type="text"
           bind:value={renameDraft}
           onkeydown={(e) => {
-            if (e.key === "Enter" && canSaveRename && renameTarget) {
+            if (e.key === "Enter" && !e.isComposing && canSaveRename && renameTarget) {
               e.preventDefault();
               void commitRename(renameTarget, trimmedRenameDraft);
             }

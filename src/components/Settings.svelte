@@ -1305,7 +1305,23 @@
   // ─────────── Reset settings buttons ───────────
   let resetAllConfirmOpen = $state(false);
   let resetA11yConfirmOpen = $state(false);
+  let resetWorkspaceConfirmOpen = $state(false);
   let a11yJustReset = $state(false);
+
+  // Mirror of `Preferences::default()` in src-tauri/src/workspace.rs.
+  // Kept in sync by hand — both sides are tiny and the field set rarely
+  // changes. If you add a field there, add it here.
+  const DEFAULT_WORKSPACE_PREFERENCES: WorkspaceConfig["preferences"] = {
+    decay_days: 60,
+    autocheckpoint_debounce_ms: 8000,
+    focus_mode_default: false,
+    ask_thinking_on_close: true,
+    editor_font_size: 16,
+    encryption_idle_timeout_secs: 900,
+    search_index_enabled: true,
+    autosync_minutes: 5,
+    trash_retention_days: 30,
+  };
 
   function resetA11yConfirm() {
     resetAccessibilityPrefs();
@@ -1330,6 +1346,16 @@
     } catch {}
     resetAllConfirmOpen = false;
     setTimeout(() => window.location.reload(), 200);
+  }
+
+  async function resetWorkspaceConfirm() {
+    resetWorkspaceConfirmOpen = false;
+    try {
+      const cfg = await api.updatePreferences({ ...DEFAULT_WORKSPACE_PREFERENCES });
+      onConfigChange(cfg);
+    } catch (e) {
+      console.error("Failed to reset workspace preferences", e);
+    }
   }
 
   // ─────────── Settings export/import ───────────
@@ -2296,6 +2322,9 @@
         <div class="border-t border-bd pt-5">
           {@render resetButton("all")}
         </div>
+        <div class="border-t border-bd pt-5">
+          {@render resetButton("workspace")}
+        </div>
       </div>
     </div>
   {/snippet}
@@ -2488,10 +2517,28 @@
   {@render section(t("settings.extras.title"), t("settings.extras.hint"), "device", body)}
 {/snippet}
 
-{#snippet resetButton(scope: "all" | "a11y")}
-  {@const titleKey = (scope === "a11y" ? "settings.about.resetA11y.title" : "settings.about.reset.title") as StringKey}
-  {@const bodyKey = (scope === "a11y" ? "settings.about.resetA11y.body" : "settings.about.reset.body") as StringKey}
-  {@const buttonKey = (scope === "a11y" ? "settings.about.resetA11y.button" : "settings.about.reset.button") as StringKey}
+{#snippet resetButton(scope: "all" | "a11y" | "workspace")}
+  {@const titleKey = (
+    scope === "a11y"
+      ? "settings.about.resetA11y.title"
+      : scope === "workspace"
+        ? "settings.about.resetWorkspace.title"
+        : "settings.about.reset.title"
+  ) as StringKey}
+  {@const bodyKey = (
+    scope === "a11y"
+      ? "settings.about.resetA11y.body"
+      : scope === "workspace"
+        ? "settings.about.resetWorkspace.body"
+        : "settings.about.reset.body"
+  ) as StringKey}
+  {@const buttonKey = (
+    scope === "a11y"
+      ? "settings.about.resetA11y.button"
+      : scope === "workspace"
+        ? "settings.about.resetWorkspace.button"
+        : "settings.about.reset.button"
+  ) as StringKey}
   {@const triggerClass =
     scope === "all"
       ? "px-3 py-1.5 text-xs bg-danger text-bg rounded-md hover:opacity-90 font-medium"
@@ -2503,6 +2550,7 @@
       type="button"
       onclick={() => {
         if (scope === "a11y") resetA11yConfirmOpen = true;
+        else if (scope === "workspace") resetWorkspaceConfirmOpen = true;
         else resetAllConfirmOpen = true;
       }}
       class={triggerClass}
@@ -3130,7 +3178,7 @@
         <input
           autofocus
           bind:value={templatesNewLabel}
-          onkeydown={(e) => { if (e.key === "Enter") templatesConfirmNew(); }}
+          onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) templatesConfirmNew(); }}
           placeholder={t("settings.templates.newModal.placeholder")}
           class="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char"
         />
@@ -3340,7 +3388,7 @@
           id="enable-enc-pw2"
           type="password"
           bind:value={enableEncPw2}
-          onkeydown={(e) => { if (e.key === "Enter") enableEncSubmit(); }}
+          onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) enableEncSubmit(); }}
           class="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-3"
         />
         {#if enableEncErr}
@@ -3382,7 +3430,7 @@
         type="password"
         autofocus
         bind:value={disableEncPw}
-        onkeydown={(e) => { if (e.key === "Enter") disableEncSubmit(); }}
+        onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) disableEncSubmit(); }}
         class="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-3"
       />
       {#if disableEncErr}
@@ -3432,7 +3480,7 @@
         type="password"
         placeholder={t("settings.security.changePwModal.confirm")}
         bind:value={changePwNew2}
-        onkeydown={(e) => { if (e.key === "Enter") changePwSubmit(); }}
+        onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) changePwSubmit(); }}
         class="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-3"
       />
       {#if changePwErr}
@@ -3471,7 +3519,7 @@
         autofocus
         placeholder={t("settings.security.regenModal.current")}
         bind:value={regenPw}
-        onkeydown={(e) => { if (e.key === "Enter") regenSubmit(); }}
+        onkeydown={(e) => { if (e.key === "Enter" && !e.isComposing) regenSubmit(); }}
         class="w-full px-3 py-2 bg-bg border border-bd rounded-md text-char font-mono text-sm mb-3"
       />
       {#if regenErr}
@@ -3554,7 +3602,7 @@
           bind:value={workspaceName}
           onblur={saveWorkspaceName}
           onkeydown={(e) => {
-            if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+            if (e.key === "Enter" && !e.isComposing) (e.currentTarget as HTMLInputElement).blur();
           }}
           class="w-56 px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-sm"
         />
@@ -4393,6 +4441,9 @@
     <div class="mt-4">
       {@render resetButton("all")}
     </div>
+    <div class="mt-4 pt-4 border-t border-bd">
+      {@render resetButton("workspace")}
+    </div>
   {/snippet}
   {@render section(t("settings.about.title"), undefined, undefined, body)}
 {/snippet}
@@ -4720,6 +4771,35 @@
           onclick={resetAllConfirm}
         >
           {t("settings.about.reset.confirmBtn")}
+        </button>
+      </div>
+    {/snippet}
+  </Modal>
+
+  <Modal
+    open={resetWorkspaceConfirmOpen}
+    onClose={() => (resetWorkspaceConfirmOpen = false)}
+    title={t("settings.about.resetWorkspace.confirmTitle")}
+    width="w-[440px]"
+  >
+    {#snippet children()}
+      <p class="text-sm text-t2 mb-4 leading-relaxed">
+        {t("settings.about.resetWorkspace.confirmBody")}
+      </p>
+      <div class="flex justify-end gap-2">
+        <button
+          type="button"
+          class="px-3 py-1.5 text-sm text-t2 hover:text-char"
+          onclick={() => (resetWorkspaceConfirmOpen = false)}
+        >
+          {t("settings.about.reset.cancel")}
+        </button>
+        <button
+          type="button"
+          class="px-3 py-1.5 text-sm bg-s2 text-char rounded-md hover:bg-s3"
+          onclick={resetWorkspaceConfirm}
+        >
+          {t("settings.about.resetWorkspace.confirmBtn")}
         </button>
       </div>
     {/snippet}
