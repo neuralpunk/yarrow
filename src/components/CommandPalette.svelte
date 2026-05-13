@@ -10,8 +10,9 @@
   } from "../lib/iconsSvelte";
   import { SK } from "../lib/platform.svelte";
   import EmptyState from "./EmptyState.svelte";
-  import { tr, type StringKey } from "../lib/i18n/index.svelte";
-  import { MODE_ORDER, type ModeId } from "../lib/modes";
+  import { tr } from "../lib/i18n/index.svelte";
+  import { defaultLabel, type TagDef } from "../lib/tags.svelte";
+  import { animate, utils, stagger, reducedMotion } from "../lib/anim.svelte";
 
   type Section = "recents" | "actions" | "notes" | "tags" | "paths";
   const SECTION_ORDER: Section[] = ["recents", "actions", "notes", "tags", "paths"];
@@ -89,33 +90,21 @@
     livePreviewOn?: boolean;
     onToggleLivePreview?: () => void;
     onPrintCurrentPath?: () => void;
-    onClipRecipe?: () => void;
-    onAddToShoppingList?: () => void;
     onImportObsidian?: () => void;
     onComparePaths?: () => void;
     onOpenDecisionMatrix?: () => void;
     mappingEnabled?: boolean;
-    currentMode?: ModeId;
-    onSetMode?: (id: ModeId) => void;
-    onOpenModeSettings?: () => void;
-    // Plugin features. Wired always (not gated on the active persona) so
-    // the "modes are biases, not gates" invariant holds — every feature
-    // stays one ⌘K away regardless of which mode is active.
-    onOpenStreak?: () => void;
+    /** 3.2+ — open-questions panel and code-highlight toggle survived
+     *  the persona retirement as generic features. Wired here so they
+     *  stay reachable from ⌘K. */
     onOpenOpenQuestions?: () => void;
     hasOpenQuestions?: boolean;
-    onOpenSources?: () => void;
-    onCreateSource?: () => void;
-    onOpenDecisionLog?: () => void;
-    onCreateAdr?: () => void;
     onToggleCodeHighlight?: () => void;
     codeHighlightOn?: boolean;
-    onOpenSensitive?: () => void;
-    onOpenFollowUps?: () => void;
-    onOpenSessionKit?: () => void;
-    onOpenRecipesLibrary?: () => void;
-    onToggleCookMode?: () => void;
-    cookModeOn?: boolean;
+    /** 3.2+ tag-driven saved views. Each configured tag becomes a "View
+     *  <label>" command that opens SavedViewModal filtered to that tag. */
+    pinnedTags?: readonly TagDef[];
+    onOpenSavedView?: (tagName: string) => void;
   }
 
   let props: Props = $props();
@@ -128,6 +117,8 @@
   let cursor = $state(0);
   let inputRef = $state<HTMLInputElement | null>(null);
   let listRef = $state<HTMLDivElement | null>(null);
+  let backdropRef = $state<HTMLDivElement | null>(null);
+  let paletteRef = $state<HTMLDivElement | null>(null);
 
   $effect(() => {
     if (open) {
@@ -135,6 +126,57 @@
       hits = [];
       cursor = 0;
       const id = window.setTimeout(() => inputRef?.focus(), 30);
+      // Two-phase entrance via anime.js: backdrop fades, panel rises
+      // with a soft overshoot, then the first batch of rows cascades
+      // in. We gate everything on tick() so bind:this refs are
+      // populated; we also imperatively set initial state via
+      // utils.set rather than relying on `style:opacity="0"`, so a
+      // failed animation degrades to visible-and-snapped instead of
+      // permanently invisible.
+      tick().then(() => {
+        if (!open) return;
+        const bd = backdropRef;
+        const pl = paletteRef;
+        const ls = listRef;
+        if (reducedMotion()) {
+          if (bd) bd.style.opacity = "1";
+          if (pl) pl.style.opacity = "1";
+          return;
+        }
+        if (bd) {
+          utils.set(bd, { opacity: 0 });
+          animate(bd, {
+            opacity: [0, 1],
+            duration: 220,
+            ease: "outQuad",
+          });
+        }
+        if (pl) {
+          utils.set(pl, { opacity: 0, scale: 0.96, y: 14 });
+          animate(pl, {
+            opacity: [0, 1],
+            scale: [0.96, 1],
+            y: [14, 0],
+            duration: 380,
+            ease: "outBack(1.2)",
+          });
+        }
+        if (ls) {
+          const rows = Array.from(
+            ls.querySelectorAll<HTMLElement>("[data-idx]"),
+          ).slice(0, 9);
+          if (rows.length > 0) {
+            utils.set(rows, { opacity: 0, y: 4 });
+            animate(rows, {
+              opacity: [0, 1],
+              y: [4, 0],
+              duration: 260,
+              delay: stagger(28, { start: 80 }),
+              ease: "outCubic",
+            });
+          }
+        }
+      });
       return () => window.clearTimeout(id);
     }
   });
@@ -202,18 +244,6 @@
       { kind: "command", key: "history", label: t("modals.commandPalette.cmdHistory"), sublabel: t("modals.commandPalette.cmdHistorySub"), run: () => { onClose(); props.onOpenHistory(); } },
       { kind: "command", key: "focus", label: t("modals.commandPalette.cmdFocus"), sublabel: t("modals.commandPalette.cmdFocusSub"), hint: SK.focusToggle, run: () => { onClose(); props.onToggleFocus(); } },
       { kind: "command", key: "scratch", label: t("modals.commandPalette.cmdScratchpad"), sublabel: t("modals.commandPalette.cmdScratchpadSub"), hint: SK.scratchpad, run: () => { onClose(); props.onOpenScratchpad(); } },
-      ...(props.onOpenModeSettings ? [{ kind: "command" as const, key: "mode-settings", label: t("modals.commandPalette.cmdModeSettings"), sublabel: t("modals.commandPalette.cmdModeSettingsSub"), run: () => { onClose(); props.onOpenModeSettings!(); } }] : []),
-      ...(props.onSetMode
-        ? MODE_ORDER
-            .filter((id) => id !== props.currentMode)
-            .map((id) => ({
-              kind: "command" as const,
-              key: `mode-${id}`,
-              label: t(`modals.commandPalette.cmdSwitchMode.${id}` as StringKey),
-              sublabel: t(`modals.commandPalette.cmdSwitchMode.${id}Sub` as StringKey),
-              run: () => { onClose(); props.onSetMode!(id); },
-            }))
-        : []),
       { kind: "command", key: "sync", label: t("modals.commandPalette.cmdSync"), run: () => { onClose(); props.onSync(); } },
       ...(props.onSwitchWorkspace ? [{ kind: "command" as const, key: "switch-workspace", label: t("modals.commandPalette.cmdSwitchWorkspace"), sublabel: t("modals.commandPalette.cmdSwitchWorkspaceSub"), hint: SK.switchWorkspace, run: () => { onClose(); props.onSwitchWorkspace!(); } }] : []),
       ...(props.onOpenNewWindow ? [{ kind: "command" as const, key: "new-window", label: t("modals.commandPalette.cmdNewWindow"), sublabel: t("modals.commandPalette.cmdNewWindowSub"), run: () => { onClose(); props.onOpenNewWindow!(); } }] : []),
@@ -236,23 +266,20 @@
         run: () => { onClose(); props.onToggleLivePreview!(); },
       }] : []),
       ...(props.onPrintCurrentPath ? [{ kind: "command" as const, key: "print-current-path", label: t("modals.commandPalette.cmdPrintPath"), sublabel: t("modals.commandPalette.cmdPrintPathSub"), run: () => { onClose(); props.onPrintCurrentPath!(); } }] : []),
-      ...(props.onClipRecipe ? [{ kind: "command" as const, key: "clip-recipe", label: t("modals.commandPalette.cmdClipRecipe"), sublabel: t("modals.commandPalette.cmdClipRecipeSub"), run: () => { onClose(); props.onClipRecipe!(); } }] : []),
-      ...(props.onAddToShoppingList ? [{ kind: "command" as const, key: "add-to-shopping-list", label: t("modals.commandPalette.cmdAddToShoppingList"), sublabel: t("modals.commandPalette.cmdAddToShoppingListSub"), run: () => { onClose(); props.onAddToShoppingList!(); } }] : []),
-      // Persona-plugin commands. Each is gated on the prop being defined
-      // — AppShell pipes them all unconditionally so they're always
-      // reachable regardless of the active mode.
-      ...(props.onOpenStreak ? [{ kind: "command" as const, key: "writer-streak", label: t("modals.commandPalette.cmdStreak"), sublabel: t("modals.commandPalette.cmdStreakSub"), run: () => { onClose(); props.onOpenStreak!(); } }] : []),
-      ...(props.onOpenOpenQuestions ? [{ kind: "command" as const, key: "researcher-questions", label: t("modals.commandPalette.cmdOpenQuestions"), sublabel: props.hasOpenQuestions ? t("modals.commandPalette.cmdOpenQuestionsSub") : t("modals.commandPalette.cmdOpenQuestionsSubEmpty"), run: () => { onClose(); props.onOpenOpenQuestions!(); } }] : []),
-      ...(props.onOpenSources ? [{ kind: "command" as const, key: "researcher-sources", label: t("modals.commandPalette.cmdOpenSources"), sublabel: t("modals.commandPalette.cmdOpenSourcesSub"), run: () => { onClose(); props.onOpenSources!(); } }] : []),
-      ...(props.onCreateSource ? [{ kind: "command" as const, key: "researcher-new-source", label: t("modals.commandPalette.cmdNewSource"), sublabel: t("modals.commandPalette.cmdNewSourceSub"), run: () => { onClose(); props.onCreateSource!(); } }] : []),
-      ...(props.onOpenDecisionLog ? [{ kind: "command" as const, key: "developer-decision-log", label: t("modals.commandPalette.cmdDecisionLog"), sublabel: t("modals.commandPalette.cmdDecisionLogSub"), run: () => { onClose(); props.onOpenDecisionLog!(); } }] : []),
-      ...(props.onCreateAdr ? [{ kind: "command" as const, key: "developer-new-adr", label: t("modals.commandPalette.cmdNewAdr"), sublabel: t("modals.commandPalette.cmdNewAdrSub"), run: () => { onClose(); props.onCreateAdr!(); } }] : []),
-      ...(props.onToggleCodeHighlight ? [{ kind: "command" as const, key: "developer-code-highlight", label: props.codeHighlightOn ? t("modals.commandPalette.cmdCodeHighlightOff") : t("modals.commandPalette.cmdCodeHighlightOn"), sublabel: t("modals.commandPalette.cmdCodeHighlightSub"), run: () => { onClose(); props.onToggleCodeHighlight!(); } }] : []),
-      ...(props.onOpenSensitive ? [{ kind: "command" as const, key: "clinician-sensitive", label: t("modals.commandPalette.cmdSensitive"), sublabel: t("modals.commandPalette.cmdSensitiveSub"), run: () => { onClose(); props.onOpenSensitive!(); } }] : []),
-      ...(props.onOpenFollowUps ? [{ kind: "command" as const, key: "clinician-follow-ups", label: t("modals.commandPalette.cmdFollowUps"), sublabel: t("modals.commandPalette.cmdFollowUpsSub"), run: () => { onClose(); props.onOpenFollowUps!(); } }] : []),
-      ...(props.onOpenSessionKit ? [{ kind: "command" as const, key: "clinician-session-kit", label: t("modals.commandPalette.cmdSessionKit"), sublabel: t("modals.commandPalette.cmdSessionKitSub"), run: () => { onClose(); props.onOpenSessionKit!(); } }] : []),
-      ...(props.onOpenRecipesLibrary ? [{ kind: "command" as const, key: "cooking-recipes", label: t("modals.commandPalette.cmdRecipesLibrary"), sublabel: t("modals.commandPalette.cmdRecipesLibrarySub"), run: () => { onClose(); props.onOpenRecipesLibrary!(); } }] : []),
-      ...(props.onToggleCookMode ? [{ kind: "command" as const, key: "cooking-cook-mode", label: props.cookModeOn ? t("modals.commandPalette.cmdCookModeOff") : t("modals.commandPalette.cmdCookModeOn"), sublabel: t("modals.commandPalette.cmdCookModeSub"), run: () => { onClose(); props.onToggleCookMode!(); } }] : []),
+      ...(props.onOpenOpenQuestions ? [{ kind: "command" as const, key: "open-questions", label: t("modals.commandPalette.cmdOpenQuestions"), sublabel: props.hasOpenQuestions ? t("modals.commandPalette.cmdOpenQuestionsSub") : t("modals.commandPalette.cmdOpenQuestionsSubEmpty"), run: () => { onClose(); props.onOpenOpenQuestions!(); } }] : []),
+      ...(props.onToggleCodeHighlight ? [{ kind: "command" as const, key: "code-highlight", label: props.codeHighlightOn ? t("modals.commandPalette.cmdCodeHighlightOff") : t("modals.commandPalette.cmdCodeHighlightOn"), sublabel: t("modals.commandPalette.cmdCodeHighlightSub"), run: () => { onClose(); props.onToggleCodeHighlight!(); } }] : []),
+      // 3.2+ saved-view commands. One per configured tag — palette is
+      // the universal fallback regardless of whether the tag is pinned
+      // to the rail or status bar.
+      ...((props.pinnedTags && props.onOpenSavedView)
+        ? props.pinnedTags.map((tag) => ({
+            kind: "command" as const,
+            key: `view-${tag.name}`,
+            label: `View ${defaultLabel(tag)}`,
+            sublabel: `Show notes tagged #${tag.name}`,
+            run: () => { onClose(); props.onOpenSavedView!(tag.name); },
+          }))
+        : []),
     ];
 
     const enc = props.encryption;
@@ -522,13 +549,15 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="fixed inset-0 z-50 flex items-start justify-center bg-char/20 pt-24 animate-fadeIn"
+    bind:this={backdropRef}
+    class="fixed inset-0 z-50 flex items-start justify-center bg-char/20 pt-24"
     onmousedown={onBackdropMouseDown}
     onclick={onBackdropClick}
     role="presentation"
   >
     <div
-      class="w-[540px] max-w-[92vw] bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden animate-slideUp"
+      bind:this={paletteRef}
+      class="w-[540px] max-w-[92vw] bg-bg border border-bd2 rounded-xl shadow-2xl overflow-hidden"
       role="dialog"
       aria-modal="true"
       aria-label={t("modals.commandPalette.placeholder")}

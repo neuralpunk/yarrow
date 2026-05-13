@@ -20,6 +20,7 @@ import type {
   EnableEncryptionOutcome,
   EncryptionStatus,
   ExportReport,
+  GlossaryEntry,
   Graph,
   HistoryEntry,
   Keepsake,
@@ -46,6 +47,7 @@ import type {
   PathComparison,
   ObsidianImportReport,
   SaveOutcome,
+  UpdateInfo,
   WorkspaceConfig,
 } from "./types";
 
@@ -225,6 +227,12 @@ export const api = {
     invoke<Note>("cmd_rename_note", { oldSlug, newTitle, rewriteWikilinks }),
   setTags: (slug: string, tags: string[]) =>
     invoke<Note>("cmd_set_tags", { slug, tags }),
+  /** Toggle the `private` flag on a note's frontmatter. 3.2+ uses this
+   *  for the encrypt-tag bridge: adding/removing an encrypt-flagged
+   *  tag drives this call so the air-gapped exclude list and sync
+   *  state stay in sync with the user's intent. */
+  setPrivate: (slug: string, value: boolean) =>
+    invoke<Note>("cmd_set_private", { slug, value }),
   /** Tag Bouquet (2.1): up to `limit` suggested tags picked from the
    *  note's own words, preferring stems already used as tags somewhere
    *  in the vault. Fully local. Never writes anything. */
@@ -307,6 +315,14 @@ export const api = {
 
   // graph
   getGraph: () => invoke<Graph>("cmd_get_graph"),
+  /** 3.2 Inline Glossary: read the workspace's `.yarrow/glossary.json`.
+   *  Entries arrive longest-term-first so the editor's regex matches
+   *  the most specific term. */
+  glossaryEntries: () => invoke<GlossaryEntry[]>("cmd_glossary_entries"),
+  /** 3.2 Inline Glossary: overwrite `.yarrow/glossary.json` with the
+   *  cleaned, deduped entry set. Returns the post-clean list. */
+  saveGlossaryEntries: (entries: GlossaryEntry[]) =>
+    invoke<GlossaryEntry[]>("cmd_save_glossary_entries", { entries }),
   orphans: () => invoke<string[]>("cmd_orphans"),
 
   // history
@@ -506,8 +522,21 @@ export const api = {
   writeTemplate: (name: string, content: string) =>
     invoke<void>("cmd_write_template", { name, content }),
   deleteTemplate: (name: string) => invoke<void>("cmd_delete_template", { name }),
-  createFromTemplate: (template: string, title: string) =>
-    invoke<Note>("cmd_create_from_template", { template, title }),
+  /** 3.2+: `extraTags` and `forcePrivate` let the frontend's tag-config
+   *  drive scaffold-time tag injection and privacy. Both are optional
+   *  for backward compat with kit-based scaffolders. */
+  createFromTemplate: (
+    template: string,
+    title: string,
+    extraTags?: string[],
+    forcePrivate?: boolean,
+  ) =>
+    invoke<Note>("cmd_create_from_template", {
+      template,
+      title,
+      extraTags,
+      forcePrivate,
+    }),
 
   // conflicts / merge
   mergeState: () => invoke<boolean>("cmd_merge_state"),
@@ -522,6 +551,9 @@ export const api = {
 
   // smart paste
   fetchUrlTitle: (url: string) => invoke<string>("cmd_fetch_url_title", { url }),
+
+  // settings → about → updates
+  checkForUpdates: () => invoke<UpdateInfo>("cmd_check_for_updates"),
 
   // trash
   listTrash: () => invoke<TrashEntry[]>("cmd_list_trash"),

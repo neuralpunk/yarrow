@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Yarrow 3.0 User Guide — every feature, explained from scratch</title>
-<meta name="description" content="A complete, no-prior-knowledge guide to Yarrow 3.0 — Modes &amp; Personas, the React→Svelte 5 engine rewrite, the new six-theme system (Vellum, Workshop, Linen, Graphite, Ashrose, Dracula), the expanded accessibility surface, plus everything from 2.x: notes, links, scenarios, the map, history, sync, encryption, kits, configurable Still-Point gestures, Compare-notes mode, live-preview split, and the opt-in cooking workflow. With diagrams." />
+<title>Yarrow 3.1 User Guide — every feature, explained from scratch</title>
+<meta name="description" content="A complete, no-prior-knowledge guide to Yarrow 3.1 — a calm anime.js motion vocabulary across the app, an inline wikilink picker, a floating selection toolbar, a slash-command panel, and a file-backed glossary edited in Settings, on top of the 3.0 Svelte&nbsp;5 engine and Modes &amp; Personas, plus everything from 2.x: notes, links, scenarios, the map, history, sync, encryption, kits, configurable Still-Point gestures, Compare-notes mode, live-preview split, and the opt-in cooking workflow. With diagrams." />
 
 <!-- Per spec §10: pair theme-color metas with prefers-color-scheme so
      the OS chrome (mobile address bar, desktop title strip) matches
@@ -75,7 +75,7 @@
     <a class="wordmark" href="index.html">
       <span class="mark-svg"><svg><use href="#yarrow-mark"/></svg></span>
       Yarrow
-      <span class="version">User Guide · v3.0</span>
+      <span class="version">User Guide · v3.1</span>
     </a>
     <span></span>
     <div class="mast-nav">
@@ -95,7 +95,7 @@
       </div>
       <a class="btn-mini" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-        Download 3.0
+        Download 3.1
       </a>
     </div>
   </div>
@@ -151,6 +151,7 @@
         <span class="toc-group-h">Start here</span>
         <a href="learn.html">Learn the basics →</a>
         <a href="#what-is-yarrow">What Yarrow is</a>
+        <a href="#whats-new-3-1">New in 3.1</a>
         <a href="#whats-new-3-0">New in 3.0</a>
         <a href="#whats-new-2-1">New in 2.1</a>
         <a href="#whats-new-2">New in 2.0</a>
@@ -197,6 +198,7 @@
         <a href="#typed-links">Typed connections</a>
         <a href="#transclusion">Transclusion</a>
         <a href="#open-questions">?? open questions</a>
+        <a href="#inline-glossary">Inline glossary</a>
         <a href="#tags">Tags</a>
         <a href="#pinned">Pinned notes</a>
         <a href="#map">The Connections Map</a>
@@ -251,23 +253,26 @@
   <main class="guide-main">
 
     <header class="guide-hero">
-      <div class="eyebrow"><span class="dot"></span> User Guide · Yarrow 3.0</div>
+      <div class="eyebrow"><span class="dot"></span> User Guide · Yarrow 3.1</div>
       <h1>Everything Yarrow does, <em>explained from scratch.</em></h1>
       <p class="lede">
         Welcome! This guide is for everyone — whether you've never used
         a notes app before, or you're already comfortable with computers
         and want to dig into the details. Read it from top to bottom if
         you're new, or use the menu on the left to jump to whatever
-        you're curious about. If you just updated to 3.0, the right
-        rail and palette can now be biased toward how you work via
-        <strong>Settings → Mode &amp; Persona</strong>; the chrome
-        ships with two new default themes — <em>Vellum</em>
-        (cool bone &amp; slate) for light and <em>Workshop</em>
-        (deep ink &amp; bronze) for dark, with four alternative
-        palettes still in <strong>Settings → Appearance</strong>;
-        and Settings → Accessibility has a new <em>Visualizations</em>
-        subsection. Every feature below works the same way it did —
-        only the chrome and the engine underneath have been rebuilt.
+        you're curious about. If you just updated to <strong>3.1</strong>,
+        the whole app picks up a calmer animation pass (modal entrances,
+        toast slide-ins, the connection-graph radial spawn, theme-swap
+        ink wash) routed through a shared anime.js motion vocabulary;
+        the editor gains an inline <em>wikilink picker</em> on <kbd>[[</kbd>,
+        a floating <em>selection toolbar</em> over highlighted text, and
+        a <em>slash-command panel</em> on <kbd>/</kbd>; the
+        <em>inline glossary</em> moves out of frontmatter and into its
+        own pane at <strong>Settings → Glossary</strong>; and
+        <em>Mode &amp; Persona</em> collapses into a single picker with
+        a first-run wizard. Everything from 3.0 (Modes &amp; Personas,
+        the Svelte&nbsp;5 engine, the six themes, the expanded
+        accessibility surface) is still here.
       </p>
       <p class="callout">
         <strong>About the keys we mention.</strong> Mac uses the
@@ -311,6 +316,75 @@
       <p style="margin-top: 28px; padding: 18px 22px; border: 1px solid var(--rule); border-left: 3px solid var(--yel); border-radius: 6px; background: var(--bg-soft, var(--bg)); font-family: var(--serif);">
         <strong>New here?</strong> The User Guide is comprehensive — it's the long-form reference. If you want a friendlier walk-through that teaches Scenarios, Personas, wikilinks, tags, and history with examples, start at <a href="learn.html"><em>Learn the basics</em></a> and come back here when you want detail.
       </p>
+    </section>
+
+    <!-- ════════════════════ NEW IN 3.1 ════════════════════ -->
+    <section id="whats-new-3-1" class="guide-section guide-whats-new">
+      <div class="whats-new-header">
+        <span class="whats-new-kicker">New in 3.1</span>
+        <h2>Calmer motion, sharper authoring, and a file-backed glossary</h2>
+        <p class="lede">
+          3.1 sits on top of the 3.0 Svelte&nbsp;5 engine and Modes
+          &amp; Personas, and adds three layers you feel the moment
+          you open the app: a unified <strong>anime.js v4</strong>
+          motion vocabulary that quiets every transition, a set of
+          in-editor authoring affordances (inline wikilink picker,
+          floating selection toolbar, slash-command panel) that put
+          the right action under your hand, and a standalone
+          <strong>Glossary</strong> file you author from Settings.
+          Mode and Persona collapse into a single picker, the editor
+          gains a search-driven Persona Actions popover, and Settings
+          → About now has a manual "Check for updates" button.
+          Existing 3.0 muscle memory carries over unchanged.
+        </p>
+      </div>
+
+      <div class="three-up">
+        <div class="three-card">
+          <h4>A calm motion pass (anime.js v4)</h4>
+          <p>Every animation now routes through a single vocabulary in <code>src/lib/anim.svelte.ts</code> — <em>popIn</em>, <em>pulseRing</em>, <em>staggerFadeUp</em>, <em>toastSlideIn</em>, <em>drawPath</em>, <em>sweepClip</em>, <em>widthSlide</em>, <em>radialSpawn</em>. The same easings and durations apply across modal entrances, command-palette open, toast slide-in, note-list filter cascade, fork-moment timeline, focus-mode rail collapse, theme-swap ink wash, auto-checkpoint pulse, and the connection-graph radial spawn. Honours <code>prefers-reduced-motion</code> end-to-end.</p>
+        </div>
+        <div class="three-card">
+          <h4>Inline wikilink picker</h4>
+          <p>Type <kbd>[[</kbd> and a small two-row picker appears: serif title on top, mono slug · last-edited · tag count underneath. Arrow keys to navigate, Enter to insert, Esc to dismiss. If nothing matches, the picker shows a <em>"Create <em>query</em>"</em> row that scaffolds the missing note via the same machinery as ⌘N. Coexists with the existing right-click → Insert wikilink picker; neither one disables the other.</p>
+        </div>
+        <div class="three-card">
+          <h4>Selection toolbar</h4>
+          <p>Drag over text and a floating bar appears just above the selection — Bold · Italic · Code · <code>[[ ]]</code> · Highlight · <code>??</code>. Spring entrance, Esc dismisses, edits route through a single <code>yarrow:editor-replace-range</code> event so the toolbar stays decoupled from CodeMirror internals.</p>
+        </div>
+        <div class="three-card">
+          <h4>Slash-command panel</h4>
+          <p>Type <kbd>/</kbd> at the start of a line (or after whitespace) and a panel opens with formatting insertions (heading, callout, table, math, …), linking helpers (<code>[[</code>, <code>![[</code>, <code>#</code>, <code>??</code>), and app-level actions (palette, scratchpad, focus, history). Persona-specific commands surface at the top — Researcher gets <em>open questions</em> / <em>sources</em> / <em>new source</em>, Developer gets <em>decisions</em> / <em>new ADR</em> / <em>toggle code highlight</em>, and so on. Modeled on Obsidian's <code>/</code> panel.</p>
+        </div>
+        <div class="three-card">
+          <h4>Inline Glossary — now file-backed</h4>
+          <p>The glossary moves out of frontmatter and into a single self-contained file at <code>.yarrow/glossary.json</code>. Open <strong>Settings → Glossary</strong>, add as many <em>term + definition</em> pairs as you want, edit them in place, remove with a click. Each defined term gets a subtle dotted underline wherever it appears in any note, with the definition surfaced on hover. The file is tracked in git, so the glossary travels with the workspace. Saves dispatch <code>yarrow:glossary-updated</code>; open editors hot-swap their decorations without remounting. (The "Mark as glossary entry" flag from 3.0 is gone — one place to add, one place to edit.)</p>
+        </div>
+        <div class="three-card">
+          <h4>Personas v2 — Mode &amp; Persona unified</h4>
+          <p>"Mode" and "Persona" are now a single picker with seven choices: <em>Basic</em>, <em>Default</em>, <em>Writer</em>, <em>Researcher</em>, <em>Developer</em>, <em>Clinician</em>, <em>Cooking</em>. Each persona is a manifest + lazy-loaded module under <code>src/plugins/&lt;id&gt;/</code> — adding a new one means adding a manifest, not editing a registry. Legacy <code>yarrow.mode</code> localStorage migrates verbatim (with the old <em>path</em> alias resolving to <em>default</em>).</p>
+        </div>
+        <div class="three-card">
+          <h4>Settings → Personas: search palette</h4>
+          <p>The persona picker is now a search-driven palette with arrow-key navigation, a pinned <em>Recently used</em> row (max 4), Enter to pick, Esc to clear. Replaces the old two-section tile picker so it scales as more personas land.</p>
+        </div>
+        <div class="three-card">
+          <h4>First-run wizard</h4>
+          <p>"How do you want Yarrow to feel?" — three tiles, <em>Minimal</em>, <em>Full Yarrow</em>, <em>Tailored</em>. Tailored reveals the persona grid; the other two pick implicitly. Settings → Personas lets you change the choice any time.</p>
+        </div>
+        <div class="three-card">
+          <h4>Persona Actions popover</h4>
+          <p>Click the persona pill in the status bar and an Obsidian-style command list pops up, filtered to the active persona. Search box, arrow-key navigation, Enter to pick, Esc to dismiss. Universal <em>Switch persona…</em> and <em>Open command palette…</em> rows always sit at the bottom.</p>
+        </div>
+        <div class="three-card">
+          <h4>Check for updates</h4>
+          <p>Settings → About has a manual <em>Check for updates</em> button that asks GitHub Releases for the latest tag and tells you whether you're current, with a link to the release notes when a newer version is out. No auto-check, no telemetry, no nag bar.</p>
+        </div>
+        <div class="three-card">
+          <h4>Paper-warmth fix in Roomy / Compact</h4>
+          <p>The paper-warmth slider no longer warps the layout at Roomy or Compact UI scales. The warmth <code>filter</code> moved from <code>&lt;body&gt;</code> to <code>#root</code>, so the fixed-positioned root now resolves against the viewport instead of body's counter-zoomed width. No more blank strip at the bottom (Roomy) or overshoot (Compact).</p>
+        </div>
+      </div>
     </section>
 
     <!-- ════════════════════ NEW IN 3.0 ════════════════════ -->
@@ -1559,6 +1633,18 @@ def hello():
         the new name, or leave them pointing at the old one? Either
         choice is undoable from History.
       </p>
+
+      <h3>3.1 — three new ways to insert links and blocks</h3>
+      <p>
+        The right-click → <em>Insert wikilink</em> picker is still there
+        and unchanged, but 3.1 adds three more ways to reach the same
+        place:
+      </p>
+      <ul>
+        <li><strong>Inline picker on <kbd>[[</kbd>.</strong> The two-square-brackets menu is now an inline picker — serif title up top, mono slug · last-edited · tag count below. Arrow keys to navigate, <kbd>Enter</kbd> to insert, <kbd>Esc</kbd> to dismiss. If nothing matches your query, a <em>"Create <em>query</em>"</em> row at the bottom scaffolds the missing note for you (same machinery as <kbd>⌘N</kbd>).</li>
+        <li><strong>Selection toolbar.</strong> Drag over text and a small floating bar appears above the selection — <em>Bold</em>, <em>Italic</em>, <em>Code</em>, <code>[[ ]]</code>, <em>Highlight</em>, and the <code>??</code> marker. Click <code>[[ ]]</code> to wrap the selection in a wikilink without retyping it. <kbd>Esc</kbd> dismisses; clicking outside also closes it.</li>
+        <li><strong>Slash-command panel on <kbd>/</kbd>.</strong> Type <kbd>/</kbd> at the start of a line (or after whitespace) and a panel opens with formatting insertions (heading, callout, table, math, …), linking helpers (<code>[[</code>, <code>![[</code>, <code>#</code>, <code>??</code>), and app-level actions (palette, scratchpad, focus, history). Persona-specific commands surface at the top — Researcher sees <em>open questions</em> / <em>sources</em> / <em>new source</em>, Developer sees <em>decisions</em> / <em>new ADR</em> / <em>toggle code highlight</em>, Writer sees the typewriter and streak controls, and so on.</li>
+      </ul>
     </section>
 
     <!-- ═══ typed connections ═══ -->
@@ -1618,6 +1704,67 @@ def hello():
         gather in the "Open Questions" panel on the right side of the
         window. Click any one to jump back to it later. Once you've
         answered it, just delete the <code>??</code> and it's done.
+      </p>
+    </section>
+
+    <!-- ═══ inline glossary (3.1) ═══ -->
+    <section id="inline-glossary" class="guide-section">
+      <h2>Inline Glossary — defined terms, underlined in place</h2>
+      <p>
+        If your workspace has a vocabulary you keep using — proper nouns,
+        domain terms, project codenames, characters in a story — Yarrow
+        can underline every occurrence with a subtle dotted line and
+        surface the definition on hover. The whole thing lives in one
+        file you author from Settings.
+      </p>
+
+      <h3>How to add a term</h3>
+      <p>
+        Open <strong>Settings → Glossary</strong>. Type the term, type
+        the definition, click <em>Add term</em>. That's it. The new
+        entry takes effect immediately — any editor that's open
+        re-highlights without a restart, and the dotted underline
+        appears in every note where the term shows up.
+      </p>
+      <p>
+        Each row in the list is in-place editable: change the term, edit
+        the definition, or click <em>Remove</em>. Edits commit when you
+        click away from the input or press <kbd>Enter</kbd>. Inside the
+        new-term form, <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> in
+        the definition saves without reaching for the button.
+      </p>
+
+      <h3>How matching works</h3>
+      <ul>
+        <li><strong>Case-insensitive</strong> — <em>tide</em>, <em>Tide</em>, and <em>TIDE</em> all match.</li>
+        <li><strong>Word-boundary aware</strong> — defining <em>shore</em> won't underline <em>ashore</em> or <em>shoreline</em>.</li>
+        <li><strong>Longest term wins</strong> — if you've defined both <em>data</em> and <em>data structure</em>, paragraphs that mention "data structure" highlight that whole phrase rather than just "data".</li>
+        <li><strong>Code spans are not excluded</strong> — terms inside backticks still underline, on purpose: you often want to refer to a defined term from inside an example.</li>
+      </ul>
+
+      <h3>Where the file lives</h3>
+      <p>
+        The glossary is a single JSON file at
+        <code>.yarrow/glossary.json</code> in your workspace, with the
+        shape <code>{ "entries": [{ "term": "…", "definition": "…" }, …] }</code>.
+        It's tracked in git like the rest of the workspace, so the
+        defined vocabulary travels with the notes — your glossary on a
+        second machine matches once you sync.
+      </p>
+      <p>
+        If you ever want to hand-edit the file (bulk imports, mass
+        renames, restoring from a backup), it's safe to: Yarrow will
+        read it on next open, clean it (empty entries dropped,
+        case-insensitive duplicates collapsed, terms sorted
+        longest-first internally), and the editor's highlighter picks
+        up the changes the next time a note opens.
+      </p>
+      <p>
+        <em>Note for upgraders from 3.0:</em> the previous mechanism
+        (a <code>glossary: true</code> flag in a note's frontmatter)
+        is gone. There's no migration — re-add the terms you care about
+        in Settings → Glossary, and the file is the single source of
+        truth from then on.
       </p>
     </section>
 
@@ -2705,7 +2852,7 @@ def hello():
       <div class="cta-row">
         <a class="btn primary" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-          Download 3.0
+          Download 3.1
         </a>
         <a class="btn ghost" href="index.html">
           ← Back to the home page

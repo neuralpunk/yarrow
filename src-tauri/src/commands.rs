@@ -18,6 +18,7 @@ use crate::find_replace;
 use crate::foreign_import;
 use crate::fuzzy;
 use crate::git;
+use crate::glossary;
 use crate::graph;
 use crate::notes;
 use crate::obsidian_import;
@@ -1661,6 +1662,35 @@ pub fn cmd_set_tags(
     Ok(saved)
 }
 
+/// Toggle the `private` flag on a note's frontmatter (3.2+ encrypt-tag
+/// bridge). When `private` flips on, the note registers in
+/// `.git/info/exclude` (handled in `notes::write`) so it never enters
+/// the commit log or sync. Flipping off restores the note to the
+/// regular sync set on the next save. Skipping the checkpoint when
+/// the new state is private mirrors the kit-template behavior.
+#[tauri::command]
+pub fn cmd_set_private(
+    slug: String,
+    value: bool,
+    state: State<AppState>,
+) -> Result<notes::Note> {
+    notes::validate_slug(&slug)?;
+    let root = state.require_root()?;
+    let mut note = notes::read(&root, &slug)?;
+    if note.frontmatter.private == value {
+        return Ok(note);
+    }
+    note.frontmatter.private = value;
+    let saved = notes::write(&root, &slug, &note.body, Some(note.frontmatter))?;
+    if !saved.frontmatter.is_private() {
+        let repo = open_repo(&root)?;
+        git::checkpoint(&repo, &format!("checkpoint: privacy \"{}\"", slug))?;
+    }
+    let _ = graph::build(&root);
+    let _ = state.scan_cache_apply_save(&root, Some(&slug));
+    Ok(saved)
+}
+
 /// Tag Bouquet (2.1): given a body + title, return up to `limit` tag
 /// suggestions picked from the note's own words, preferring stems that
 /// already exist as tags somewhere in the vault. Excludes tags the note
@@ -2837,6 +2867,8 @@ pub fn cmd_delete_template(name: String, state: State<AppState>) -> Result<()> {
 pub fn cmd_create_from_template(
     template: String,
     title: String,
+    extra_tags: Option<Vec<String>>,
+    force_private: Option<bool>,
     state: State<AppState>,
 ) -> Result<notes::Note> {
     let root = state.require_root()?;
@@ -2844,12 +2876,29 @@ pub fn cmd_create_from_template(
     let kit_kind = templates::extract_kit_kind(&tpl);
     let body = templates::render(&tpl, &title);
     let note = notes::create(&root, &title)?;
-    // 2.1 kit-aware frontmatter. The kit's `<!-- kit: <kind> -->` flag
-    // tells us how to seed the new note's tags and privacy. Research
-    // kits get `paper` so the @cite picker scopes to them; clinical
-    // kits get `clinical` + `private: true` so they register in
-    // `.git/info/exclude` and never sync.
     let mut fm = note.frontmatter;
+
+    // Frontend-supplied tag/private state — drives the 3.2+ tag
+    // config's behaviors (`encrypt`, default-folder hints, etc.). Tags
+    // are de-duped case-insensitively against any tags already on the
+    // freshly-created note. Empty array = no extras.
+    if let Some(extras) = extra_tags {
+        for tag in extras {
+            let trimmed = tag.trim().trim_start_matches('#').to_string();
+            if trimmed.is_empty() { continue; }
+            if !fm.tags.iter().any(|t| t.eq_ignore_ascii_case(&trimmed)) {
+                fm.tags.push(trimmed);
+            }
+        }
+    }
+    if force_private.unwrap_or(false) {
+        fm.private = true;
+    }
+
+    // 2.1 kit-aware frontmatter (legacy backstop). Existing user-authored
+    // kit templates that predate the tag config still get their default
+    // tags + privacy. Frontend-supplied params above take precedence
+    // because they ran first.
     match kit_kind.as_deref() {
         Some("research") => {
             if !fm.tags.iter().any(|t| t.eq_ignore_ascii_case("paper")) {
@@ -3561,6 +3610,37 @@ pub fn cmd_orphans(state: State<AppState>) -> Result<Vec<String>> {
     let root = state.require_root()?;
     let g = graph::build(&root)?;
     Ok(graph::orphan_slugs(&g))
+}
+
+// ───────── glossary ─────────
+
+/// 3.2 — Inline Glossary. Returns the workspace's glossary entries,
+/// read from `.yarrow/glossary.json`. Missing file → empty list.
+/// Entries arrive sorted longest-term-first so the editor's regex
+/// matches `data structure` before `data`.
+#[tauri::command]
+pub fn cmd_glossary_entries(
+    state: State<AppState>,
+) -> Result<Vec<glossary::GlossaryEntry>> {
+    let root = state.require_root()?;
+    glossary::read(&root)
+}
+
+/// 3.2 — Overwrite the workspace's glossary with `entries`. Empty
+/// terms / definitions are filtered out and case-insensitive duplicates
+/// collapse to the first occurrence. The Settings → Glossary pane is
+/// the sole caller; the editor only reads via `cmd_glossary_entries`.
+///
+/// Returns the cleaned list (post-dedup, sorted longest-first) so the
+/// caller can update its UI without a round-trip read.
+#[tauri::command]
+pub fn cmd_save_glossary_entries(
+    entries: Vec<glossary::GlossaryEntry>,
+    state: State<AppState>,
+) -> Result<Vec<glossary::GlossaryEntry>> {
+    let root = state.require_root()?;
+    glossary::write(&root, &entries)?;
+    glossary::read(&root)
 }
 
 // ───────── history ─────────
@@ -4612,6 +4692,17 @@ pub fn cmd_fetch_url_title(url: String) -> Result<String> {
         .map_err(|e| YarrowError::Other(format!("read failed: {e}")))?;
     let title = extract_html_title(&body).unwrap_or_default();
     Ok(title)
+}
+
+/// Manual "check for updates" — Settings → About fires this on the
+/// user's button click. Hits GitHub's public releases API once and
+/// returns the latest release's tag + URL so the frontend can show
+/// "you're up to date" or "v3.2.0 is out". Never auto-runs; never
+/// sends anything beyond the bare GET. Errors are intentionally
+/// generic at the UI layer to avoid leaking the user's network shape.
+#[tauri::command]
+pub fn cmd_check_for_updates() -> Result<crate::updates::UpdateInfo> {
+    crate::updates::check_for_updates()
 }
 
 /// Reject hosts that point at the local machine, link-local addresses,

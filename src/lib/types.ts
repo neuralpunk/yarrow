@@ -39,6 +39,15 @@ export interface Frontmatter {
   folder?: string;
 }
 
+/** 3.2 — Inline Glossary entry. The workspace's glossary is a
+ *  standalone `.yarrow/glossary.json` file authored from
+ *  Settings → Glossary. The editor uses this list to underline matching
+ *  terms and populate the hover tooltip with the definition. */
+export interface GlossaryEntry {
+  term: string;
+  definition: string;
+}
+
 export interface NoteSummary {
   slug: string;
   title: string;
@@ -512,6 +521,16 @@ export interface ObsidianImportReport {
   /** Tuples of `[original_relative_path, slug_assigned]` for files that
    *  collided with existing notes and were renamed. */
   renamed: Array<[string, string]>;
+}
+
+/** Result of a manual "Check for updates" press in Settings → About.
+ *  The backend returns the latest GitHub release's tag (with leading
+ *  "v" trimmed) and URL — version comparison happens in the frontend. */
+export interface UpdateInfo {
+  latest_version: string;
+  latest_name: string | null;
+  release_url: string;
+  published_at: string | null;
 }
 
 export const LINK_TYPE_LABELS: Record<LinkType, string> = {

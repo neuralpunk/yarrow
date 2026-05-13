@@ -52,13 +52,6 @@ export const wizardEN = {
   "wizard.details.locationLabel": "Where it lives",
   "wizard.details.locationBrowse": "Browse…",
   "wizard.details.willCreate": "Will create:",
-  "wizard.details.modeLabel": "How will you use it?",
-  "wizard.details.mode.mapped.title": "Scenario mapping",
-  "wizard.details.mode.mapped.body":
-    "Notes connect, scenarios open, your map grows.",
-  "wizard.details.mode.basic.title": "Basic notes",
-  "wizard.details.mode.basic.body":
-    "Plain markdown jotter. No scenarios, no graph.",
   "wizard.details.startingNoteLabel": "Starting note",
   "wizard.details.startingNotePlaceholder":
     "The first note every scenario will open from",
@@ -71,6 +64,10 @@ export const wizardEN = {
   "wizard.error.giveName": "Give the workspace a name.",
   "wizard.error.nameStartingNote":
     "Name the starting note — it's the seed of your map.",
+  "wizard.error.pickShape":
+    "Pick how you want Yarrow to feel — Minimal, Full, or Tailored.",
+  "wizard.error.pickPersona":
+    "Pick a persona — or pick Full Yarrow on the previous tile to skip.",
 
   // Progress (live status during creation/import)
   "wizard.progress.creatingFolder": "Creating folder…",
@@ -133,17 +130,25 @@ export const wizardEN = {
     "Pick the parent folder. Yarrow will create a fresh folder inside with the notebook's name. Anywhere your file backups reach is a fine place to put it.",
   "wizard.guide.location.willCreate": "Final folder path",
 
-  // Step 4 (guided) — Shape
-  "wizard.guide.shape.title": "How will you use it?",
+  // Step 4 (guided) — Shape (Design 5: How do you want it to feel?)
+  "wizard.guide.shape.title": "How do you want Yarrow to feel?",
   "wizard.guide.shape.body":
-    "Yarrow can either map every direction your thinking takes, or stay quiet and out of the way. Either is fine — you can change your mind from Settings any time.",
+    "Pick the surface that suits how you'll work. You can change your mind from Settings any time — every feature stays one ⌘K away.",
   "wizard.guide.shape.startingNoteHint":
     "We'll seed the notebook with this first note so you have somewhere to start.",
-  "wizard.guide.shape.personaIntro":
-    "Optional. Pick a craft and the right rail and command palette will lean into the tools that fit it. You can change this any time from Settings → Modes & Personas.",
-  "wizard.guide.shape.personaNone.label": "No persona",
-  "wizard.guide.shape.personaNone.desc":
-    "Just Scenario-Based — the full Yarrow surface, nothing biased.",
+  "wizard.guide.shape.minimal.title": "Minimal",
+  "wizard.guide.shape.minimal.body":
+    "Just notes, tags, and a scratchpad. No paths, no graph, no extras.",
+  "wizard.guide.shape.default.title": "Full Yarrow",
+  "wizard.guide.shape.default.body":
+    "Paths, connections, history — the default surface. Nothing biased.",
+  "wizard.guide.shape.tailored.title": "Tailored",
+  "wizard.guide.shape.tailored.body":
+    "Full Yarrow plus a persona shaped to your craft.",
+  "wizard.guide.shape.tailoredIntro":
+    "Which best describes how you'll use Yarrow most? You can change this any time from Settings → Personas.",
+  "wizard.guide.shape.tailoredHint":
+    "Pick the one that fits your day-to-day; you can swap any time.",
 
   // Quick (2-step) flavor — used by returning users.
   "wizard.quick.step1.title": "What kind of notebook?",
@@ -221,13 +226,6 @@ export const wizardES: Record<WizardKey, string> = {
   "wizard.details.locationLabel": "Dónde vive",
   "wizard.details.locationBrowse": "Examinar…",
   "wizard.details.willCreate": "Se creará:",
-  "wizard.details.modeLabel": "¿Cómo lo va a usar?",
-  "wizard.details.mode.mapped.title": "Mapeo con escenarios que se ramifican",
-  "wizard.details.mode.mapped.body":
-    "Las notas se conectan, las escenarios se ramifican, su mapa crece.",
-  "wizard.details.mode.basic.title": "Notas básicas",
-  "wizard.details.mode.basic.body":
-    "Bloc de markdown plano. Sin escenarios, sin grafo.",
   "wizard.details.startingNoteLabel": "Nota inicial",
   "wizard.details.startingNotePlaceholder":
     "La primera nota de la que ramificará todo lo demás",
@@ -242,6 +240,10 @@ export const wizardES: Record<WizardKey, string> = {
   "wizard.error.giveName": "Ponga un nombre al espacio de trabajo.",
   "wizard.error.nameStartingNote":
     "Ponga un nombre a la nota inicial — es la semilla de su mapa.",
+  "wizard.error.pickShape":
+    "Elige cómo quieres que se sienta Yarrow — Mínimo, Completo o A medida.",
+  "wizard.error.pickPersona":
+    "Elige una persona — o elige Yarrow completo en el tile anterior para saltar.",
 
   // Progress
   "wizard.progress.creatingFolder": "Creando carpeta…",
@@ -288,16 +290,24 @@ export const wizardES: Record<WizardKey, string> = {
     "Elige la carpeta superior. Yarrow creará dentro una carpeta nueva con el nombre del cuaderno. Cualquier sitio donde lleguen tus copias de seguridad es un buen lugar.",
   "wizard.guide.location.willCreate": "Ruta final",
 
-  "wizard.guide.shape.title": "¿Cómo lo vas a usar?",
+  "wizard.guide.shape.title": "¿Cómo quieres que se sienta Yarrow?",
   "wizard.guide.shape.body":
-    "Yarrow puede mapear todas las direcciones que toma tu pensamiento o quedarse callado y apartarse del camino. Cualquiera de las dos está bien — puedes cambiar de idea desde los Ajustes en cualquier momento.",
+    "Elige la superficie que mejor encaje con cómo trabajas. Puedes cambiar de idea desde los Ajustes — todas las funciones siguen a un ⌘K de distancia.",
   "wizard.guide.shape.startingNoteHint":
     "Sembraremos el cuaderno con esta primera nota para que tengas un punto de partida.",
-  "wizard.guide.shape.personaIntro":
-    "Opcional. Elige un oficio y la barra derecha y la paleta de comandos se inclinarán hacia las herramientas que le encajan. Puedes cambiarlo en cualquier momento desde Ajustes → Modos y personas.",
-  "wizard.guide.shape.personaNone.label": "Sin persona",
-  "wizard.guide.shape.personaNone.desc":
-    "Solo Por escenarios — toda la superficie de Yarrow, sin sesgos.",
+  "wizard.guide.shape.minimal.title": "Mínimo",
+  "wizard.guide.shape.minimal.body":
+    "Solo notas, etiquetas y un bloc. Sin caminos, sin grafo, sin extras.",
+  "wizard.guide.shape.default.title": "Yarrow completo",
+  "wizard.guide.shape.default.body":
+    "Caminos, conexiones, historial — la superficie predeterminada, sin sesgos.",
+  "wizard.guide.shape.tailored.title": "A medida",
+  "wizard.guide.shape.tailored.body":
+    "Yarrow completo más una persona pensada para tu oficio.",
+  "wizard.guide.shape.tailoredIntro":
+    "¿Cuál describe mejor cómo usarás Yarrow la mayor parte del tiempo? Puedes cambiarlo en cualquier momento desde Ajustes → Personas.",
+  "wizard.guide.shape.tailoredHint":
+    "Elige la que encaje con tu día a día; puedes cambiarla cuando quieras.",
   "wizard.guide.start.clone.title": "Clonar desde una URL de git",
   "wizard.guide.start.clone.body":
     "¿Ya tienes un cuaderno de Yarrow sincronizado en GitHub, GitLab u otro servidor git? Pega la URL — lo descargaremos y verificaremos que sea un espacio de trabajo válido antes de abrirlo.",
@@ -379,13 +389,6 @@ export const wizardSV: Record<WizardKey, string> = {
   "wizard.details.locationLabel": "Var den ligger",
   "wizard.details.locationBrowse": "Bläddra…",
   "wizard.details.willCreate": "Kommer att skapa:",
-  "wizard.details.modeLabel": "Hur ska du använda den?",
-  "wizard.details.mode.mapped.title": "Förgrenande scenariokartläggning",
-  "wizard.details.mode.mapped.body":
-    "Anteckningar kopplas, scenarier förgrenas, din karta växer.",
-  "wizard.details.mode.basic.title": "Grundläggande anteckningar",
-  "wizard.details.mode.basic.body":
-    "En vanlig markdown-anteckningsbok. Inga scenarier, ingen graf.",
   "wizard.details.startingNoteLabel": "Startanteckning",
   "wizard.details.startingNotePlaceholder":
     "Den första anteckningen som allt annat förgrenas från",
@@ -399,6 +402,10 @@ export const wizardSV: Record<WizardKey, string> = {
   "wizard.error.giveName": "Ge arbetsytan ett namn.",
   "wizard.error.nameStartingNote":
     "Namnge startanteckningen — den är fröet till din karta.",
+  "wizard.error.pickShape":
+    "Välj hur du vill att Yarrow ska kännas — Minimalt, Hela eller Skräddarsytt.",
+  "wizard.error.pickPersona":
+    "Välj en persona — eller välj Hela Yarrow på föregående ruta för att hoppa över.",
 
   // Progress
   "wizard.progress.creatingFolder": "Skapar mapp…",
@@ -446,16 +453,24 @@ export const wizardSV: Record<WizardKey, string> = {
     "Välj föräldramappen. Yarrow skapar en ny mapp inuti med anteckningsbokens namn. Var som helst dit dina filsäkerhetskopior når är en bra plats.",
   "wizard.guide.location.willCreate": "Slutlig sökväg",
 
-  "wizard.guide.shape.title": "Hur ska du använda den?",
+  "wizard.guide.shape.title": "Hur vill du att Yarrow ska kännas?",
   "wizard.guide.shape.body":
-    "Yarrow kan antingen kartlägga varje riktning ditt tänkande tar, eller hålla sig tyst och ur vägen. Båda är okej — du kan ändra dig från Inställningar när som helst.",
+    "Välj ytan som passar hur du jobbar. Du kan ändra dig från Inställningar när som helst — varje funktion är fortfarande ett ⌘K bort.",
   "wizard.guide.shape.startingNoteHint":
     "Vi sår anteckningsboken med den här första anteckningen så du har någonstans att börja.",
-  "wizard.guide.shape.personaIntro":
-    "Frivilligt. Välj ett hantverk så lutar högerlisten och kommandopaletten åt verktygen som passar. Du kan byta när som helst från Inställningar → Lägen och personor.",
-  "wizard.guide.shape.personaNone.label": "Ingen persona",
-  "wizard.guide.shape.personaNone.desc":
-    "Bara Stigbaserat — hela Yarrow-ytan, utan slagsida.",
+  "wizard.guide.shape.minimal.title": "Minimalt",
+  "wizard.guide.shape.minimal.body":
+    "Bara anteckningar, taggar och ett kladdblock. Inga vägar, ingen graf, inga extra.",
+  "wizard.guide.shape.default.title": "Hela Yarrow",
+  "wizard.guide.shape.default.body":
+    "Vägar, kopplingar, historik — standardytan, utan slagsida.",
+  "wizard.guide.shape.tailored.title": "Skräddarsytt",
+  "wizard.guide.shape.tailored.body":
+    "Hela Yarrow plus en persona formad efter ditt hantverk.",
+  "wizard.guide.shape.tailoredIntro":
+    "Vad beskriver bäst hur du kommer använda Yarrow mest? Du kan byta när som helst från Inställningar → Personor.",
+  "wizard.guide.shape.tailoredHint":
+    "Välj den som passar din vardag; du kan byta när du vill.",
   "wizard.guide.start.clone.title": "Klona från en git-URL",
   "wizard.guide.start.clone.body":
     "Har du redan en Yarrow-anteckningsbok synkad mot GitHub, GitLab eller en annan git-värd? Klistra in URL:en — vi hämtar ner den och verifierar att det är en riktig Yarrow-arbetsyta innan vi öppnar.",

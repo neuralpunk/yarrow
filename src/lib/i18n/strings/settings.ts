@@ -11,10 +11,12 @@ export const settingsEN = {
   "settings.closeTitle": "Close (Esc)",
 
   // ── tabs ──
-  "settings.tabs.mode": "Modes & Personas",
+  "settings.tabs.mode": "Personas",
   "settings.tabs.appearance": "Appearance",
   "settings.tabs.accessibility": "Accessibility",
   "settings.tabs.writing": "Writing",
+  "settings.tabs.tags": "Tags",
+  "settings.tabs.glossary": "Glossary",
   "settings.tabs.gestures": "Gestures",
   "settings.tabs.guidance": "Guidance",
   "settings.tabs.templates": "Templates",
@@ -46,68 +48,73 @@ export const settingsEN = {
   "settings.scope.mixed.title":
     "This pane has a mix of device-local and workspace-scoped settings — check each row.",
 
-  // ── mode pane ──
-  "settings.mode.title": "Modes & Personas",
-  "settings.mode.hint":
-    "Modes set the overall complexity. Personas layer craft-specific tools on top — both are reversible, and ⌘K reaches everything either of them hides.",
-  "settings.mode.modeSection": "Mode",
-  "settings.mode.personaSection": "Persona",
-  "settings.mode.personaIntro":
-    "Optional. A persona is a skin on top of Scenario-Based — it adds craft-specific tools without locking anything else away.",
-  "settings.mode.personaNone": "None",
-  "settings.mode.personaNoneDesc":
-    "Plain Scenario-Based. The full Yarrow surface, no persona skin.",
-  "settings.mode.footerNote":
-    "Modes bias the rail and the palette; they never gate features. You can change this any time.",
-  "settings.mode.option.basic.label": "Basic",
-  "settings.mode.option.basic.desc":
+  // ── persona pane (Design 3: search palette) ──
+  "settings.persona.title": "Personas",
+  "settings.persona.hint":
+    "A persona biases the rail and the status bar towards a particular kind of work. It never hides a feature — ⌘K still reaches everything.",
+  "settings.persona.searchPlaceholder": "Type to find a persona…",
+  "settings.persona.searchAriaLabel": "Search personas",
+  "settings.persona.searchEscHint": "esc to clear",
+  "settings.persona.noResults": "No matches. Try \"writer\" or \"basic\".",
+  "settings.persona.recentSection": "Recently used",
+  "settings.persona.allSection": "All personas",
+  "settings.persona.activeBadge": "Active",
+  "settings.persona.recentBadge": "Recent",
+  "settings.persona.activeLabel": "Active",
+  "settings.persona.kbdNavigate": "navigate",
+  "settings.persona.kbdSelect": "select",
+  "settings.persona.kbdClear": "clear",
+  "settings.persona.footerNote":
+    "Personas bias the rail and the palette; they never gate features. You can change this any time.",
+  "settings.persona.option.basic.label": "Basic",
+  "settings.persona.option.basic.desc":
     "Just write. No scenarios, no graph, no extras — auto-checkpointing still runs in the background.",
-  "settings.mode.option.basic.bullet1": "Plain notes, tags, and scratchpad",
-  "settings.mode.option.basic.bullet2": "No scenarios, graph, or kits in the rail",
-  "settings.mode.option.basic.bullet3": "Auto-checkpointing keeps every save in the background",
-  "settings.mode.option.basic.bullet4": "Everything still reachable via ⌘K",
-  "settings.mode.option.path.label": "Scenario-Based",
-  "settings.mode.option.path.desc":
-    "The full Yarrow surface, no persona skin. The default for users who want everything Yarrow can do.",
-  "settings.mode.option.path.bullet1": "Scenarios and reciprocal connections",
-  "settings.mode.option.path.bullet2": "Force-directed connections graph",
-  "settings.mode.option.path.bullet3": "History timeline and orphan panel",
-  "settings.mode.option.path.bullet4": "Kits picker and full keyboard surface",
-  "settings.mode.option.writer.label": "Writer",
-  "settings.mode.option.writer.desc":
+  "settings.persona.option.basic.bullet1": "Plain notes, tags, and scratchpad",
+  "settings.persona.option.basic.bullet2": "No scenarios, graph, or kits in the rail",
+  "settings.persona.option.basic.bullet3": "Auto-checkpointing keeps every save in the background",
+  "settings.persona.option.basic.bullet4": "Everything still reachable via ⌘K",
+  "settings.persona.option.default.label": "Default",
+  "settings.persona.option.default.desc":
+    "The full Yarrow surface, no persona skin. Scenarios, graph, history, kits — everything reachable.",
+  "settings.persona.option.default.bullet1": "Scenarios and reciprocal connections",
+  "settings.persona.option.default.bullet2": "Force-directed connections graph",
+  "settings.persona.option.default.bullet3": "History timeline and orphan panel",
+  "settings.persona.option.default.bullet4": "Kits picker and full keyboard surface",
+  "settings.persona.option.writer.label": "Writer",
+  "settings.persona.option.writer.desc":
     "Scenario-Based + writer tools. A quiet, focused surface for prose.",
-  "settings.mode.option.writer.bullet1": "Daily writing streak with a goal pill",
-  "settings.mode.option.writer.bullet2": "Typewriter mode toggle",
-  "settings.mode.option.writer.bullet3": "Quiet scenario chrome — focus on prose",
-  "settings.mode.option.writer.bullet4": "Word count and progress meter in the status bar",
-  "settings.mode.option.researcher.label": "Researcher",
-  "settings.mode.option.researcher.desc":
+  "settings.persona.option.writer.bullet1": "Daily writing streak with a goal pill",
+  "settings.persona.option.writer.bullet2": "Typewriter mode toggle",
+  "settings.persona.option.writer.bullet3": "Quiet scenario chrome — focus on prose",
+  "settings.persona.option.writer.bullet4": "Word count and progress meter in the status bar",
+  "settings.persona.option.researcher.label": "Researcher",
+  "settings.persona.option.researcher.desc":
     "Scenario-Based + research tools. For sourcing, citations, and open questions.",
-  "settings.mode.option.researcher.bullet1": "Open questions panel (?? markers)",
-  "settings.mode.option.researcher.bullet2": "Source library with filter helpers",
-  "settings.mode.option.researcher.bullet3": "Source scaffolder for new references",
-  "settings.mode.option.researcher.bullet4": "?? count pill in the status bar",
-  "settings.mode.option.developer.label": "Developer",
-  "settings.mode.option.developer.desc":
+  "settings.persona.option.researcher.bullet1": "Open questions panel (?? markers)",
+  "settings.persona.option.researcher.bullet2": "Source library with filter helpers",
+  "settings.persona.option.researcher.bullet3": "Source scaffolder for new references",
+  "settings.persona.option.researcher.bullet4": "?? count pill in the status bar",
+  "settings.persona.option.developer.label": "Developer",
+  "settings.persona.option.developer.desc":
     "Scenario-Based + engineering tools. For decisions, code, and topology.",
-  "settings.mode.option.developer.bullet1": "Decision log (ADR list)",
-  "settings.mode.option.developer.bullet2": "ADR scaffolder for new decisions",
-  "settings.mode.option.developer.bullet3": "Code syntax highlighting toggle",
-  "settings.mode.option.developer.bullet4": "Decisions count pill in the status bar",
-  "settings.mode.option.clinician.label": "Clinician",
-  "settings.mode.option.clinician.desc":
+  "settings.persona.option.developer.bullet1": "Decision log (ADR list)",
+  "settings.persona.option.developer.bullet2": "ADR scaffolder for new decisions",
+  "settings.persona.option.developer.bullet3": "Code syntax highlighting toggle",
+  "settings.persona.option.developer.bullet4": "Decisions count pill in the status bar",
+  "settings.persona.option.clinician.label": "Clinician",
+  "settings.persona.option.clinician.desc":
     "Scenario-Based + clinical tools. For sensitive notes, follow-ups, and session structure.",
-  "settings.mode.option.clinician.bullet1": "Sensitive notes roster",
-  "settings.mode.option.clinician.bullet2": "Follow-ups board (#review, #followup, #todo, #wip)",
-  "settings.mode.option.clinician.bullet3": "SOAP / BIRP / DAP / Intake session scaffolders",
-  "settings.mode.option.clinician.bullet4": "Audit trail via auto-checkpoints",
-  "settings.mode.option.cooking.label": "Cooking",
-  "settings.mode.option.cooking.desc":
+  "settings.persona.option.clinician.bullet1": "Sensitive notes roster",
+  "settings.persona.option.clinician.bullet2": "Follow-ups board (#review, #followup, #todo, #wip)",
+  "settings.persona.option.clinician.bullet3": "SOAP / BIRP / DAP / Intake session scaffolders",
+  "settings.persona.option.clinician.bullet4": "Audit trail via auto-checkpoints",
+  "settings.persona.option.cooking.label": "Cooking",
+  "settings.persona.option.cooking.desc":
     "Scenario-Based + kitchen tools. For recipes, hands-free reading, and shopping.",
-  "settings.mode.option.cooking.bullet1": "Cook mode with hands-free reading",
-  "settings.mode.option.cooking.bullet2": "Recipe URL clipper",
-  "settings.mode.option.cooking.bullet3": "Smart shopping list builder",
-  "settings.mode.option.cooking.bullet4": "Recipe library and inline timers",
+  "settings.persona.option.cooking.bullet1": "Cook mode with hands-free reading",
+  "settings.persona.option.cooking.bullet2": "Recipe URL clipper",
+  "settings.persona.option.cooking.bullet3": "Smart shopping list builder",
+  "settings.persona.option.cooking.bullet4": "Recipe library and inline timers",
 
   // ── search ──
   "settings.search.empty":
@@ -116,9 +123,9 @@ export const settingsEN = {
   "settings.search.resultsCountPlural": "{count} results for \"{query}\"",
 
   // search index entries (label / sublabel)
-  "settings.search.mode.label": "Modes & Personas",
+  "settings.search.mode.label": "Personas",
   "settings.search.mode.sublabel":
-    "Basic · Scenario-Based · Writer · Researcher · Developer · Clinician · Cooking",
+    "Basic · Default · Writer · Researcher · Developer · Clinician · Cooking",
   "settings.search.appearance.theme.label": "Theme",
   "settings.search.appearance.theme.sublabel":
     "light · dark · auto · ashrose · dracula",
@@ -144,6 +151,14 @@ export const settingsEN = {
     "Open workspaces in focus mode",
   "settings.search.writing.rawMarkdown.label": "Show raw markdown syntax",
   "settings.search.writing.editorFont.label": "Editor font",
+
+  "settings.search.tags.label": "Your tags",
+  "settings.search.tags.sublabel": "color, pinning, encryption, templates",
+  "settings.search.tags.packs.label": "Starter packs",
+  "settings.search.tags.packs.sublabel": "ready-made tag bundles you can mix",
+  "settings.search.tags.encrypt.label": "Encrypt-on-tag",
+  "settings.search.tags.encrypt.sublabel":
+    "tags that flip a note to private automatically",
 
   "settings.search.guidance.guidedMode.label": "Guided mode",
   "settings.search.guidance.guidedMode.sublabel":
@@ -932,6 +947,22 @@ export const settingsEN = {
   "settings.about.links.github": "GitHub",
   "settings.about.links.website": "Website",
 
+  // ── update check (3.1) ──
+  "settings.about.updateCheck.title": "Updates",
+  "settings.about.updateCheck.body":
+    "Manual check against GitHub Releases. Yarrow never auto-checks and never sends anything beyond the request itself.",
+  "settings.about.updateCheck.button": "Check for updates",
+  "settings.about.updateCheck.checking": "Checking…",
+  "settings.about.updateCheck.upToDate":
+    "You're on the latest version ({version}).",
+  "settings.about.updateCheck.available":
+    "Update available — {latest}. You're on {current}.",
+  "settings.about.updateCheck.ahead":
+    "You're on {current} — newer than the latest published release ({latest}).",
+  "settings.about.updateCheck.viewRelease": "View release notes",
+  "settings.about.updateCheck.error":
+    "Couldn't reach GitHub. Check your connection and try again.",
+
   // ── export / import settings (3.1) ──
   "settings.about.exportImport.title": "Export & import settings",
   "settings.about.exportImport.body":
@@ -1043,6 +1074,70 @@ export const settingsEN = {
     "All three gesture bindings will go back to what Yarrow ships with. This affects only the centre dot — it doesn't touch any of your other settings.",
   "settings.gestures.reset.cancel": "Cancel",
   "settings.gestures.reset.confirm": "Reset",
+
+  // ── tags pane (3.2) ──
+  "settings.tags.title": "Tags",
+  "settings.tags.hint":
+    "Tags are status markers you attach to notes — #review, #recipe, #adr. Define one here and the app does the rest: autocomplete in the editor, optional templates for new notes, and a chip in the status bar if you pin it. A few names — sensitive, private, phi, confidential, clinical — also paint a small sensitive marker on those notes in the sidebar so they're easy to spot.",
+  "settings.tags.list.title": "Your tags",
+  "settings.tags.list.hint":
+    "Click a colour swatch to cycle through hues. Removing a tag's config doesn't touch any notes that already carry it.",
+  "settings.tags.list.empty":
+    "No tags configured yet. Add one below or apply a starter pack.",
+  "settings.tags.list.fromTemplate": "from {template}",
+  "settings.tags.list.cycleColor": "Click to cycle colour",
+  "settings.tags.list.cycleColorAria": "Cycle colour for {name}",
+  "settings.tags.list.removeTitle": "Remove this tag's config",
+  "settings.tags.list.remove": "Remove",
+  "settings.tags.list.groupLabel": "Group",
+  "settings.tags.list.groupPlaceholder": "—",
+  "settings.tags.list.groupHint":
+    "Optional. Tags with the same group cluster together in the sidebar's tag list.",
+  "settings.tags.add.title": "Add a tag",
+  "settings.tags.add.namePlaceholder": "tag name (no #)",
+  "settings.tags.add.colorLabel": "Colour",
+  "settings.tags.add.submit": "Add tag",
+  "settings.tags.add.duplicate": "A tag with this name already exists.",
+  "settings.tags.pinned.title": "Show in status bar",
+  "settings.tags.pinned.hint":
+    "Tap a chip to pin or unpin it. Pinned tags appear as soft tinted pills in the status bar with a live count; clicking one opens the saved view.",
+  "settings.tags.pinned.empty":
+    "Add or apply a tag first — there's nothing to pin yet.",
+  "settings.tags.packs.title": "Starter packs",
+  "settings.tags.packs.hint":
+    "Packs are pre-built tag bundles for common workflows. Applying one merges its tags into your config (your existing tags win on conflicts), copies any bundled templates that aren't already present, and seeds a few sensible status-bar pins. Mix packs freely — research + recipes is fine.",
+  "settings.tags.packs.applied": "Applied",
+  "settings.tags.packs.apply": "Apply",
+
+  // ── glossary pane (3.2) ──
+  "settings.search.glossary.label": "Glossary",
+  "settings.search.glossary.sublabel":
+    "term + definition pairs underlined in the editor",
+  "settings.glossary.list.title": "Your glossary",
+  "settings.glossary.list.hint":
+    "Every term defined here gets a subtle underline wherever it appears in a note, with the definition surfaced on hover. Stored at .yarrow/glossary.json and synced with the rest of the workspace.",
+  "settings.glossary.list.loading": "Loading glossary…",
+  "settings.glossary.list.empty":
+    "No glossary terms yet. Add one below.",
+  "settings.glossary.row.termLabel": "Term",
+  "settings.glossary.row.definitionLabel": "Definition",
+  "settings.glossary.row.remove": "Remove",
+  "settings.glossary.row.removeTitle": "Remove this glossary entry",
+  "settings.glossary.row.removeAria": "Remove glossary entry {term}",
+  "settings.glossary.row.error.empty":
+    "Term and definition can't be empty — change one or remove the row.",
+  "settings.glossary.add.title": "Add a term",
+  "settings.glossary.add.hint":
+    "Both fields are required. ⌘/Ctrl+Enter inside the definition saves it.",
+  "settings.glossary.add.termPlaceholder": "term",
+  "settings.glossary.add.termLabel": "New term",
+  "settings.glossary.add.definitionPlaceholder": "definition shown on hover",
+  "settings.glossary.add.definitionLabel": "New definition",
+  "settings.glossary.add.submit": "Add term",
+  "settings.glossary.add.error.empty":
+    "Both term and definition are required.",
+  "settings.glossary.add.error.duplicate":
+    "A term with this name already exists.",
 } as const;
 
 export type SettingsKey = keyof typeof settingsEN;
@@ -1056,10 +1151,12 @@ export const settingsES: Record<SettingsKey, string> = {
   "settings.closeTitle": "Cerrar (Esc)",
 
   // ── tabs ──
-  "settings.tabs.mode": "Modos y personas",
+  "settings.tabs.mode": "Personas",
   "settings.tabs.appearance": "Apariencia",
   "settings.tabs.accessibility": "Accesibilidad",
   "settings.tabs.writing": "Escritura",
+  "settings.tabs.tags": "Etiquetas",
+  "settings.tabs.glossary": "Glosario",
   "settings.tabs.gestures": "Gestos",
   "settings.tabs.guidance": "Guía",
   "settings.tabs.templates": "Plantillas",
@@ -1091,68 +1188,73 @@ export const settingsES: Record<SettingsKey, string> = {
   "settings.scope.mixed.title":
     "Este panel mezcla ajustes locales del dispositivo y del espacio — revisa cada fila.",
 
-  // ── mode pane ──
-  "settings.mode.title": "Modos y personas",
-  "settings.mode.hint":
-    "Los modos definen la complejidad general. Las personas añaden herramientas específicas del oficio encima — ambos son reversibles, y ⌘K alcanza todo lo que cualquiera de los dos oculte.",
-  "settings.mode.modeSection": "Modo",
-  "settings.mode.personaSection": "Persona",
-  "settings.mode.personaIntro":
-    "Opcional. Una persona es una capa sobre Por escenarios — añade herramientas específicas del oficio sin bloquear nada más.",
-  "settings.mode.personaNone": "Ninguna",
-  "settings.mode.personaNoneDesc":
-    "Por escenarios sin persona. La superficie completa de Yarrow, sin disfraz.",
-  "settings.mode.footerNote":
-    "Los modos sesgan la barra y la paleta; nunca bloquean funciones. Puedes cambiar de modo en cualquier momento.",
-  "settings.mode.option.basic.label": "Básico",
-  "settings.mode.option.basic.desc":
+  // ── persona pane (Design 3: search palette) ──
+  "settings.persona.title": "Personas",
+  "settings.persona.hint":
+    "Una persona inclina la barra y la barra de estado hacia un tipo de trabajo. Nunca oculta funciones — ⌘K sigue alcanzando todo.",
+  "settings.persona.searchPlaceholder": "Escribe para buscar una persona…",
+  "settings.persona.searchAriaLabel": "Buscar personas",
+  "settings.persona.searchEscHint": "esc para borrar",
+  "settings.persona.noResults": "Sin coincidencias. Prueba «escritor» o «básico».",
+  "settings.persona.recentSection": "Usadas recientemente",
+  "settings.persona.allSection": "Todas las personas",
+  "settings.persona.activeBadge": "Activa",
+  "settings.persona.recentBadge": "Reciente",
+  "settings.persona.activeLabel": "Activa",
+  "settings.persona.kbdNavigate": "navegar",
+  "settings.persona.kbdSelect": "elegir",
+  "settings.persona.kbdClear": "borrar",
+  "settings.persona.footerNote":
+    "Las personas inclinan la barra y la paleta; nunca bloquean funciones. Puedes cambiar en cualquier momento.",
+  "settings.persona.option.basic.label": "Básico",
+  "settings.persona.option.basic.desc":
     "Solo escribir. Sin escenarios, sin grafo, sin extras — el guardado de puntos sigue funcionando en segundo plano.",
-  "settings.mode.option.basic.bullet1": "Notas simples, etiquetas y bloc de notas",
-  "settings.mode.option.basic.bullet2": "Sin escenarios, grafo ni kits en la barra",
-  "settings.mode.option.basic.bullet3": "Los puntos de control automáticos siguen guardando en segundo plano",
-  "settings.mode.option.basic.bullet4": "Todo sigue accesible vía ⌘K",
-  "settings.mode.option.path.label": "Por escenarios",
-  "settings.mode.option.path.desc":
-    "La superficie completa de Yarrow, sin disfraz de persona. El predeterminado para quienes quieren todo lo que Yarrow puede hacer.",
-  "settings.mode.option.path.bullet1": "Escenarios ramificadas y conexiones recíprocas",
-  "settings.mode.option.path.bullet2": "Grafo de conexiones con fuerzas dirigidas",
-  "settings.mode.option.path.bullet3": "Línea de tiempo del historial y panel de huérfanas",
-  "settings.mode.option.path.bullet4": "Selector de kits y superficie completa de teclado",
-  "settings.mode.option.writer.label": "Escritor/a",
-  "settings.mode.option.writer.desc":
+  "settings.persona.option.basic.bullet1": "Notas simples, etiquetas y bloc de notas",
+  "settings.persona.option.basic.bullet2": "Sin escenarios, grafo ni kits en la barra",
+  "settings.persona.option.basic.bullet3": "Los puntos de control automáticos siguen guardando en segundo plano",
+  "settings.persona.option.basic.bullet4": "Todo sigue accesible vía ⌘K",
+  "settings.persona.option.default.label": "Predeterminado",
+  "settings.persona.option.default.desc":
+    "La superficie completa de Yarrow, sin disfraz de persona. Escenarios, grafo, historial, kits — todo accesible.",
+  "settings.persona.option.default.bullet1": "Escenarios ramificadas y conexiones recíprocas",
+  "settings.persona.option.default.bullet2": "Grafo de conexiones con fuerzas dirigidas",
+  "settings.persona.option.default.bullet3": "Línea de tiempo del historial y panel de huérfanas",
+  "settings.persona.option.default.bullet4": "Selector de kits y superficie completa de teclado",
+  "settings.persona.option.writer.label": "Escritor/a",
+  "settings.persona.option.writer.desc":
     "Por escenarios + herramientas de escritura. Una superficie tranquila y enfocada para la prosa.",
-  "settings.mode.option.writer.bullet1": "Racha de escritura diaria con píldora de objetivo",
-  "settings.mode.option.writer.bullet2": "Modo máquina de escribir",
-  "settings.mode.option.writer.bullet3": "Adornos de escenario silenciados — concentración en la prosa",
-  "settings.mode.option.writer.bullet4": "Conteo de palabras y medidor de progreso en la barra de estado",
-  "settings.mode.option.researcher.label": "Investigador/a",
-  "settings.mode.option.researcher.desc":
+  "settings.persona.option.writer.bullet1": "Racha de escritura diaria con píldora de objetivo",
+  "settings.persona.option.writer.bullet2": "Modo máquina de escribir",
+  "settings.persona.option.writer.bullet3": "Adornos de escenario silenciados — concentración en la prosa",
+  "settings.persona.option.writer.bullet4": "Conteo de palabras y medidor de progreso en la barra de estado",
+  "settings.persona.option.researcher.label": "Investigador/a",
+  "settings.persona.option.researcher.desc":
     "Por escenarios + herramientas de investigación. Para fuentes, citas y preguntas abiertas.",
-  "settings.mode.option.researcher.bullet1": "Panel de preguntas abiertas (marcadores ??)",
-  "settings.mode.option.researcher.bullet2": "Biblioteca de fuentes con filtros",
-  "settings.mode.option.researcher.bullet3": "Plantilla para nuevas referencias",
-  "settings.mode.option.researcher.bullet4": "Píldora de conteo ?? en la barra de estado",
-  "settings.mode.option.developer.label": "Desarrollador/a",
-  "settings.mode.option.developer.desc":
+  "settings.persona.option.researcher.bullet1": "Panel de preguntas abiertas (marcadores ??)",
+  "settings.persona.option.researcher.bullet2": "Biblioteca de fuentes con filtros",
+  "settings.persona.option.researcher.bullet3": "Plantilla para nuevas referencias",
+  "settings.persona.option.researcher.bullet4": "Píldora de conteo ?? en la barra de estado",
+  "settings.persona.option.developer.label": "Desarrollador/a",
+  "settings.persona.option.developer.desc":
     "Por escenarios + herramientas de ingeniería. Para decisiones, código y topología.",
-  "settings.mode.option.developer.bullet1": "Registro de decisiones (lista de ADR)",
-  "settings.mode.option.developer.bullet2": "Plantilla para nuevas decisiones (ADR)",
-  "settings.mode.option.developer.bullet3": "Resaltado de sintaxis de código",
-  "settings.mode.option.developer.bullet4": "Píldora con conteo de decisiones en la barra de estado",
-  "settings.mode.option.clinician.label": "Clínico/a",
-  "settings.mode.option.clinician.desc":
+  "settings.persona.option.developer.bullet1": "Registro de decisiones (lista de ADR)",
+  "settings.persona.option.developer.bullet2": "Plantilla para nuevas decisiones (ADR)",
+  "settings.persona.option.developer.bullet3": "Resaltado de sintaxis de código",
+  "settings.persona.option.developer.bullet4": "Píldora con conteo de decisiones en la barra de estado",
+  "settings.persona.option.clinician.label": "Clínico/a",
+  "settings.persona.option.clinician.desc":
     "Por escenarios + herramientas clínicas. Para notas sensibles, seguimientos y estructura de sesión.",
-  "settings.mode.option.clinician.bullet1": "Lista de notas sensibles",
-  "settings.mode.option.clinician.bullet2": "Panel de seguimientos (#review, #followup, #todo, #wip)",
-  "settings.mode.option.clinician.bullet3": "Plantillas SOAP / BIRP / DAP / Acogida",
-  "settings.mode.option.clinician.bullet4": "Trazabilidad mediante puntos de control automáticos",
-  "settings.mode.option.cooking.label": "Cocina",
-  "settings.mode.option.cooking.desc":
+  "settings.persona.option.clinician.bullet1": "Lista de notas sensibles",
+  "settings.persona.option.clinician.bullet2": "Panel de seguimientos (#review, #followup, #todo, #wip)",
+  "settings.persona.option.clinician.bullet3": "Plantillas SOAP / BIRP / DAP / Acogida",
+  "settings.persona.option.clinician.bullet4": "Trazabilidad mediante puntos de control automáticos",
+  "settings.persona.option.cooking.label": "Cocina",
+  "settings.persona.option.cooking.desc":
     "Por escenarios + herramientas de cocina. Para recetas, lectura sin manos y compras.",
-  "settings.mode.option.cooking.bullet1": "Modo cocina con lectura sin manos",
-  "settings.mode.option.cooking.bullet2": "Recortador de URL de recetas",
-  "settings.mode.option.cooking.bullet3": "Constructor inteligente de lista de la compra",
-  "settings.mode.option.cooking.bullet4": "Biblioteca de recetas y temporizadores integrados",
+  "settings.persona.option.cooking.bullet1": "Modo cocina con lectura sin manos",
+  "settings.persona.option.cooking.bullet2": "Recortador de URL de recetas",
+  "settings.persona.option.cooking.bullet3": "Constructor inteligente de lista de la compra",
+  "settings.persona.option.cooking.bullet4": "Biblioteca de recetas y temporizadores integrados",
 
   // ── search ──
   "settings.search.empty":
@@ -1161,9 +1263,9 @@ export const settingsES: Record<SettingsKey, string> = {
   "settings.search.resultsCountPlural":
     "{count} resultados para \"{query}\"",
 
-  "settings.search.mode.label": "Modos y personas",
+  "settings.search.mode.label": "Personas",
   "settings.search.mode.sublabel":
-    "Básico · Por escenarios · Escritor/a · Investigador/a · Desarrollador/a · Clínico/a · Cocina",
+    "Básico · Predeterminado · Escritor/a · Investigador/a · Desarrollador/a · Clínico/a · Cocina",
   "settings.search.appearance.theme.label": "Tema",
   "settings.search.appearance.theme.sublabel":
     "claro · oscuro · auto · ashrose · dracula",
@@ -1196,6 +1298,15 @@ export const settingsES: Record<SettingsKey, string> = {
   "settings.search.writing.rawMarkdown.label":
     "Mostrar sintaxis markdown sin procesar",
   "settings.search.writing.editorFont.label": "Fuente del editor",
+
+  "settings.search.tags.label": "Tus etiquetas",
+  "settings.search.tags.sublabel": "color, fijado, cifrado, plantillas",
+  "settings.search.tags.packs.label": "Paquetes de inicio",
+  "settings.search.tags.packs.sublabel":
+    "conjuntos de etiquetas listos para combinar",
+  "settings.search.tags.encrypt.label": "Cifrar al etiquetar",
+  "settings.search.tags.encrypt.sublabel":
+    "etiquetas que marcan la nota como privada automáticamente",
 
   "settings.search.guidance.guidedMode.label": "Modo guiado",
   "settings.search.guidance.guidedMode.sublabel":
@@ -2058,6 +2169,22 @@ export const settingsES: Record<SettingsKey, string> = {
   "settings.about.links.github": "GitHub",
   "settings.about.links.website": "Sitio web",
 
+  // ── update check (3.1) ──
+  "settings.about.updateCheck.title": "Actualizaciones",
+  "settings.about.updateCheck.body":
+    "Comprobación manual contra GitHub Releases. Yarrow nunca comprueba automáticamente ni envía nada aparte de la propia petición.",
+  "settings.about.updateCheck.button": "Buscar actualizaciones",
+  "settings.about.updateCheck.checking": "Comprobando…",
+  "settings.about.updateCheck.upToDate":
+    "Estás en la última versión ({version}).",
+  "settings.about.updateCheck.available":
+    "Actualización disponible — {latest}. Tienes {current}.",
+  "settings.about.updateCheck.ahead":
+    "Tienes {current} — más reciente que la última versión publicada ({latest}).",
+  "settings.about.updateCheck.viewRelease": "Ver notas de la versión",
+  "settings.about.updateCheck.error":
+    "No se pudo contactar con GitHub. Revisa tu conexión y vuelve a intentarlo.",
+
   // ── export / import settings (3.1) ──
   "settings.about.exportImport.title": "Exportar e importar ajustes",
   "settings.about.exportImport.body":
@@ -2169,6 +2296,70 @@ export const settingsES: Record<SettingsKey, string> = {
     "Las tres asignaciones volverán a lo que Yarrow trae por defecto. Esto solo afecta al punto central — no toca ningún otro ajuste.",
   "settings.gestures.reset.cancel": "Cancelar",
   "settings.gestures.reset.confirm": "Restablecer",
+
+  // ── tags pane (3.2) ──
+  "settings.tags.title": "Etiquetas",
+  "settings.tags.hint":
+    "Las etiquetas son marcadores de estado que aplicas a las notas — #review, #recipe, #adr. Defines una aquí y la app hace el resto: autocompletar en el editor, plantillas opcionales para notas nuevas y un chip en la barra de estado si la fijas. Algunos nombres — sensitive, private, phi, confidential, clinical — además dibujan un pequeño marcador de sensibilidad junto a esas notas en la barra lateral para identificarlas fácilmente.",
+  "settings.tags.list.title": "Tus etiquetas",
+  "settings.tags.list.hint":
+    "Haz clic en un color para cambiarlo. Eliminar la configuración de una etiqueta no afecta a las notas que ya la usan.",
+  "settings.tags.list.empty":
+    "Aún no hay etiquetas. Agrega una abajo o aplica un paquete de inicio.",
+  "settings.tags.list.fromTemplate": "desde {template}",
+  "settings.tags.list.cycleColor": "Haz clic para cambiar el color",
+  "settings.tags.list.cycleColorAria": "Cambiar color de {name}",
+  "settings.tags.list.removeTitle": "Eliminar la configuración de esta etiqueta",
+  "settings.tags.list.remove": "Eliminar",
+  "settings.tags.list.groupLabel": "Grupo",
+  "settings.tags.list.groupPlaceholder": "—",
+  "settings.tags.list.groupHint":
+    "Opcional. Las etiquetas con el mismo grupo se agrupan en la lista de la barra lateral.",
+  "settings.tags.add.title": "Agregar una etiqueta",
+  "settings.tags.add.namePlaceholder": "nombre de la etiqueta (sin #)",
+  "settings.tags.add.colorLabel": "Color",
+  "settings.tags.add.submit": "Agregar etiqueta",
+  "settings.tags.add.duplicate": "Ya existe una etiqueta con ese nombre.",
+  "settings.tags.pinned.title": "Mostrar en la barra de estado",
+  "settings.tags.pinned.hint":
+    "Toca un chip para fijarlo o quitarlo. Las etiquetas fijadas aparecen como pastillas teñidas en la barra de estado con un contador en vivo; al hacer clic se abre la vista guardada.",
+  "settings.tags.pinned.empty":
+    "Primero agrega o aplica una etiqueta — todavía no hay nada que fijar.",
+  "settings.tags.packs.title": "Paquetes de inicio",
+  "settings.tags.packs.hint":
+    "Los paquetes son conjuntos de etiquetas predefinidos para flujos comunes. Aplicar uno fusiona sus etiquetas con tu configuración (las tuyas ganan en caso de conflicto), copia las plantillas que aún no tienes y fija algunas etiquetas sensatas en la barra de estado. Combina paquetes a tu gusto — investigación + recetas funciona bien.",
+  "settings.tags.packs.applied": "Aplicado",
+  "settings.tags.packs.apply": "Aplicar",
+
+  // ── glossary pane (3.2) ──
+  "settings.search.glossary.label": "Glosario",
+  "settings.search.glossary.sublabel":
+    "pares término + definición subrayados en el editor",
+  "settings.glossary.list.title": "Tu glosario",
+  "settings.glossary.list.hint":
+    "Cada término definido aquí recibe un subrayado discreto en cada nota donde aparece, y la definición se muestra al pasar el cursor. Se guarda en .yarrow/glossary.json y se sincroniza con el resto del espacio.",
+  "settings.glossary.list.loading": "Cargando glosario…",
+  "settings.glossary.list.empty":
+    "Aún no hay términos en el glosario. Añade uno abajo.",
+  "settings.glossary.row.termLabel": "Término",
+  "settings.glossary.row.definitionLabel": "Definición",
+  "settings.glossary.row.remove": "Quitar",
+  "settings.glossary.row.removeTitle": "Quitar esta entrada del glosario",
+  "settings.glossary.row.removeAria": "Quitar entrada del glosario {term}",
+  "settings.glossary.row.error.empty":
+    "El término y la definición no pueden estar vacíos — cámbialos o elimina la fila.",
+  "settings.glossary.add.title": "Añadir un término",
+  "settings.glossary.add.hint":
+    "Ambos campos son obligatorios. ⌘/Ctrl+Enter dentro de la definición lo guarda.",
+  "settings.glossary.add.termPlaceholder": "término",
+  "settings.glossary.add.termLabel": "Nuevo término",
+  "settings.glossary.add.definitionPlaceholder": "definición que se muestra al pasar el cursor",
+  "settings.glossary.add.definitionLabel": "Nueva definición",
+  "settings.glossary.add.submit": "Añadir término",
+  "settings.glossary.add.error.empty":
+    "Tanto el término como la definición son obligatorios.",
+  "settings.glossary.add.error.duplicate":
+    "Ya existe un término con este nombre.",
 };
 
 export const settingsSV: Record<SettingsKey, string> = {
@@ -2180,10 +2371,12 @@ export const settingsSV: Record<SettingsKey, string> = {
   "settings.closeTitle": "Stäng (Esc)",
 
   // ── tabs ──
-  "settings.tabs.mode": "Lägen och personor",
+  "settings.tabs.mode": "Personor",
   "settings.tabs.appearance": "Utseende",
   "settings.tabs.accessibility": "Tillgänglighet",
   "settings.tabs.writing": "Skrivande",
+  "settings.tabs.tags": "Taggar",
+  "settings.tabs.glossary": "Ordlista",
   "settings.tabs.gestures": "Gester",
   "settings.tabs.guidance": "Vägledning",
   "settings.tabs.templates": "Mallar",
@@ -2215,68 +2408,73 @@ export const settingsSV: Record<SettingsKey, string> = {
   "settings.scope.mixed.title":
     "Den här panelen blandar enhetslokala och arbetsytsbundna inställningar — kolla varje rad.",
 
-  // ── mode pane ──
-  "settings.mode.title": "Lägen och personor",
-  "settings.mode.hint":
-    "Lägen styr den övergripande komplexiteten. Personor lägger till hantverksspecifika verktyg ovanpå — båda är reversibla, och ⌘K når allt det ena eller andra döljer.",
-  "settings.mode.modeSection": "Läge",
-  "settings.mode.personaSection": "Persona",
-  "settings.mode.personaIntro":
-    "Frivilligt. En persona är ett skin ovanpå Vägbaserat — lägger till hantverksspecifika verktyg utan att låsa något annat.",
-  "settings.mode.personaNone": "Ingen",
-  "settings.mode.personaNoneDesc":
-    "Rent Vägbaserat. Hela Yarrow-ytan utan persona-skin.",
-  "settings.mode.footerNote":
-    "Lägen styr listan och paletten; de spärrar aldrig funktioner. Du kan byta när som helst.",
-  "settings.mode.option.basic.label": "Enkelt",
-  "settings.mode.option.basic.desc":
+  // ── persona pane (Design 3: search palette) ──
+  "settings.persona.title": "Personor",
+  "settings.persona.hint":
+    "En persona styr listen och statusraden mot ett visst slags arbete. Den döljer aldrig en funktion — ⌘K når fortfarande allt.",
+  "settings.persona.searchPlaceholder": "Skriv för att hitta en persona…",
+  "settings.persona.searchAriaLabel": "Sök personor",
+  "settings.persona.searchEscHint": "esc för att rensa",
+  "settings.persona.noResults": "Inga träffar. Prova ”skribent” eller ”enkelt”.",
+  "settings.persona.recentSection": "Nyligen använda",
+  "settings.persona.allSection": "Alla personor",
+  "settings.persona.activeBadge": "Aktiv",
+  "settings.persona.recentBadge": "Nyligen",
+  "settings.persona.activeLabel": "Aktiv",
+  "settings.persona.kbdNavigate": "navigera",
+  "settings.persona.kbdSelect": "välj",
+  "settings.persona.kbdClear": "rensa",
+  "settings.persona.footerNote":
+    "Personor styr listen och paletten; de spärrar aldrig funktioner. Du kan byta när som helst.",
+  "settings.persona.option.basic.label": "Enkelt",
+  "settings.persona.option.basic.desc":
     "Bara skriva. Inga vägar, ingen graf, inga extrafunktioner — autocheckpoint kör fortfarande i bakgrunden.",
-  "settings.mode.option.basic.bullet1": "Vanliga anteckningar, taggar och kladdblock",
-  "settings.mode.option.basic.bullet2": "Inga vägar, graf eller kits i listen",
-  "settings.mode.option.basic.bullet3": "Autocheckpoint sparar varje ändring i bakgrunden",
-  "settings.mode.option.basic.bullet4": "Allt nås fortfarande via ⌘K",
-  "settings.mode.option.path.label": "Vägbaserat",
-  "settings.mode.option.path.desc":
-    "Hela Yarrow-ytan utan persona-skin. Standard för dig som vill ha allt Yarrow kan.",
-  "settings.mode.option.path.bullet1": "Vägar med förgreningar och ömsesidiga kopplingar",
-  "settings.mode.option.path.bullet2": "Kraftriktad anslutningsgraf",
-  "settings.mode.option.path.bullet3": "Historiktidslinje och föräldralösa-panel",
-  "settings.mode.option.path.bullet4": "Kits-väljare och hela tangentbordsytan",
-  "settings.mode.option.writer.label": "Skribent",
-  "settings.mode.option.writer.desc":
+  "settings.persona.option.basic.bullet1": "Vanliga anteckningar, taggar och kladdblock",
+  "settings.persona.option.basic.bullet2": "Inga vägar, graf eller kits i listen",
+  "settings.persona.option.basic.bullet3": "Autocheckpoint sparar varje ändring i bakgrunden",
+  "settings.persona.option.basic.bullet4": "Allt nås fortfarande via ⌘K",
+  "settings.persona.option.default.label": "Standard",
+  "settings.persona.option.default.desc":
+    "Hela Yarrow-ytan utan persona-skin. Scenarier, graf, historik, kits — allt finns kvar.",
+  "settings.persona.option.default.bullet1": "Vägar med förgreningar och ömsesidiga kopplingar",
+  "settings.persona.option.default.bullet2": "Kraftriktad anslutningsgraf",
+  "settings.persona.option.default.bullet3": "Historiktidslinje och föräldralösa-panel",
+  "settings.persona.option.default.bullet4": "Kits-väljare och hela tangentbordsytan",
+  "settings.persona.option.writer.label": "Skribent",
+  "settings.persona.option.writer.desc":
     "Vägbaserat + skrivverktyg. En lugn, fokuserad yta för prosa.",
-  "settings.mode.option.writer.bullet1": "Daglig skrivserie med målpiller",
-  "settings.mode.option.writer.bullet2": "Skrivmaskinsläge",
-  "settings.mode.option.writer.bullet3": "Tystade vägdetaljer — fokus på prosan",
-  "settings.mode.option.writer.bullet4": "Ordräknare och framstegsindikator i statusraden",
-  "settings.mode.option.researcher.label": "Forskare",
-  "settings.mode.option.researcher.desc":
+  "settings.persona.option.writer.bullet1": "Daglig skrivserie med målpiller",
+  "settings.persona.option.writer.bullet2": "Skrivmaskinsläge",
+  "settings.persona.option.writer.bullet3": "Tystade vägdetaljer — fokus på prosan",
+  "settings.persona.option.writer.bullet4": "Ordräknare och framstegsindikator i statusraden",
+  "settings.persona.option.researcher.label": "Forskare",
+  "settings.persona.option.researcher.desc":
     "Vägbaserat + forskarverktyg. För källor, citat och öppna frågor.",
-  "settings.mode.option.researcher.bullet1": "Panel för öppna frågor (??-markörer)",
-  "settings.mode.option.researcher.bullet2": "Källbibliotek med filter",
-  "settings.mode.option.researcher.bullet3": "Mall för nya källor",
-  "settings.mode.option.researcher.bullet4": "??-räknare i statusraden",
-  "settings.mode.option.developer.label": "Utvecklare",
-  "settings.mode.option.developer.desc":
+  "settings.persona.option.researcher.bullet1": "Panel för öppna frågor (??-markörer)",
+  "settings.persona.option.researcher.bullet2": "Källbibliotek med filter",
+  "settings.persona.option.researcher.bullet3": "Mall för nya källor",
+  "settings.persona.option.researcher.bullet4": "??-räknare i statusraden",
+  "settings.persona.option.developer.label": "Utvecklare",
+  "settings.persona.option.developer.desc":
     "Vägbaserat + ingenjörsverktyg. För beslut, kod och topologi.",
-  "settings.mode.option.developer.bullet1": "Beslutslogg (ADR-lista)",
-  "settings.mode.option.developer.bullet2": "Mall för nya beslut (ADR)",
-  "settings.mode.option.developer.bullet3": "Syntaxmarkering för kod",
-  "settings.mode.option.developer.bullet4": "Beslutsräknare i statusraden",
-  "settings.mode.option.clinician.label": "Kliniker",
-  "settings.mode.option.clinician.desc":
+  "settings.persona.option.developer.bullet1": "Beslutslogg (ADR-lista)",
+  "settings.persona.option.developer.bullet2": "Mall för nya beslut (ADR)",
+  "settings.persona.option.developer.bullet3": "Syntaxmarkering för kod",
+  "settings.persona.option.developer.bullet4": "Beslutsräknare i statusraden",
+  "settings.persona.option.clinician.label": "Kliniker",
+  "settings.persona.option.clinician.desc":
     "Vägbaserat + kliniska verktyg. För känsliga anteckningar, uppföljningar och sessionsstruktur.",
-  "settings.mode.option.clinician.bullet1": "Lista över känsliga anteckningar",
-  "settings.mode.option.clinician.bullet2": "Uppföljningstavla (#review, #followup, #todo, #wip)",
-  "settings.mode.option.clinician.bullet3": "Mallar för SOAP / BIRP / DAP / Inskrivning",
-  "settings.mode.option.clinician.bullet4": "Spårbarhet via autocheckpoints",
-  "settings.mode.option.cooking.label": "Matlagning",
-  "settings.mode.option.cooking.desc":
+  "settings.persona.option.clinician.bullet1": "Lista över känsliga anteckningar",
+  "settings.persona.option.clinician.bullet2": "Uppföljningstavla (#review, #followup, #todo, #wip)",
+  "settings.persona.option.clinician.bullet3": "Mallar för SOAP / BIRP / DAP / Inskrivning",
+  "settings.persona.option.clinician.bullet4": "Spårbarhet via autocheckpoints",
+  "settings.persona.option.cooking.label": "Matlagning",
+  "settings.persona.option.cooking.desc":
     "Vägbaserat + köksverktyg. För recept, läsning utan händer och inköp.",
-  "settings.mode.option.cooking.bullet1": "Matlagningsläge med läsning utan händer",
-  "settings.mode.option.cooking.bullet2": "Receptklippare för URL:er",
-  "settings.mode.option.cooking.bullet3": "Smart inköpslista",
-  "settings.mode.option.cooking.bullet4": "Receptbibliotek och inbyggda timers",
+  "settings.persona.option.cooking.bullet1": "Matlagningsläge med läsning utan händer",
+  "settings.persona.option.cooking.bullet2": "Receptklippare för URL:er",
+  "settings.persona.option.cooking.bullet3": "Smart inköpslista",
+  "settings.persona.option.cooking.bullet4": "Receptbibliotek och inbyggda timers",
 
   // ── search ──
   "settings.search.empty":
@@ -2286,9 +2484,9 @@ export const settingsSV: Record<SettingsKey, string> = {
   "settings.search.resultsCountPlural":
     "{count} träffar för \"{query}\"",
 
-  "settings.search.mode.label": "Lägen och personor",
+  "settings.search.mode.label": "Personor",
   "settings.search.mode.sublabel":
-    "Enkelt · Vägbaserat · Skribent · Forskare · Utvecklare · Kliniker · Matlagning",
+    "Enkel · Standard · Skribent · Forskare · Utvecklare · Kliniker · Matlagning",
   "settings.search.appearance.theme.label": "Tema",
   "settings.search.appearance.theme.sublabel":
     "ljus · mörk · auto · ashrose · dracula",
@@ -2323,6 +2521,15 @@ export const settingsSV: Record<SettingsKey, string> = {
     "Visa rå markdown-syntax",
   "settings.search.writing.editorFont.label":
     "Editorns typsnitt",
+
+  "settings.search.tags.label": "Dina taggar",
+  "settings.search.tags.sublabel": "färg, fästning, kryptering, mallar",
+  "settings.search.tags.packs.label": "Startpaket",
+  "settings.search.tags.packs.sublabel":
+    "färdiga taggsamlingar att kombinera",
+  "settings.search.tags.encrypt.label": "Kryptera vid taggning",
+  "settings.search.tags.encrypt.sublabel":
+    "taggar som gör en anteckning privat automatiskt",
 
   "settings.search.guidance.guidedMode.label": "Guidat läge",
   "settings.search.guidance.guidedMode.sublabel":
@@ -3213,6 +3420,22 @@ export const settingsSV: Record<SettingsKey, string> = {
   "settings.about.links.github": "GitHub",
   "settings.about.links.website": "Webbplats",
 
+  // ── update check (3.1) ──
+  "settings.about.updateCheck.title": "Uppdateringar",
+  "settings.about.updateCheck.body":
+    "Manuell kontroll mot GitHub Releases. Yarrow kontrollerar aldrig automatiskt och skickar inget utöver själva förfrågan.",
+  "settings.about.updateCheck.button": "Sök efter uppdateringar",
+  "settings.about.updateCheck.checking": "Söker…",
+  "settings.about.updateCheck.upToDate":
+    "Du har den senaste versionen ({version}).",
+  "settings.about.updateCheck.available":
+    "Uppdatering tillgänglig — {latest}. Du har {current}.",
+  "settings.about.updateCheck.ahead":
+    "Du har {current} — nyare än den senaste publicerade versionen ({latest}).",
+  "settings.about.updateCheck.viewRelease": "Visa versionsanteckningar",
+  "settings.about.updateCheck.error":
+    "Kunde inte nå GitHub. Kontrollera din anslutning och försök igen.",
+
   // ── export / import settings (3.1) ──
   "settings.about.exportImport.title": "Exportera och importera inställningar",
   "settings.about.exportImport.body":
@@ -3324,4 +3547,68 @@ export const settingsSV: Record<SettingsKey, string> = {
     "Alla tre bindningarna återställs till det Yarrow levereras med. Det här påverkar bara centrumpricken — inga andra inställningar berörs.",
   "settings.gestures.reset.cancel": "Avbryt",
   "settings.gestures.reset.confirm": "Återställ",
+
+  // ── tags pane (3.2) ──
+  "settings.tags.title": "Taggar",
+  "settings.tags.hint":
+    "Taggar är statusmarkörer du sätter på anteckningar — #review, #recipe, #adr. Definiera en här så sköter appen resten: autokomplettering i editorn, valfria mallar för nya anteckningar och en chip i statusraden om du fäster den. Några namn — sensitive, private, phi, confidential, clinical — målar dessutom en liten känslig-markör bredvid de anteckningarna i sidopanelen så du lätt ser dem.",
+  "settings.tags.list.title": "Dina taggar",
+  "settings.tags.list.hint":
+    "Klicka på en färg för att växla nyans. Att ta bort taggens konfiguration påverkar inte anteckningar som redan har den.",
+  "settings.tags.list.empty":
+    "Inga taggar än. Lägg till en nedan eller använd ett startpaket.",
+  "settings.tags.list.fromTemplate": "från {template}",
+  "settings.tags.list.cycleColor": "Klicka för att växla färg",
+  "settings.tags.list.cycleColorAria": "Växla färg för {name}",
+  "settings.tags.list.removeTitle": "Ta bort taggens konfiguration",
+  "settings.tags.list.remove": "Ta bort",
+  "settings.tags.list.groupLabel": "Grupp",
+  "settings.tags.list.groupPlaceholder": "—",
+  "settings.tags.list.groupHint":
+    "Valfritt. Taggar i samma grupp samlas i sidolistans tagglista.",
+  "settings.tags.add.title": "Lägg till en tagg",
+  "settings.tags.add.namePlaceholder": "taggnamn (utan #)",
+  "settings.tags.add.colorLabel": "Färg",
+  "settings.tags.add.submit": "Lägg till tagg",
+  "settings.tags.add.duplicate": "Det finns redan en tagg med det namnet.",
+  "settings.tags.pinned.title": "Visa i statusraden",
+  "settings.tags.pinned.hint":
+    "Tryck på en chip för att fästa eller lossa den. Fästa taggar visas som mjukt tonade pillor i statusraden med en levande räknare; ett klick öppnar sparad-vyn.",
+  "settings.tags.pinned.empty":
+    "Lägg till eller tillämpa en tagg först — det finns inget att fästa än.",
+  "settings.tags.packs.title": "Startpaket",
+  "settings.tags.packs.hint":
+    "Paket är färdiga taggsamlingar för vanliga arbetsflöden. När du tillämpar ett paket sammanfogas dess taggar med din konfiguration (dina egna vinner vid konflikt), eventuella mallar som inte redan finns kopieras in och några rimliga taggar fästs i statusraden. Kombinera paket fritt — research + recept fungerar fint.",
+  "settings.tags.packs.applied": "Tillämpat",
+  "settings.tags.packs.apply": "Tillämpa",
+
+  // ── glossary pane (3.2) ──
+  "settings.search.glossary.label": "Ordlista",
+  "settings.search.glossary.sublabel":
+    "term + definition-par som understryks i redigeraren",
+  "settings.glossary.list.title": "Din ordlista",
+  "settings.glossary.list.hint":
+    "Varje term som definieras här får en diskret understrykning där den förekommer i en anteckning, med definitionen visad vid hover. Lagras i .yarrow/glossary.json och synkas med resten av arbetsytan.",
+  "settings.glossary.list.loading": "Läser in ordlistan…",
+  "settings.glossary.list.empty":
+    "Inga termer i ordlistan än. Lägg till en nedan.",
+  "settings.glossary.row.termLabel": "Term",
+  "settings.glossary.row.definitionLabel": "Definition",
+  "settings.glossary.row.remove": "Ta bort",
+  "settings.glossary.row.removeTitle": "Ta bort denna ordlistepost",
+  "settings.glossary.row.removeAria": "Ta bort ordlistepost {term}",
+  "settings.glossary.row.error.empty":
+    "Term och definition kan inte vara tomma — ändra något eller ta bort raden.",
+  "settings.glossary.add.title": "Lägg till en term",
+  "settings.glossary.add.hint":
+    "Båda fälten krävs. ⌘/Ctrl+Enter i definitionsfältet sparar.",
+  "settings.glossary.add.termPlaceholder": "term",
+  "settings.glossary.add.termLabel": "Ny term",
+  "settings.glossary.add.definitionPlaceholder": "definition som visas vid hover",
+  "settings.glossary.add.definitionLabel": "Ny definition",
+  "settings.glossary.add.submit": "Lägg till term",
+  "settings.glossary.add.error.empty":
+    "Både term och definition krävs.",
+  "settings.glossary.add.error.duplicate":
+    "En term med detta namn finns redan.",
 };

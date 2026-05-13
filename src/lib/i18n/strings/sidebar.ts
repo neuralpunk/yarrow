@@ -11,6 +11,7 @@ export const sidebarEN = {
   "sidebar.notes.encryptedTooltip": "Encrypted",
   "sidebar.notes.privateTooltip": "Private — never syncs (registered in .git/info/exclude)",
   "sidebar.notes.privateTooltipShort": "Private — never syncs",
+  "sidebar.notes.sensitiveTooltip": "Sensitive — flagged by tag (sensitive / private / phi / confidential / clinical)",
   "sidebar.notes.unlinkedTooltip": "not linked",
   "sidebar.notes.startingNote": "Starting note",
   "sidebar.notes.pinned": "Pinned",
@@ -143,6 +144,14 @@ export const sidebarEN = {
 
   // TagList
   "sidebar.tags.title": "Tags",
+  "sidebar.tags.groupOther": "Other",
+  "sidebar.tags.groupCollapse": "Collapse {group}",
+  "sidebar.tags.groupExpand": "Expand {group}",
+  "sidebar.tags.group.writing": "Writing",
+  "sidebar.tags.group.research": "Research",
+  "sidebar.tags.group.engineering": "Engineering",
+  "sidebar.tags.group.clinical": "Clinical",
+  "sidebar.tags.group.recipes": "Recipes",
 
   // LinkedNotesList
   "sidebar.linked.title": "Linked Notes",
@@ -441,6 +450,7 @@ export const sidebarES: Record<SidebarKey, string> = {
   "sidebar.notes.encryptedTooltip": "Cifrada",
   "sidebar.notes.privateTooltip": "Privada — nunca se sincroniza (registrada en .git/info/exclude)",
   "sidebar.notes.privateTooltipShort": "Privada — nunca se sincroniza",
+  "sidebar.notes.sensitiveTooltip": "Sensible — marcada por etiqueta (sensitive / private / phi / confidential / clinical)",
   "sidebar.notes.unlinkedTooltip": "no vinculada",
   "sidebar.notes.startingNote": "Nota inicial",
   "sidebar.notes.pinned": "Fijada",
@@ -573,6 +583,14 @@ export const sidebarES: Record<SidebarKey, string> = {
 
   // TagList
   "sidebar.tags.title": "Etiquetas",
+  "sidebar.tags.groupOther": "Otras",
+  "sidebar.tags.groupCollapse": "Contraer {group}",
+  "sidebar.tags.groupExpand": "Expandir {group}",
+  "sidebar.tags.group.writing": "Escritura",
+  "sidebar.tags.group.research": "Investigación",
+  "sidebar.tags.group.engineering": "Ingeniería",
+  "sidebar.tags.group.clinical": "Clínica",
+  "sidebar.tags.group.recipes": "Recetas",
 
   // LinkedNotesList
   "sidebar.linked.title": "Notas vinculadas",
@@ -849,6 +867,7 @@ export const sidebarSV: Record<SidebarKey, string> = {
   "sidebar.notes.encryptedTooltip": "Krypterad",
   "sidebar.notes.privateTooltip": "Privat — synkas aldrig (registrerad i .git/info/exclude)",
   "sidebar.notes.privateTooltipShort": "Privat — synkas aldrig",
+  "sidebar.notes.sensitiveTooltip": "Känslig — flaggad av tagg (sensitive / private / phi / confidential / clinical)",
   "sidebar.notes.unlinkedTooltip": "ej länkad",
   "sidebar.notes.startingNote": "Startanteckning",
   "sidebar.notes.pinned": "Fäst",
@@ -981,6 +1000,14 @@ export const sidebarSV: Record<SidebarKey, string> = {
 
   // TagList
   "sidebar.tags.title": "Taggar",
+  "sidebar.tags.groupOther": "Annat",
+  "sidebar.tags.groupCollapse": "Fäll ihop {group}",
+  "sidebar.tags.groupExpand": "Expandera {group}",
+  "sidebar.tags.group.writing": "Skrivande",
+  "sidebar.tags.group.research": "Forskning",
+  "sidebar.tags.group.engineering": "Utveckling",
+  "sidebar.tags.group.clinical": "Klinik",
+  "sidebar.tags.group.recipes": "Recept",
 
   // LinkedNotesList
   "sidebar.linked.title": "Länkade anteckningar",

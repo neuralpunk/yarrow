@@ -10,11 +10,7 @@
     onInsertTable: () => void;
     onInsertCallout: () => void;
     onInsertTimer: () => void;
-    onClipRecipe: () => void;
-    onAddToShoppingList: () => void;
     wikilinkDisabled?: boolean;
-    shoppingDisabled?: boolean;
-    cookingEnabled?: boolean;
   }
 
   let {
@@ -25,11 +21,7 @@
     onInsertTable,
     onInsertCallout,
     onInsertTimer,
-    onClipRecipe,
-    onAddToShoppingList,
     wikilinkDisabled,
-    shoppingDisabled,
-    cookingEnabled,
   }: Props = $props();
   let t = $derived(tr());
 
@@ -120,35 +112,16 @@
         {@render modalBtn(calloutIcon, t("modals.inserts.btn.callout"), t("modals.inserts.keys.callout"), false, () => fire(onInsertCallout))}
       </div>
 
-      {#if cookingEnabled}
-        <div class="text-2xs uppercase tracking-wider text-t3 mt-4 mb-2 font-mono">
-          {t("modals.inserts.recipeGroup")}
-        </div>
-        <div class="grid grid-cols-3 gap-3">
-          {#snippet timerIcon()}
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="13" r="7" />
-              <path d="M12 9v4l2.5 2" />
-              <path d="M9 3h6" />
-            </svg>
-          {/snippet}
-          {@render modalBtn(timerIcon, t("modals.inserts.btn.timer"), t("modals.inserts.keys.timer"), false, () => fire(onInsertTimer))}
-          {#snippet recipeUrlIcon()}
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10 14a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1" />
-              <path d="M14 10a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1" />
-            </svg>
-          {/snippet}
-          {@render modalBtn(recipeUrlIcon, t("modals.inserts.btn.clipRecipe"), t("modals.inserts.keys.clipRecipe"), false, () => fire(onClipRecipe))}
-          {#snippet shoppingIcon()}
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M5 7h14l-1.4 11.2a1.5 1.5 0 0 1-1.5 1.3H7.9a1.5 1.5 0 0 1-1.5-1.3L5 7z" />
-              <path d="M9 10V6a3 3 0 0 1 6 0v4" />
-            </svg>
-          {/snippet}
-          {@render modalBtn(shoppingIcon, t("modals.inserts.btn.shoppingList"), t("modals.inserts.keys.shoppingList"), !!shoppingDisabled, () => fire(onAddToShoppingList))}
-        </div>
-      {/if}
+      <div class="mt-3">
+        {#snippet timerIcon()}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="13" r="7" />
+            <path d="M12 9v4l2.5 2" />
+            <path d="M9 3h6" />
+          </svg>
+        {/snippet}
+        {@render modalBtn(timerIcon, t("modals.inserts.btn.timer"), t("modals.inserts.keys.timer"), false, () => fire(onInsertTimer))}
+      </div>
 
       <div class="mt-5 pt-4 border-t border-bd flex items-center justify-end text-[12.5px] text-t3">
         <span>

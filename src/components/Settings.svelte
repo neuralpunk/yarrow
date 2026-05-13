@@ -2,10 +2,11 @@
   // Tabs are exported so a parent can pin an `initialTab`. Keep the
   // ordering aligned with the React file so call sites don't drift.
   export type Tab =
-    | "mode"
     | "appearance"
     | "accessibility"
     | "writing"
+    | "tags"
+    | "glossary"
     | "gestures"
     | "guidance"
     | "sync"
@@ -35,6 +36,7 @@
     LargeBlobEntry,
     ReclaimSpaceOutcome,
     ConflictResolution,
+    GlossaryEntry,
   } from "../lib/types";
   import MainNotePrompt from "./MainNotePrompt.svelte";
   import Modal from "./Modal.svelte";
@@ -59,6 +61,7 @@
     extraCodeHighlight,
     extraImagePreview,
     extraRadialMenu,
+    extraSlashCommands,
     extraSpell,
     type ExtraKey,
   } from "../lib/extraPrefs.svelte";
@@ -103,8 +106,14 @@
   } from "../lib/macViewportFudge.svelte";
   import { APP_VERSION } from "../lib/version";
   import { guidance } from "../lib/guidanceStore.svelte";
-  import { mode as modeStore } from "../lib/mode.svelte";
-  import { MODES, MODE_BULLET_COUNT, type ModeId, type PersonaId } from "../lib/modes";
+  import {
+    tags as tagsStore,
+    chipTone,
+    type TagDef,
+  } from "../lib/tags.svelte";
+  import { STARTER_PACKS, type StarterPack } from "../lib/packs";
+  import { applyPack } from "../lib/tagsMigration";
+  import { KNOWN_GROUPS } from "../lib/personaGroups";
   import {
     TEXT_SCALES,
     type TextScale,
@@ -207,10 +216,11 @@
   });
 
   let tabLabels = $derived<Record<Tab, string>>({
-    mode: t("settings.tabs.mode"),
     appearance: t("settings.tabs.appearance"),
     accessibility: t("settings.tabs.accessibility"),
     writing: t("settings.tabs.writing"),
+    tags: t("settings.tabs.tags"),
+    glossary: t("settings.tabs.glossary"),
     gestures: t("settings.tabs.gestures"),
     guidance: t("settings.tabs.guidance"),
     templates: t("settings.tabs.templates"),
@@ -237,8 +247,6 @@
   }
 
   const SETTINGS_INDEX: SettingEntry[] = [
-    { tab: "mode", labelKey: "settings.search.mode.label", sublabelKey: "settings.search.mode.sublabel", keywords: ["mode", "persona", "writer", "researcher", "developer", "basic", "path", "skin", "preset"] },
-
     { tab: "appearance", labelKey: "settings.search.appearance.theme.label", sublabelKey: "settings.search.appearance.theme.sublabel", keywords: ["color", "mode", "dark", "light", "ashrose", "rose", "dracula", "purple"] },
     { tab: "appearance", labelKey: "settings.search.appearance.size.label", sublabelKey: "settings.search.appearance.size.sublabel", keywords: ["scale", "zoom", "chrome"] },
     { tab: "appearance", labelKey: "settings.search.appearance.font.label", sublabelKey: "settings.search.appearance.font.sublabel", keywords: ["font", "typography", "ui", "inter", "georgia", "serif", "merriweather"] },
@@ -255,6 +263,12 @@
     { tab: "writing", labelKey: "settings.search.writing.focusDefault.label", keywords: ["focus", "default"] },
     { tab: "writing", labelKey: "settings.search.writing.rawMarkdown.label", keywords: ["markdown", "source", "raw"] },
     { tab: "writing", labelKey: "settings.search.writing.editorFont.label", keywords: ["font", "serif", "sans", "lora", "source serif"] },
+
+    { tab: "tags", labelKey: "settings.search.tags.label", sublabelKey: "settings.search.tags.sublabel", keywords: ["tag", "tags", "color", "rail", "pin", "encrypt", "private", "template", "saved view", "behavior", "behaviour"] },
+    { tab: "tags", labelKey: "settings.search.tags.packs.label", sublabelKey: "settings.search.tags.packs.sublabel", keywords: ["starter pack", "preset", "research", "engineering", "writing", "clinical", "recipes"] },
+    { tab: "tags", labelKey: "settings.search.tags.encrypt.label", sublabelKey: "settings.search.tags.encrypt.sublabel", keywords: ["encrypt", "private", "sensitive"] },
+
+    { tab: "glossary", labelKey: "settings.search.glossary.label", sublabelKey: "settings.search.glossary.sublabel", keywords: ["glossary", "term", "definition", "highlight", "dictionary", "vocabulary"] },
 
     { tab: "guidance", labelKey: "settings.search.guidance.guidedMode.label", sublabelKey: "settings.search.guidance.guidedMode.sublabel", keywords: ["guide", "tour", "tutorial", "help", "teach", "walkthrough", "onboarding"] },
     { tab: "guidance", labelKey: "settings.search.guidance.reset.label", sublabelKey: "settings.search.guidance.reset.sublabel", keywords: ["reset", "forget", "tour", "show again"] },
@@ -288,7 +302,6 @@
     {
       labelKey: "settings.nav.group.experience",
       tabs: [
-        "mode",
         "appearance",
         "accessibility",
         "writing",
@@ -299,7 +312,7 @@
     },
     {
       labelKey: "settings.nav.group.content",
-      tabs: ["templates", "workspace"],
+      tabs: ["tags", "glossary", "templates", "workspace"],
     },
     {
       labelKey: "settings.nav.group.system",
@@ -346,55 +359,6 @@
   function pickSearchTab(next: Tab) {
     tab = next;
     query = "";
-  }
-
-  // ─────────── Mode pane state ───────────
-  let activeMode = $derived(modeStore.id);
-  let isBasic = $derived(activeMode === "basic");
-  let isPathBased = $derived(!isBasic);
-  let currentPersona: PersonaId | null = $derived(
-    isBasic ? null : MODES[activeMode].persona,
-  );
-
-  function modeLabelFor(id: ModeId): string {
-    return t(`settings.mode.option.${id}.label` as StringKey);
-  }
-  function modeDescFor(id: ModeId): string {
-    return t(`settings.mode.option.${id}.desc` as StringKey);
-  }
-  function modeBulletsFor(id: ModeId): string[] {
-    return Array.from({ length: MODE_BULLET_COUNT }, (_, i) =>
-      t(`settings.mode.option.${id}.bullet${i + 1}` as StringKey),
-    );
-  }
-  const PERSONA_IDS: readonly (PersonaId | null)[] = [
-    null,
-    "writer",
-    "researcher",
-    "developer",
-    "clinician",
-    "cooking",
-  ];
-  function personaToModeId(p: PersonaId | null): ModeId {
-    return p === null ? "path" : p;
-  }
-  function onPickModeRoot(id: "basic" | "path") {
-    if (id === "basic") {
-      modeStore.set("basic");
-      return;
-    }
-    if (isBasic) modeStore.set("path");
-  }
-  function modeSwatchClass(id: ModeId): string {
-    switch (id) {
-      case "basic":      return "bg-t2 text-bg";
-      case "path":       return "bg-yelp text-yeld";
-      case "writer":     return "bg-rose-500 text-bg";
-      case "researcher": return "bg-emerald-600 text-bg";
-      case "developer":  return "bg-sky-700 text-bg";
-      case "clinician":  return "bg-teal-700 text-bg";
-      case "cooking":    return "bg-orange-600 text-bg";
-    }
   }
 
   function isMacCopy(): boolean {
@@ -476,6 +440,180 @@
       clearSearchState = "error";
       clearSearchMsg = String(e);
     }
+  }
+
+  // ─────────── Tags pane state ───────────
+  // The colour palette mirrors the Tailwind-class vocabulary used in the
+  // starter packs and the tag-browser modal so a configured tag's dot
+  // matches what the rest of the UI renders. New tags default to the
+  // first swatch.
+  const TAG_COLORS: { value: string; label: string }[] = [
+    { value: "bg-rose-500", label: "rose" },
+    { value: "bg-rose-700", label: "rose-deep" },
+    { value: "bg-orange-600", label: "orange" },
+    { value: "bg-amber-500", label: "amber" },
+    { value: "bg-amber-600", label: "amber-deep" },
+    { value: "bg-yellow-600", label: "yellow" },
+    { value: "bg-emerald-600", label: "emerald" },
+    { value: "bg-teal-600", label: "teal" },
+    { value: "bg-teal-700", label: "teal-deep" },
+    { value: "bg-sky-600", label: "sky" },
+    { value: "bg-sky-700", label: "sky-deep" },
+    { value: "bg-violet-500", label: "violet" },
+    { value: "bg-purple-500", label: "purple" },
+    { value: "bg-slate-500", label: "slate" },
+  ];
+
+  let newTagName = $state("");
+  let newTagColor = $state(TAG_COLORS[0].value);
+  let newTagGroup = $state("");
+  let newTagError = $state<string | null>(null);
+
+  const KNOWN_GROUP_IDS = Object.keys(KNOWN_GROUPS);
+
+  function normalizeTagName(raw: string): string {
+    return raw.trim().replace(/^#+/, "").toLowerCase();
+  }
+
+  function normalizeGroupName(raw: string): string | undefined {
+    const trimmed = raw.trim().toLowerCase();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  function setTagColor(def: TagDef, color: string) {
+    tagsStore.upsert({ ...def, color });
+  }
+
+  function setTagGroup(def: TagDef, raw: string) {
+    const next = normalizeGroupName(raw);
+    if (next === def.group) return;
+    const updated: TagDef = { ...def };
+    if (next === undefined) delete updated.group;
+    else updated.group = next;
+    tagsStore.upsert(updated);
+  }
+
+  function removeTag(def: TagDef) {
+    tagsStore.remove(def.name);
+  }
+
+  function togglePin(def: TagDef) {
+    if (tagsStore.isPinned(def.name)) {
+      tagsStore.unpinFrom(def.name);
+    } else {
+      tagsStore.pinTo(def.name);
+    }
+  }
+
+  function addNewTag() {
+    const name = normalizeTagName(newTagName);
+    newTagError = null;
+    if (!name) return;
+    if (tagsStore.get(name)) {
+      newTagError = t("settings.tags.add.duplicate");
+      return;
+    }
+    const def: TagDef = { name, color: newTagColor };
+    const group = normalizeGroupName(newTagGroup);
+    if (group) def.group = group;
+    tagsStore.upsert(def);
+    newTagName = "";
+    newTagColor = TAG_COLORS[0].value;
+    newTagGroup = "";
+  }
+
+  function isPackApplied(pack: StarterPack): boolean {
+    return pack.tags.every((p) => !!tagsStore.get(p.name));
+  }
+
+  async function onApplyPack(pack: StarterPack) {
+    await applyPack(pack);
+  }
+
+  // ─────────── Glossary pane state ───────────
+  // The workspace's glossary lives on disk at `.yarrow/glossary.json`
+  // and is loaded once when the user lands on this tab. Each commit
+  // (blur or Enter on the term/definition inputs, or Add / remove)
+  // round-trips through the backend, which cleans + dedups and returns
+  // the canonical list. We rebroadcast a `yarrow:glossary-updated` event
+  // so any open editor refreshes its highlighter compartment without
+  // remounting.
+  let glossaryEntries = $state<GlossaryEntry[]>([]);
+  let glossaryLoaded = $state(false);
+  let glossaryError = $state<string | null>(null);
+  let newGlossaryTerm = $state("");
+  let newGlossaryDef = $state("");
+  let newGlossaryError = $state<string | null>(null);
+
+  async function loadGlossary() {
+    glossaryError = null;
+    try {
+      glossaryEntries = await api.glossaryEntries();
+    } catch (e) {
+      glossaryError = String(e);
+      glossaryEntries = [];
+    } finally {
+      glossaryLoaded = true;
+    }
+  }
+
+  $effect(() => {
+    if (open && tab === "glossary" && !glossaryLoaded) {
+      void loadGlossary();
+    }
+  });
+
+  async function commitGlossary(next: GlossaryEntry[]) {
+    glossaryError = null;
+    try {
+      glossaryEntries = await api.saveGlossaryEntries(next);
+      window.dispatchEvent(new CustomEvent("yarrow:glossary-updated"));
+    } catch (e) {
+      glossaryError = String(e);
+    }
+  }
+
+  async function addGlossaryEntry() {
+    const term = newGlossaryTerm.trim();
+    const definition = newGlossaryDef.trim();
+    newGlossaryError = null;
+    if (!term || !definition) {
+      newGlossaryError = t("settings.glossary.add.error.empty");
+      return;
+    }
+    if (glossaryEntries.some((e) => e.term.toLowerCase() === term.toLowerCase())) {
+      newGlossaryError = t("settings.glossary.add.error.duplicate");
+      return;
+    }
+    await commitGlossary([...glossaryEntries, { term, definition }]);
+    newGlossaryTerm = "";
+    newGlossaryDef = "";
+  }
+
+  async function removeGlossaryEntry(idx: number) {
+    const next = glossaryEntries.slice(0, idx).concat(glossaryEntries.slice(idx + 1));
+    await commitGlossary(next);
+  }
+
+  async function updateGlossaryEntry(idx: number, patch: Partial<GlossaryEntry>) {
+    const current = glossaryEntries[idx];
+    if (!current) return;
+    const merged: GlossaryEntry = {
+      term: (patch.term ?? current.term).trim(),
+      definition: (patch.definition ?? current.definition).trim(),
+    };
+    if (merged.term === current.term && merged.definition === current.definition) {
+      return;
+    }
+    if (!merged.term || !merged.definition) {
+      // Empty terms/definitions would be silently dropped by the
+      // backend cleaner; surface that to the user instead.
+      glossaryError = t("settings.glossary.row.error.empty");
+      return;
+    }
+    const next = [...glossaryEntries];
+    next[idx] = merged;
+    await commitGlossary(next);
   }
 
   // ─────────── Sync pane state ───────────
@@ -1358,6 +1496,49 @@
     }
   }
 
+  // ─────────── Update check (manual; 3.1) ───────────
+  // We intentionally do not auto-check on launch. The user presses
+  // the button → exactly one HTTPS GET to api.github.com → result is
+  // shown inline. If the call fails, we surface a single generic
+  // message rather than the underlying network error so we don't leak
+  // the user's network shape into the UI.
+  let updateCheckBusy = $state<boolean>(false);
+  let updateCheckResult = $state<import("../lib/types").UpdateInfo | null>(null);
+  let updateCheckError = $state<boolean>(false);
+
+  /** Compare dotted version strings ("3.1.0" vs "3.0.2"), tolerating
+   *  optional leading "v" and pre-release suffixes (anything after a
+   *  "-" or "+" is ignored — the numeric prefix wins). Returns a
+   *  conventional `< 0 / 0 / > 0` triple-state. */
+  function compareVersions(a: string, b: string): number {
+    const parts = (s: string) =>
+      s.replace(/^v/i, "").split(/[.\-+]/).map((p) => parseInt(p, 10) || 0);
+    const ap = parts(a);
+    const bp = parts(b);
+    const len = Math.max(ap.length, bp.length);
+    for (let i = 0; i < len; i++) {
+      const x = ap[i] ?? 0;
+      const y = bp[i] ?? 0;
+      if (x !== y) return x - y;
+    }
+    return 0;
+  }
+
+  async function onCheckForUpdates() {
+    if (updateCheckBusy) return;
+    updateCheckBusy = true;
+    updateCheckError = false;
+    updateCheckResult = null;
+    try {
+      updateCheckResult = await api.checkForUpdates();
+    } catch (e) {
+      console.warn("update check failed", e);
+      updateCheckError = true;
+    } finally {
+      updateCheckBusy = false;
+    }
+  }
+
   // ─────────── Settings export/import ───────────
   let prefsExportImportBusy = $state<"none" | "exporting" | "importing">("none");
   let prefsExportImportMsg = $state<string | null>(null);
@@ -1512,14 +1693,7 @@
 {/snippet}
 
 {#snippet tabIcon(tabKey: Tab)}
-  {#if tabKey === "mode"}
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="2" y="2" width="4" height="4" rx="0.7" />
-      <rect x="8" y="2" width="4" height="4" rx="0.7" />
-      <rect x="2" y="8" width="4" height="4" rx="0.7" />
-      <rect x="8" y="8" width="4" height="4" rx="0.7" />
-    </svg>
-  {:else if tabKey === "appearance"}
+  {#if tabKey === "appearance"}
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
       <path d="M7 1.5a5.5 5.5 0 0 0 0 11c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1A1.5 1.5 0 0 1 9.5 7.5h1A2 2 0 0 0 12.5 5.5 5.5 5.5 0 0 0 7 1.5z" />
       <circle cx="4.5" cy="6" r="0.6" fill="currentColor" />
@@ -1554,6 +1728,17 @@
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
       <ellipse cx="7" cy="3.5" rx="4.5" ry="1.5" />
       <path d="M2.5 3.5v7C2.5 11.3 4.5 12 7 12s4.5-.7 4.5-1.5v-7M2.5 7C2.5 7.83 4.5 8.5 7 8.5s4.5-.67 4.5-1.5" />
+    </svg>
+  {:else if tabKey === "tags"}
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7.5 1.5h4.5a.5.5 0 0 1 .5.5v4.5a1 1 0 0 1-.29.71L7 12.21a1 1 0 0 1-1.42 0L1.79 8.42a1 1 0 0 1 0-1.42L7 1.79a1 1 0 0 1 .5-.29z" />
+      <circle cx="9.5" cy="4.5" r="0.7" fill="currentColor" />
+    </svg>
+  {:else if tabKey === "glossary"}
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 2.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 .5.5V12L8.5 10.5 7 11.5 5.5 10.5 3 12V2.5Z" />
+      <path d="M5.5 5h3" />
+      <path d="M5.5 7h2" />
     </svg>
   {:else if tabKey === "templates"}
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -1648,166 +1833,6 @@
       <span class="w-3.5 h-3.5 rounded-full border border-bd" style:background={c}></span>
     {/each}
   </div>
-{/snippet}
-
-{#snippet modeIcon(id: ModeId)}
-  {#if id === "basic"}
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="2" width="8" height="10" rx="1" />
-      <line x1="5" y1="5" x2="9" y2="5" />
-      <line x1="5" y1="7.5" x2="9" y2="7.5" />
-      <line x1="5" y1="10" x2="8" y2="10" />
-    </svg>
-  {:else if id === "path"}
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="3" cy="3" r="1.4" />
-      <circle cx="3" cy="11" r="1.4" />
-      <circle cx="10.5" cy="7" r="1.4" />
-      <path d="M3 4.4v5.2" />
-      <path d="M3 7c2.5 0 4.5 0 6.2 0" />
-    </svg>
-  {:else if id === "writer"}
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="2" y="6" width="10" height="5" rx="1" />
-      <path d="M3.5 6V3.5h7V6" />
-      <line x1="4" y1="8.5" x2="10" y2="8.5" />
-    </svg>
-  {:else if id === "researcher"}
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 3.5h2.5v3.5a2 2 0 0 1-2 2" />
-      <path d="M8.5 3.5H11v3.5a2 2 0 0 1-2 2" />
-    </svg>
-  {:else if id === "developer"}
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="1.5" y="3" width="11" height="8" rx="1" />
-      <path d="M4 6l2 1.5L4 9" />
-      <line x1="7.5" y1="9" x2="10" y2="9" />
-    </svg>
-  {:else if id === "clinician"}
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M7 1.5 L12 3v4c0 3-2.2 5.2-5 6-2.8-.8-5-3-5-6V3z" />
-    </svg>
-  {:else if id === "cooking"}
-    <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M5 1.5 q-0.6 0.8 0 1.6" />
-      <path d="M7 1.2 q-0.6 0.9 0 1.9" />
-      <path d="M9 1.5 q-0.6 0.8 0 1.6" />
-      <path d="M3 5 h8" />
-      <path d="M3.5 5 v3.5 a1.6 1.6 0 0 0 1.6 1.6 h3.8 a1.6 1.6 0 0 0 1.6 -1.6 V5" />
-      <path d="M2 6 h1.5" />
-      <path d="M10.5 6 H12" />
-    </svg>
-  {/if}
-{/snippet}
-
-{#snippet nonePersonaIcon()}
-  <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-    <line x1="3.5" y1="7" x2="10.5" y2="7" />
-  </svg>
-{/snippet}
-
-{#snippet modePane()}
-  {#snippet body()}
-    <div>
-      <div class="font-mono text-[10px] uppercase tracking-wider text-t3 mb-2">
-        {t("settings.mode.modeSection")}
-      </div>
-      <div class="space-y-2">
-        {#each ["basic", "path"] as const as id (id)}
-          {@const selected = id === "basic" ? isBasic : isPathBased}
-          <button
-            type="button"
-            onclick={() => onPickModeRoot(id)}
-            class={`w-full text-left grid grid-cols-[36px_1fr] gap-3 items-start p-3 rounded-lg border transition ${
-              selected
-                ? "border-yel ring-1 ring-yel bg-yelp/30"
-                : "border-bd bg-s1 hover:border-bd2"
-            }`}
-          >
-            <div class={`w-9 h-9 rounded-lg flex items-center justify-center ${modeSwatchClass(id)}`}>
-              {@render modeIcon(id)}
-            </div>
-            <div class="min-w-0">
-              <div class="font-serif text-base text-char leading-tight">
-                {modeLabelFor(id)}
-              </div>
-              <div class="text-2xs text-t2 leading-snug mt-0.5">
-                {modeDescFor(id)}
-              </div>
-              <ul class="mt-2 space-y-0.5">
-                {#each modeBulletsFor(id) as b, i (i)}
-                  <li class="text-2xs text-t2 leading-snug pl-3 relative">
-                    <span class="absolute left-0 top-[0.55em] w-1 h-1 rounded-full bg-t3"></span>
-                    {b}
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          </button>
-        {/each}
-      </div>
-    </div>
-
-    {#if isPathBased}
-      <div class="mt-6 pt-5 border-t border-bd">
-        <div class="font-mono text-[10px] uppercase tracking-wider text-t3 mb-1">
-          {t("settings.mode.personaSection")}
-        </div>
-        <div class="text-2xs text-t2 mb-3 leading-snug">
-          {t("settings.mode.personaIntro")}
-        </div>
-        <div class="space-y-2">
-          {#each PERSONA_IDS as p (p ?? "none")}
-            {@const modeId = personaToModeId(p)}
-            {@const selected = currentPersona === p}
-            {@const isNone = p === null}
-            {@const label = isNone ? t("settings.mode.personaNone") : modeLabelFor(modeId)}
-            {@const desc = isNone ? t("settings.mode.personaNoneDesc") : modeDescFor(modeId)}
-            <button
-              type="button"
-              onclick={() => modeStore.set(modeId)}
-              class={`w-full text-left grid grid-cols-[36px_1fr] gap-3 items-start p-3 rounded-lg border transition ${
-                selected
-                  ? "border-yel ring-1 ring-yel bg-yelp/30"
-                  : "border-bd bg-s1 hover:border-bd2"
-              }`}
-            >
-              <div
-                class={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                  isNone ? "bg-bg border border-bd2 text-t3" : modeSwatchClass(modeId)
-                }`}
-              >
-                {#if isNone}
-                  {@render nonePersonaIcon()}
-                {:else}
-                  {@render modeIcon(modeId)}
-                {/if}
-              </div>
-              <div class="min-w-0">
-                <div class="font-serif text-base text-char leading-tight">{label}</div>
-                <div class="text-2xs text-t2 leading-snug mt-0.5">{desc}</div>
-                {#if !isNone}
-                  <ul class="mt-2 space-y-0.5">
-                    {#each modeBulletsFor(modeId) as b, i (i)}
-                      <li class="text-2xs text-t2 leading-snug pl-3 relative">
-                        <span class="absolute left-0 top-[0.55em] w-1 h-1 rounded-full bg-t3"></span>
-                        {b}
-                      </li>
-                    {/each}
-                  </ul>
-                {/if}
-              </div>
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
-
-    <div class="text-2xs text-t3 mt-4 leading-snug">
-      {t("settings.mode.footerNote")}
-    </div>
-  {/snippet}
-  {@render section(t("settings.mode.title"), t("settings.mode.hint"), "device", body)}
 {/snippet}
 
 {#snippet themeCard(
@@ -2574,6 +2599,7 @@
     extraKey === "codeHighlight" ? extraCodeHighlight.value
     : extraKey === "spell" ? extraSpell.value
     : extraKey === "imagePreview" ? extraImagePreview.value
+    : extraKey === "slashCommands" ? extraSlashCommands.value
     : extraRadialMenu.value}
   {#snippet hintExtra()}
     <div class="text-2xs text-t3 italic font-serif leading-snug mt-1">{detail}</div>
@@ -2586,6 +2612,7 @@
         if (extraKey === "codeHighlight") extraCodeHighlight.set(next);
         else if (extraKey === "spell") extraSpell.set(next);
         else if (extraKey === "imagePreview") extraImagePreview.set(next);
+        else if (extraKey === "slashCommands") extraSlashCommands.set(next);
         else extraRadialMenu.set(next);
       }}
       class={`w-10 h-5 rounded-full relative transition ${value ? "bg-yel" : "bg-s3"}`}
@@ -2718,6 +2745,283 @@
       {/snippet}
     </Modal>
   </div>
+{/snippet}
+
+{#snippet tagsPane()}
+  {@const configured = tagsStore.config.tags}
+
+  {#snippet listBody()}
+    {#if configured.length === 0}
+      <div class="py-4 text-[13px] text-t3 italic">
+        {t("settings.tags.list.empty")}
+      </div>
+    {:else}
+      {#each configured as def (def.name)}
+        <div class="py-2.5 flex items-center gap-3">
+          <button
+            type="button"
+            onclick={() => {
+              const idx = TAG_COLORS.findIndex((c) => c.value === def.color);
+              const next = TAG_COLORS[(idx + 1) % TAG_COLORS.length].value;
+              setTagColor(def, next);
+            }}
+            title={t("settings.tags.list.cycleColor")}
+            class={`shrink-0 w-3.5 h-3.5 rounded-full ${def.color} ring-1 ring-bd hover:ring-bd2`}
+            aria-label={t("settings.tags.list.cycleColorAria", { name: def.name })}
+          ></button>
+          <span class="text-[13px] font-mono text-char">#{def.name}</span>
+          {#if def.template}
+            <span class="text-2xs text-t3 font-mono">
+              {t("settings.tags.list.fromTemplate", { template: def.template })}
+            </span>
+          {/if}
+          <span class="ml-auto"></span>
+          <input
+            type="text"
+            value={def.group ?? ""}
+            list="yarrow-known-groups"
+            placeholder={t("settings.tags.list.groupPlaceholder")}
+            title={t("settings.tags.list.groupHint")}
+            aria-label={t("settings.tags.list.groupLabel")}
+            onchange={(e) => setTagGroup(def, (e.currentTarget as HTMLInputElement).value)}
+            onblur={(e) => setTagGroup(def, (e.currentTarget as HTMLInputElement).value)}
+            class="px-2 py-0.5 bg-bg border border-bd rounded-md text-t2 text-2xs font-mono w-24 focus:outline-hidden focus:border-yel"
+          />
+          <button
+            type="button"
+            onclick={() => removeTag(def)}
+            title={t("settings.tags.list.removeTitle")}
+            class="text-2xs text-t3 hover:text-danger"
+          >
+            {t("settings.tags.list.remove")}
+          </button>
+        </div>
+      {/each}
+    {/if}
+  {/snippet}
+  {@render section(t("settings.tags.list.title"), t("settings.tags.list.hint"), "workspace", listBody)}
+
+  {#snippet addBody()}
+    <div class="py-3 flex flex-col gap-3">
+      <div class="flex items-center gap-2 flex-wrap">
+        <input
+          type="text"
+          bind:value={newTagName}
+          placeholder={t("settings.tags.add.namePlaceholder")}
+          onkeydown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addNewTag();
+            }
+          }}
+          class="px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-xs w-56 focus:outline-hidden focus:border-yel"
+        />
+        <button
+          type="button"
+          onclick={addNewTag}
+          class="btn-yel px-3 py-1.5 text-xs rounded-md"
+          disabled={!newTagName.trim()}
+        >
+          {t("settings.tags.add.submit")}
+        </button>
+      </div>
+      <div>
+        <div class="text-2xs font-mono uppercase tracking-wider text-t3 mb-1.5">
+          {t("settings.tags.add.colorLabel")}
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          {#each TAG_COLORS as c (c.value)}
+            <button
+              type="button"
+              onclick={() => (newTagColor = c.value)}
+              aria-pressed={newTagColor === c.value}
+              title={c.label}
+              class={`w-5 h-5 rounded-full ${c.value} ring-1 ring-bd ${
+                newTagColor === c.value ? "ring-2 ring-yel" : "hover:ring-bd2"
+              }`}
+            ></button>
+          {/each}
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <label for="settings-new-tag-group" class="text-2xs font-mono uppercase tracking-wider text-t3">
+          {t("settings.tags.list.groupLabel")}
+        </label>
+        <input
+          id="settings-new-tag-group"
+          type="text"
+          bind:value={newTagGroup}
+          list="yarrow-known-groups"
+          placeholder={t("settings.tags.list.groupPlaceholder")}
+          class="px-3 py-1 bg-bg border border-bd rounded-md text-char text-xs font-mono w-40 focus:outline-hidden focus:border-yel"
+        />
+        <span class="text-2xs text-t3">{t("settings.tags.list.groupHint")}</span>
+      </div>
+      {#if newTagError}
+        <div class="text-2xs text-danger">{newTagError}</div>
+      {/if}
+    </div>
+  {/snippet}
+  {@render section(t("settings.tags.add.title"), undefined, "workspace", addBody)}
+
+  <datalist id="yarrow-known-groups">
+    {#each KNOWN_GROUP_IDS as id (id)}
+      <option value={id}></option>
+    {/each}
+  </datalist>
+
+  {#snippet pinnedBody()}
+    {#if configured.length === 0}
+      <div class="py-3 text-2xs text-t3 italic">
+        {t("settings.tags.pinned.empty")}
+      </div>
+    {:else}
+      <div class="py-3 flex flex-wrap gap-1.5">
+        {#each configured as def (def.name)}
+          {@const tone = chipTone(def.color)}
+          {@const pinned = tagsStore.isPinned(def.name)}
+          <button
+            type="button"
+            onclick={() => togglePin(def)}
+            aria-pressed={pinned}
+            class={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition ${
+              pinned
+                ? `${tone.bg} ${tone.border} ${tone.text} ${tone.hover}`
+                : "bg-bg border-bd text-t2 hover:text-char hover:border-bd2"
+            }`}
+          >
+            <span class={`w-1.5 h-1.5 rounded-full ${def.color}`}></span>
+            <span class="font-mono">#{def.name}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+  {/snippet}
+  {@render section(t("settings.tags.pinned.title"), t("settings.tags.pinned.hint"), "workspace", pinnedBody)}
+
+  {#snippet packsBody()}
+    {#each STARTER_PACKS as pack (pack.id)}
+      {@const applied = isPackApplied(pack)}
+      <div class="py-3 flex items-start gap-4">
+        <div class="flex-1 min-w-0">
+          <div class="text-[13px] text-char">{pack.name}</div>
+          <div class="text-2xs text-t3 mt-0.5 leading-snug">{pack.description}</div>
+          <div class="text-2xs text-t3 mt-1 flex flex-wrap gap-1.5">
+            {#each pack.tags as t2 (t2.name)}
+              <span class="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-full bg-s2 border border-bd">
+                <span class={`w-2 h-2 rounded-full ${t2.color}`}></span>
+                <span class="font-mono">#{t2.name}</span>
+              </span>
+            {/each}
+          </div>
+        </div>
+        <div class="shrink-0 self-center">
+          <button
+            type="button"
+            onclick={() => onApplyPack(pack)}
+            class="px-3 py-1.5 text-xs rounded-md"
+            disabled={applied}
+          >
+            {applied ? t("settings.tags.packs.applied") : t("settings.tags.packs.apply")}
+          </button>
+        </div>
+      </div>
+    {/each}
+  {/snippet}
+  {@render section(t("settings.tags.packs.title"), t("settings.tags.packs.hint"), "workspace", packsBody)}
+{/snippet}
+
+{#snippet glossaryPane()}
+  {#snippet listBody()}
+    {#if !glossaryLoaded}
+      <div class="py-4 text-[13px] text-t3 italic">
+        {t("settings.glossary.list.loading")}
+      </div>
+    {:else if glossaryEntries.length === 0}
+      <div class="py-4 text-[13px] text-t3 italic">
+        {t("settings.glossary.list.empty")}
+      </div>
+    {:else}
+      {#each glossaryEntries as entry, idx (entry.term + "/" + idx)}
+        <div class="py-3 flex items-start gap-3 border-b border-bd/40 last:border-b-0">
+          <div class="flex-1 min-w-0 flex flex-col gap-2">
+            <input
+              type="text"
+              value={entry.term}
+              aria-label={t("settings.glossary.row.termLabel")}
+              onblur={(e) => updateGlossaryEntry(idx, { term: (e.currentTarget as HTMLInputElement).value })}
+              onkeydown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
+              class="px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-sm font-mono focus:outline-hidden focus:border-yel"
+            />
+            <textarea
+              value={entry.definition}
+              aria-label={t("settings.glossary.row.definitionLabel")}
+              rows={2}
+              onblur={(e) => updateGlossaryEntry(idx, { definition: (e.currentTarget as HTMLTextAreaElement).value })}
+              class="px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-[13px] font-serif leading-snug resize-y focus:outline-hidden focus:border-yel"
+            ></textarea>
+          </div>
+          <button
+            type="button"
+            onclick={() => removeGlossaryEntry(idx)}
+            title={t("settings.glossary.row.removeTitle")}
+            aria-label={t("settings.glossary.row.removeAria", { term: entry.term })}
+            class="shrink-0 text-2xs text-t3 hover:text-danger px-2 py-1"
+          >
+            {t("settings.glossary.row.remove")}
+          </button>
+        </div>
+      {/each}
+    {/if}
+    {#if glossaryError}
+      <div class="mt-2 text-2xs text-danger">{glossaryError}</div>
+    {/if}
+  {/snippet}
+  {@render section(t("settings.glossary.list.title"), t("settings.glossary.list.hint"), "workspace", listBody)}
+
+  {#snippet addBody()}
+    <div class="py-3 flex flex-col gap-2">
+      <input
+        type="text"
+        bind:value={newGlossaryTerm}
+        placeholder={t("settings.glossary.add.termPlaceholder")}
+        aria-label={t("settings.glossary.add.termLabel")}
+        class="px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-sm font-mono focus:outline-hidden focus:border-yel"
+      />
+      <textarea
+        bind:value={newGlossaryDef}
+        rows={2}
+        placeholder={t("settings.glossary.add.definitionPlaceholder")}
+        aria-label={t("settings.glossary.add.definitionLabel")}
+        onkeydown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            void addGlossaryEntry();
+          }
+        }}
+        class="px-3 py-1.5 bg-bg border border-bd rounded-md text-char text-[13px] font-serif leading-snug resize-y focus:outline-hidden focus:border-yel"
+      ></textarea>
+      <div class="flex items-center gap-3">
+        <button
+          type="button"
+          onclick={() => void addGlossaryEntry()}
+          class="btn-yel px-3 py-1.5 text-xs rounded-md"
+          disabled={!newGlossaryTerm.trim() || !newGlossaryDef.trim()}
+        >
+          {t("settings.glossary.add.submit")}
+        </button>
+        {#if newGlossaryError}
+          <div class="text-2xs text-danger">{newGlossaryError}</div>
+        {/if}
+      </div>
+    </div>
+  {/snippet}
+  {@render section(t("settings.glossary.add.title"), t("settings.glossary.add.hint"), "workspace", addBody)}
 {/snippet}
 
 {#snippet gestureRow(slotName: string, slotMeta: string, slot: GestureSlot, value: CenterActionId, _highlighted: boolean)}
@@ -4436,6 +4740,55 @@
       </div>
     </div>
     <div class="mt-6 pt-4 border-t border-bd">
+      <div class="text-sm text-char mb-1">{t("settings.about.updateCheck.title")}</div>
+      <p class="text-2xs text-t2 mb-3 leading-relaxed">{t("settings.about.updateCheck.body")}</p>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onclick={onCheckForUpdates}
+          disabled={updateCheckBusy}
+          class="px-3 py-1.5 text-xs bg-s2 text-char rounded-md hover:bg-s3 disabled:opacity-60"
+        >
+          {updateCheckBusy
+            ? t("settings.about.updateCheck.checking")
+            : t("settings.about.updateCheck.button")}
+        </button>
+      </div>
+      {#if updateCheckError}
+        <div class="text-2xs text-t2 mt-2 leading-snug">
+          {t("settings.about.updateCheck.error")}
+        </div>
+      {:else if updateCheckResult}
+        {@const cmp = compareVersions(updateCheckResult.latest_version, APP_VERSION)}
+        <div class="text-2xs text-t2 mt-2 leading-snug">
+          {#if cmp > 0}
+            {t("settings.about.updateCheck.available", {
+              latest: updateCheckResult.latest_version,
+              current: APP_VERSION,
+            })}
+            {" "}
+            <button
+              type="button"
+              onclick={() => { openUrl(updateCheckResult!.release_url).catch(() => {}); }}
+              class="text-yeld hover:text-char transition inline-flex items-center gap-1"
+            >
+              {t("settings.about.updateCheck.viewRelease")}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <path d="M7 17L17 7" /><path d="M8 7h9v9" />
+              </svg>
+            </button>
+          {:else if cmp < 0}
+            {t("settings.about.updateCheck.ahead", {
+              current: APP_VERSION,
+              latest: updateCheckResult.latest_version,
+            })}
+          {:else}
+            {t("settings.about.updateCheck.upToDate", { version: APP_VERSION })}
+          {/if}
+        </div>
+      {/if}
+    </div>
+    <div class="mt-6 pt-4 border-t border-bd">
       {@render settingsExportImportRow()}
     </div>
     <div class="mt-4">
@@ -4698,10 +5051,11 @@
             </div>
           {/if}
         {:else}
-          {#if tab === "mode"}{@render modePane()}{/if}
           {#if tab === "appearance"}{@render appearancePane()}{/if}
           {#if tab === "accessibility"}{@render accessibilityPane()}{/if}
           {#if tab === "writing" && config}{@render writingPane()}{/if}
+          {#if tab === "tags"}{@render tagsPane()}{/if}
+          {#if tab === "glossary"}{@render glossaryPane()}{/if}
           {#if tab === "gestures"}{@render gesturesPane()}{/if}
           {#if tab === "guidance"}{@render guidancePane()}{/if}
           {#if tab === "sync" && config}{@render syncPane()}{/if}

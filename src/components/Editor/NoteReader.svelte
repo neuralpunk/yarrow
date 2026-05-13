@@ -2,7 +2,6 @@
   import { api } from "../../lib/tauri";
   import type { Note, NoteSummary } from "../../lib/types";
   import { editorialDate, relativeTime, timeOfDayPhrase } from "../../lib/format";
-  import { mode } from "../../lib/mode.svelte";
   import { editorialReading } from "../../lib/editorPrefs.svelte";
   import WikilinkPreview, {
     cachePreview,
@@ -39,7 +38,7 @@
   }: Props = $props();
 
   let t = $derived(tr());
-  let mathOn = $derived(mode.config.persona === "researcher");
+  let mathOn = $state(true);
   let editorialOn = $derived(editorialReading.value);
 
   let html = $state("");

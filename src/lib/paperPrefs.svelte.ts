@@ -3,10 +3,10 @@
 //   texture — the subtle pattern tiled into the app background. Six
 //             choices, all inline SVG data URIs so we ship zero assets.
 //   warmth  — a scalar (-300 … +300) that warms or cools the paper tone,
-//             applied as a hue-rotate + sepia filter blend on the body
-//             layer. Crucially it's applied to *.paper-wash* wrappers
-//             rather than the whole page, so the editor and graphs
-//             stay faithful.
+//             applied as a hue-rotate + sepia filter blend on `#root`.
+//             Hosting the filter on `#root` (not `body`) keeps it from
+//             colliding with the UI-scale `zoom` rule on `body`: see
+//             `index.css` § the `data-paper-warmth-active` block.
 
 import {
   workspaceScope,

@@ -80,6 +80,7 @@
   import { tr } from "../../lib/i18n/index.svelte";
   import { disableAutoplay, reduceMotionOverride } from "../../lib/accessibilityPrefs.svelte";
   import SigmaForceGraph from "./SigmaForceGraph.svelte";
+  import { animate, stagger, utils } from "../../lib/anim.svelte";
 
   interface Props {
     graph: Graph | null;
@@ -821,6 +822,62 @@
     if (reducedMotion) {
       simulation.tick(300);
       simulation.stop();
+    } else {
+      // 3.1 — radial spawn entry. D3 owns the <g>'s transform via the
+      // SVG transform attribute (set on every simulation tick), so we
+      // CANNOT apply a CSS transform here — it would shadow D3's
+      // translate and pin the nodes at the SVG origin. We therefore
+      // only animate opacity on the group, and bounce the inner
+      // circle's `r` attribute for the "growing in" visual punch.
+      const nodeEls = nodeSel.nodes() as SVGGElement[];
+      const linkEls = linkSel.nodes() as SVGPathElement[];
+
+      if (nodeEls.length > 0) {
+        utils.set(nodeEls, { opacity: 0 });
+        animate(nodeEls, {
+          opacity: [0, 1],
+          duration: 480,
+          delay: stagger(50, { from: "first" }),
+          ease: "outQuad",
+        });
+
+        // Inner-circle r bounce — scale-in feel without touching the
+        // group's transform. We stash the simulation's target radius
+        // on the element so we can interpolate to it independently of
+        // any subsequent `r` updates D3 might do.
+        const circles: { el: SVGCircleElement; target: number }[] = [];
+        nodeEls.forEach((g) => {
+          const c = g.querySelector("circle");
+          if (!c) return;
+          const target = parseFloat(c.getAttribute("r") || "0") || 0;
+          if (target <= 0) return;
+          c.setAttribute("r", "0");
+          circles.push({ el: c, target });
+        });
+        if (circles.length > 0) {
+          // Stagger each circle to its own target. anime.js animates
+          // the SVG `r` attribute natively when the property name
+          // matches an animatable SVG attribute on the target.
+          circles.forEach(({ el, target }, i) => {
+            animate(el, {
+              r: [0, target],
+              duration: 520,
+              delay: 80 + i * 50,
+              ease: "outBack(1.6)",
+            });
+          });
+        }
+      }
+
+      if (linkEls.length > 0) {
+        utils.set(linkEls, { opacity: 0 });
+        animate(linkEls, {
+          opacity: [0, 0.55],
+          duration: 420,
+          delay: stagger(25, { start: 300 }),
+          ease: "outQuad",
+        });
+      }
     }
 
     const drag = d3

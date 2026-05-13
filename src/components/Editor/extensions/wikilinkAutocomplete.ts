@@ -14,6 +14,12 @@ import type { NoteSummary } from "../../../lib/types";
 // closing whatever brackets `closeBrackets` left ahead of the cursor so
 // you don't end up with `[[Title]]]]`.
 //
+// 3.1 Inline Wikilink Picker — each candidate now carries a richer
+// `detail` (slug · last-edited · tag count) so the user can pick by
+// recency without leaving the keyboard. When no existing note matches
+// the query, a "Create *query*" fallback row scaffolds the missing
+// note via the `yarrow:wikilink-create` event.
+//
 // Ranking (2.1): the v2.0 version dumped the first 20 substring matches
 // in iteration order — fine for tiny vaults, hostile in mature ones
 // where the user types `[[k` and gets 50 candidates with `k` somewhere
@@ -25,14 +31,7 @@ import type { NoteSummary } from "../../../lib/types";
 //   • slug-equivalent of the above    — slightly lower than title
 //   • recently-modified bonus         — small lift, half-life ~30 days
 // The earlier the query lands inside the title, the higher the score.
-// Result: typing `[[k` puts notes titled "Knowledge" / "Kafka" /
-// "Kubernetes" ahead of "Architecture / Linked notes" or "Stuck on K".
 
-// Module-level recency tracker. AppShell's `recordOpenedNote` (added in
-// 2.1) calls `markOpenedSlug` on every navigate, so wikilink ranking
-// can boost the user's recent reading list without each render needing
-// to recompute it. Map iteration is stable (insertion order); we cap
-// at the most-recently-opened 64 entries so the structure stays bounded.
 const OPENED_AT = new Map<string, number>();
 const OPEN_CAP = 64;
 
@@ -48,13 +47,10 @@ export function markOpenedSlug(slug: string): void {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function recencyBonus(slug: string, modifiedIso?: string): number {
-  // Open recency dominates (the user just looked at it; high signal).
-  // Falls back to modified time when we've never seen the note opened
-  // in this session — that still favors notes the user actively edits.
   const opened = OPENED_AT.get(slug);
   if (opened) {
     const ageDays = (Date.now() - opened) / DAY_MS;
-    if (ageDays < 0.04) return 25; // ~last hour
+    if (ageDays < 0.04) return 25;
     if (ageDays < 1) return 18;
     if (ageDays < 7) return 10;
     return 4;
@@ -72,15 +68,12 @@ function recencyBonus(slug: string, modifiedIso?: string): number {
 
 function scoreCandidate(n: NoteSummary, q: string): number {
   if (!q) return 50 + recencyBonus(n.slug, n.modified);
-
   const title = (n.title || n.slug).toLowerCase();
   const slug = n.slug.toLowerCase();
   let score = -Infinity;
-
   if (title === q) score = Math.max(score, 1000);
   else if (title.startsWith(q)) score = Math.max(score, 800 - title.length);
   else {
-    // Word-boundary match in title: " q" or "-q" etc.
     const wb = new RegExp(`(^|[\\s\\-_/])${escapeRegex(q)}`).exec(title);
     if (wb) score = Math.max(score, 600 - (wb.index ?? 0));
     else if (title.includes(q)) {
@@ -102,13 +95,42 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Build the meta string shown in the completion's `detail` slot.
+ *  Mono / muted by the existing autocomplete CSS. */
+function shortRelTime(iso: string | undefined): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const age = Date.now() - t;
+  if (age < 60_000) return "just now";
+  if (age < 3_600_000) return `${Math.floor(age / 60_000)}m`;
+  if (age < 86_400_000) return `${Math.floor(age / 3_600_000)}h`;
+  const days = Math.floor(age / 86_400_000);
+  if (days < 7) return `${days}d`;
+  if (days < 30) return `${Math.floor(days / 7)}w`;
+  if (days < 365) return `${Math.floor(days / 30)}mo`;
+  return `${Math.floor(days / 365)}y`;
+}
+
+function buildDetail(n: NoteSummary, title: string): string {
+  const bits: string[] = [];
+  if (n.slug.toLowerCase() !== title.toLowerCase()) bits.push(n.slug);
+  const rel = shortRelTime(n.modified);
+  if (rel) bits.push(rel);
+  if (n.tags && n.tags.length > 0) {
+    bits.push(n.tags.length === 1 ? `#${n.tags[0]}` : `${n.tags.length} tags`);
+  }
+  return bits.join(" · ");
+}
+
 /** Completion source. Takes a getter so the source stays current even
  *  when notes are created/renamed without the editor remounting. */
 export function wikilinkSource(getNotes: () => NoteSummary[]): CompletionSource {
   return (ctx: CompletionContext) => {
     const before = ctx.matchBefore(/\[\[[^\]\n]*/);
     if (!before || !before.text.startsWith("[[")) return null;
-    const query = before.text.slice(2).toLowerCase();
+    const queryRaw = before.text.slice(2);
+    const query = queryRaw.toLowerCase();
     const pool = getNotes();
 
     const ranked = pool
@@ -119,9 +141,10 @@ export function wikilinkSource(getNotes: () => NoteSummary[]): CompletionSource 
 
     const options: Completion[] = ranked.map(({ n }) => {
       const title = n.title || n.slug;
+      const detail = buildDetail(n, title);
       return {
         label: title,
-        detail: n.slug !== title ? n.slug : undefined,
+        detail: detail || undefined,
         type: "text",
         apply: (view, _completion, from, to) => {
           // If `closeBrackets` (or an earlier edit) left a `]` or `]]`
@@ -143,6 +166,49 @@ export function wikilinkSource(getNotes: () => NoteSummary[]): CompletionSource 
         },
       };
     });
+
+    // "Create new note" fallback. Surfaces when the trimmed query has
+    // at least one char and doesn't match an existing title/slug
+    // exactly. Picking it inserts the `[[Title]]` AND dispatches
+    // `yarrow:wikilink-create` so the host can open the new-note dialog
+    // pre-populated.
+    const trimmed = queryRaw.trim();
+    const hasExactMatch =
+      trimmed.length > 0 &&
+      pool.some(
+        (n) =>
+          (n.title || n.slug).toLowerCase() === trimmed.toLowerCase() ||
+          n.slug.toLowerCase() === trimmed.toLowerCase(),
+      );
+    if (trimmed.length > 0 && !hasExactMatch) {
+      options.push({
+        label: `Create "${trimmed}"`,
+        detail: "new note",
+        type: "text",
+        boost: -1,
+        apply: (view, _completion, from, to) => {
+          const docLen = view.state.doc.length;
+          const ahead2 = to + 2 <= docLen ? view.state.sliceDoc(to, to + 2) : "";
+          const ahead1 = to + 1 <= docLen ? view.state.sliceDoc(to, to + 1) : "";
+          let replaceTo = to;
+          if (ahead2 === "]]") replaceTo = to + 2;
+          else if (ahead1 === "]") replaceTo = to + 1;
+          const insert = `[[${trimmed}]]`;
+          view.dispatch({
+            changes: { from, to: replaceTo, insert },
+            selection: { anchor: from + insert.length },
+            scrollIntoView: true,
+            userEvent: "input.complete",
+          });
+          window.dispatchEvent(
+            new CustomEvent("yarrow:wikilink-create", {
+              detail: { title: trimmed },
+            }),
+          );
+        },
+      });
+    }
+
     if (options.length === 0) return null;
     return {
       from: before.from,

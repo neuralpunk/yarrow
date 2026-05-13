@@ -12,6 +12,7 @@ pub mod find_replace;
 pub mod foreign_import;
 pub mod fuzzy;
 pub mod git;
+pub mod glossary;
 pub mod graph;
 pub mod notes;
 pub mod obsidian_import;
@@ -27,6 +28,7 @@ pub mod shopping_list;
 pub mod server;
 pub mod templates;
 pub mod trash;
+pub mod updates;
 pub mod welcome;
 pub mod workspace;
 pub mod ws_client;
@@ -472,6 +474,7 @@ pub fn run() {
             commands::cmd_set_pinned,
             commands::cmd_set_note_folder,
             commands::cmd_set_tags,
+            commands::cmd_set_private,
             commands::cmd_suggest_tags,
             commands::cmd_set_annotations,
             commands::cmd_pin_checkpoint,
@@ -508,6 +511,8 @@ pub fn run() {
             commands::cmd_remove_note_from_path_collection,
             commands::cmd_set_path_collection_root,
             commands::cmd_get_graph,
+            commands::cmd_glossary_entries,
+            commands::cmd_save_glossary_entries,
             commands::cmd_orphans,
             commands::cmd_note_history,
             commands::cmd_writing_activity,
@@ -563,6 +568,7 @@ pub fn run() {
             commands::cmd_prune_history_older_than,
             commands::cmd_prune_empty_checkpoints,
             commands::cmd_fetch_url_title,
+            commands::cmd_check_for_updates,
             commands::cmd_list_trash,
             commands::cmd_restore_from_trash,
             commands::cmd_purge_from_trash,

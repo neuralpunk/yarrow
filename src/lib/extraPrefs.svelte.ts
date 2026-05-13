@@ -6,26 +6,17 @@ import {
 } from "./workspaceScope.svelte";
 
 /**
- * Editor extras (Svelte 5 port). Two surfaces in 3.0+:
- *
- *   - **Persona-derived**: cooking inserts and math rendering turn on
- *     when the matching persona (Cooking, Researcher) is active. There's
- *     no Settings toggle — the persona itself IS the toggle.
- *   - **Mode-agnostic toggles**: `radialMenu`, `imagePreview`, and
- *     `spell` are user preferences that apply across every mode. They
- *     persist in localStorage and broadcast via window events.
- *
- * Code-highlighting is a hybrid — the toggle is preserved (Developer
- * rail uses it as an in-persona sub-toggle), but the editor only
- * honours it when the active persona is Developer. Outside Developer
- * mode the toggle is inert.
+ * Editor extras (3.2+ — collapsed to a single user-preference surface
+ * after the persona system was retired). Each toggle persists in
+ * localStorage (workspace-scoped) and broadcasts via window events.
  */
 
 export type ExtraKey =
   | "codeHighlight"
   | "spell"
   | "imagePreview"
-  | "radialMenu";
+  | "radialMenu"
+  | "slashCommands";
 
 interface ExtraDescriptor {
   key: ExtraKey;
@@ -56,6 +47,12 @@ const DESCRIPTORS: Record<ExtraKey, ExtraDescriptor> = {
     key: "radialMenu",
     storageKey: "yarrow.extras.radialMenu",
     event: "yarrow:extras-radialMenu-changed",
+    defaultOn: true,
+  },
+  slashCommands: {
+    key: "slashCommands",
+    storageKey: "yarrow.extras.slashCommands",
+    event: "yarrow:extras-slashCommands-changed",
     defaultOn: true,
   },
 };
@@ -117,6 +114,7 @@ export const extraCodeHighlight = new ExtraPref("codeHighlight");
 export const extraSpell = new ExtraPref("spell");
 export const extraImagePreview = new ExtraPref("imagePreview");
 export const extraRadialMenu = new ExtraPref("radialMenu");
+export const extraSlashCommands = new ExtraPref("slashCommands");
 
 export interface ExtraInfo {
   key: ExtraKey;
@@ -149,5 +147,13 @@ export const EXTRAS: ExtraInfo[] = [
       "open a pie menu on right-click instead of a vertical list — faster once you learn the directions",
     detail:
       "On by default. Turn it off to get the plain linear context menu with the same actions — wikilink, table, new path, scratchpad, copy — just laid out as a standard drop-down.",
+  },
+  {
+    key: "slashCommands",
+    label: "Slash command panel",
+    blurb:
+      "type / at the start of a line for a filterable list of insertions and actions",
+    detail:
+      "On by default. Modeled on Obsidian's slash panel — covers headings, callouts, tables, math, wikilinks, embeds, tags, ?? markers, plus app-level actions (palette, scratchpad, focus, history). Off disables the panel entirely; / behaves as a plain character.",
   },
 ];

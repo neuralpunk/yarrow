@@ -79,7 +79,7 @@ linear outline. Features:
 - **Path decision tools** — every other path shows a `+N / −M` badge on its card vs. your current path; the path detail panel lists what you'd gain, what you'd leave behind, and what's edited differently (with optional grouping by tag); the **Decision matrix** lets you star must-have notes and read off which path satisfies them; hovering a path card highlights its members in the note list; drag any sidebar note onto a path card to add it
 - **Plain markdown forever** — no proprietary format, no lock-in
 
-Roughly ~15 MB binary. No bundled Chromium. No account required. No telemetry.
+Roughly under ~25 MB binary. No bundled Chromium. No account required. No telemetry.
 
 ## How it works
 

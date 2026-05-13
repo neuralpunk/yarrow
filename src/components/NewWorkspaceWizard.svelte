@@ -1,6 +1,4 @@
 <script module lang="ts">
-  import type { PersonaId } from "../lib/modes";
-
   export type ImportSource = "obsidian" | "bear" | "logseq" | "notion";
   export type Origin =
     | { kind: "empty" }
@@ -20,18 +18,6 @@
   ];
 
   export const DEFAULT_NAME = "My notebook";
-
-  export const PERSONA_TILES: ReadonlyArray<{
-    id: PersonaId;
-    labelKey: "settings.mode.option.writer.label" | "settings.mode.option.researcher.label" | "settings.mode.option.developer.label" | "settings.mode.option.clinician.label" | "settings.mode.option.cooking.label";
-    descKey: "settings.mode.option.writer.desc" | "settings.mode.option.researcher.desc" | "settings.mode.option.developer.desc" | "settings.mode.option.clinician.desc" | "settings.mode.option.cooking.desc";
-  }> = [
-    { id: "writer",     labelKey: "settings.mode.option.writer.label",     descKey: "settings.mode.option.writer.desc" },
-    { id: "researcher", labelKey: "settings.mode.option.researcher.label", descKey: "settings.mode.option.researcher.desc" },
-    { id: "developer",  labelKey: "settings.mode.option.developer.label",  descKey: "settings.mode.option.developer.desc" },
-    { id: "clinician",  labelKey: "settings.mode.option.clinician.label",  descKey: "settings.mode.option.clinician.desc" },
-    { id: "cooking",    labelKey: "settings.mode.option.cooking.label",    descKey: "settings.mode.option.cooking.desc" },
-  ];
 </script>
 
 <script lang="ts">
@@ -39,8 +25,6 @@
   import { api } from "../lib/tauri";
   import type { WorkspaceMode } from "../lib/types";
   import { tr } from "../lib/i18n/index.svelte";
-  import { mode as modeStore } from "../lib/mode.svelte";
-  import { MODE_DOT_CLASS } from "../lib/modes";
 
   interface Props {
     open: boolean;
@@ -59,7 +43,10 @@
   let parent = $state("");
   let workspaceMode = $state<WorkspaceMode>("mapped");
   let startingTitle = $state("");
-  let persona = $state<PersonaId | null>(null);
+  // 3.2 — workspace shape collapsed to a binary: minimal (basic
+  // workspace, no path chrome) vs. default (full surface). Tags are
+  // configured per-workspace after the wizard completes.
+  let shapePick = $state<"minimal" | "default" | null>(null);
   let busy = $state(false);
   let error = $state<string | null>(null);
   let progress = $state<string | null>(null);
@@ -71,11 +58,19 @@
     name = DEFAULT_NAME;
     workspaceMode = "mapped";
     startingTitle = "";
-    persona = null;
+    shapePick = null;
     busy = false;
     error = null;
     progress = null;
     api.defaultWorkspacesRoot().then((p) => (parent = p)).catch(() => (parent = ""));
+  });
+
+  $effect(() => {
+    if (shapePick === "minimal") {
+      workspaceMode = "basic";
+    } else if (shapePick === "default") {
+      workspaceMode = "mapped";
+    }
   });
 
   let previewPath = $derived.by(() => {
@@ -106,7 +101,6 @@
         const sep = parent.includes("\\") && !parent.includes("/") ? "\\" : "/";
         const trimmed = parent.replace(/[\\/]+$/, "");
         const path = `${trimmed}${sep}${name.trim()}`;
-        modeStore.set(workspaceMode === "basic" ? "basic" : (persona ?? "path"));
         onReady(path);
         return;
       }
@@ -140,7 +134,6 @@
             ? t("wizard.progress.importedOne", { source: sourceMeta.label })
             : t("wizard.progress.importedMany", { count: String(report.imported), source: sourceMeta.label });
       }
-      modeStore.set(workspaceMode === "basic" ? "basic" : (persona ?? "path"));
       onReady(path);
     } catch (e) {
       error = String(e);
@@ -165,14 +158,18 @@
   let importNeedsFolder = $derived(importing && !(origin.kind === "import" && origin.vaultPath));
   let cloneNeedsUrl = $derived(cloning && !(origin.kind === "clone" && origin.url.trim()));
 
+  // Shape sub-step is gated on a top-level pick first.
+  let shapeStepReady = $derived.by(() => {
+    if (shapePick === null) return false;
+    if (workspaceMode === "mapped" && origin.kind === "empty" && !startingTitle.trim()) return false;
+    return true;
+  });
+
   let canAdvanceGuided = $derived.by(() => {
     if (guidedStep === 0) return !importNeedsFolder && !cloneNeedsUrl;
     if (guidedStep === 1) return name.trim().length > 0;
     if (guidedStep === 2) return parent.trim().length > 0;
-    if (guidedStep === 3) {
-      if (workspaceMode === "mapped" && origin.kind === "empty" && !startingTitle.trim()) return false;
-      return true;
-    }
+    if (guidedStep === 3) return shapeStepReady;
     return false;
   });
 
@@ -181,11 +178,17 @@
       return !importNeedsFolder && !cloneNeedsUrl && name.trim().length > 0;
     if (quickStep === 1) {
       if (!parent.trim()) return false;
-      if (workspaceMode === "mapped" && origin.kind === "empty" && !startingTitle.trim()) return false;
-      return true;
+      return shapeStepReady;
     }
     return false;
   });
+
+  function shapeError(): string {
+    if (shapePick === null) return t("wizard.error.pickShape");
+    if (workspaceMode === "mapped" && origin.kind === "empty" && !startingTitle.trim())
+      return t("wizard.error.nameStartingNote");
+    return t("wizard.error.pickShape");
+  }
 
   function onGuidedNext() {
     if (!canAdvanceGuided) {
@@ -193,7 +196,7 @@
       else if (guidedStep === 0 && cloneNeedsUrl) error = t("wizard.error.giveUrl");
       else if (guidedStep === 1) error = t("wizard.error.giveName");
       else if (guidedStep === 2) error = t("wizard.error.pickLocation");
-      else if (guidedStep === 3) error = t("wizard.error.nameStartingNote");
+      else if (guidedStep === 3) error = shapeError();
       return;
     }
     error = null;
@@ -214,7 +217,7 @@
         else if (!name.trim()) error = t("wizard.error.giveName");
       } else {
         if (!parent.trim()) error = t("wizard.error.pickLocation");
-        else error = t("wizard.error.nameStartingNote");
+        else error = shapeError();
       }
       return;
     }
@@ -252,12 +255,6 @@
       error = String(e);
     }
   }
-
-  let activeDesc = $derived(
-    persona === null
-      ? t("wizard.guide.shape.personaNone.desc")
-      : t(PERSONA_TILES.find((p) => p.id === persona)!.descKey),
-  );
 </script>
 
 {#snippet primaryButton(onClick: () => void, disabled: boolean, label: string)}
@@ -378,7 +375,7 @@
   </button>
 {/snippet}
 
-{#snippet shapeTile(active: boolean, onClick: () => void, title: string, body: string)}
+{#snippet shapeTile(active: boolean, onClick: () => void, dotBg: string, title: string, body: string)}
   <button
     type="button"
     onclick={onClick}
@@ -389,52 +386,15 @@
     style:border-radius="10px"
     style:padding="14px"
     style:cursor="pointer"
-  >
-    <div class="yarrow-intro-name" style:font-size="17px" style:margin-bottom="4px">{title}</div>
-    <div style:font-size="13px" style:color="var(--i-char)" style:line-height="1.5">{body}</div>
-  </button>
-{/snippet}
-
-{#snippet personaTile(active: boolean, dotClass: string, title: string, onClick: () => void)}
-  <button
-    type="button"
-    onclick={onClick}
-    class="yarrow-intro-figtree"
-    style:text-align="left"
-    style:background={active ? "var(--i-row-selected)" : "transparent"}
-    style:border="1px solid {active ? 'var(--i-accent)' : 'var(--i-rule-strong)'}"
-    style:border-radius="10px"
-    style:padding="10px 12px"
-    style:cursor="pointer"
-    style:display="flex"
-    style:align-items="center"
-    style:gap="9px"
-    style:min-height="40px"
     style:box-shadow={active ? "inset 2px 0 0 var(--i-accent)" : "none"}
     style:transition="background 120ms ease, border-color 120ms ease"
   >
-    <span aria-hidden="true" class={dotClass} style:width="9px" style:height="9px" style:border-radius="999px" style:display="inline-block" style:flex-shrink="0"></span>
-    <span class="yarrow-intro-name" style:font-size="15px" style:color="var(--i-ink)" style:font-weight={active ? 600 : 400}>
-      {title}
-    </span>
-  </button>
-{/snippet}
-
-{#snippet personaPicker()}
-  <div>
-    <p class="yarrow-intro-figtree" style:margin="0 0 10px" style:font-size="12.5px" style:color="var(--i-mute)" style:line-height="1.5">
-      {t("wizard.guide.shape.personaIntro")}
-    </p>
-    <div style:display="grid" style:grid-template-columns="repeat(3, 1fr)" style:gap="8px">
-      {@render personaTile(persona === null, MODE_DOT_CLASS.path, t("wizard.guide.shape.personaNone.label"), () => (persona = null))}
-      {#each PERSONA_TILES as p (p.id)}
-        {@render personaTile(persona === p.id, MODE_DOT_CLASS[p.id], t(p.labelKey), () => (persona = p.id))}
-      {/each}
+    <div style:display="flex" style:align-items="center" style:gap="8px" style:margin-bottom="4px">
+      <span aria-hidden="true" style:width="10px" style:height="10px" style:border-radius="999px" style:background={dotBg} style:flex-shrink="0"></span>
+      <span class="yarrow-intro-name" style:font-size="17px">{title}</span>
     </div>
-    <p class="yarrow-intro-figtree" style:margin="8px 0 0" style:font-size="12.5px" style:color="var(--i-char)" style:line-height="1.45" style:min-height="1.45em" aria-live="polite">
-      {activeDesc}
-    </p>
-  </div>
+    <div style:font-size="13px" style:color="var(--i-char)" style:line-height="1.5">{body}</div>
+  </button>
 {/snippet}
 
 {#snippet tip(text: string)}
@@ -635,16 +595,24 @@
 
 {#snippet shapeField(showHint: boolean)}
   {@const showStartingNote = workspaceMode === "mapped" && origin.kind === "empty"}
-  {@const showPersona = workspaceMode === "mapped"}
   <div style:display="flex" style:flex-direction="column" style:gap="14px">
-    <div style:display="grid" style:grid-template-columns="1fr 1fr" style:gap="12px">
-      {@render shapeTile(workspaceMode === "mapped", () => (workspaceMode = "mapped"), t("wizard.details.mode.mapped.title"), t("wizard.details.mode.mapped.body"))}
-      {@render shapeTile(workspaceMode === "basic", () => (workspaceMode = "basic"), t("wizard.details.mode.basic.title"), t("wizard.details.mode.basic.body"))}
+    <div style:display="grid" style:grid-template-columns="repeat(3, 1fr)" style:gap="10px">
+      {@render shapeTile(
+        shapePick === "minimal",
+        () => (shapePick = "minimal"),
+        "var(--i-mute)",
+        t("wizard.guide.shape.minimal.title"),
+        t("wizard.guide.shape.minimal.body"),
+      )}
+      {@render shapeTile(
+        shapePick === "default",
+        () => (shapePick = "default"),
+        "var(--i-accent)",
+        t("wizard.guide.shape.default.title"),
+        t("wizard.guide.shape.default.body"),
+      )}
     </div>
-    {#if showPersona}
-      {@render personaPicker()}
-    {/if}
-    {#if showStartingNote}
+    {#if showStartingNote && shapePick !== null}
       <div>
         <label class="yarrow-intro-mono uppercase" for="wizard-starting" style:display="block" style:font-size="11px" style:letter-spacing="0.18em" style:color="var(--i-mute)" style:margin-bottom="8px">
           {t("wizard.details.startingNoteLabel")}

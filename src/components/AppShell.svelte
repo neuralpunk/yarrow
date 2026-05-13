@@ -4,30 +4,20 @@
   // any chrome paints.
   import "../lib/uiPrefs.svelte";
   import "../lib/paperPrefs.svelte";
+  import { useToastIn, widthSlide } from "../lib/anim.svelte";
+  import SelectionToolbar from "./Editor/SelectionToolbar.svelte";
 
   import { onDestroy, onMount } from "svelte";
   import { api } from "../lib/tauri";
   import { tr } from "../lib/i18n/index.svelte";
-  import { theme } from "../lib/theme.svelte";
-  import { mode } from "../lib/mode.svelte";
   import { verboseAnnouncements } from "../lib/accessibilityPrefs.svelte";
   import {
     showRawMarkdown,
-    editorFont,
     livePreview,
     cookMode,
   } from "../lib/editorPrefs.svelte";
   import { extraRadialMenu, extraCodeHighlight } from "../lib/extraPrefs.svelte";
   import { guidance } from "../lib/guidanceStore.svelte";
-  import { recordWords } from "../plugins/writer/streak.svelte";
-  import { newSourceBody, newSourceTitle } from "../plugins/researcher/sources";
-  import {
-    filterDecisions,
-    newAdrBody,
-    newAdrTitle,
-  } from "../plugins/developer/adr";
-  import { filterFollowUps } from "../plugins/clinician/clinical";
-  import { filterRecipes } from "../plugins/cooking/cooking";
   import { openQuestions } from "../lib/forkDetection";
   import { relativeTime, todayIso } from "../lib/format";
   import { prefetchHeavyChunks } from "../lib/prefetch";
@@ -46,7 +36,6 @@
   import StatusDot from "./StatusDot.svelte";
   import { SK } from "../lib/platform.svelte";
   import { workspaceAccent } from "../lib/workspaceAccent";
-  import { MODE_DOT_CLASS, type ModeId } from "../lib/modes";
   import {
     forgetLeftOff,
     isHiddenLeftOff,
@@ -74,31 +63,19 @@
     WorkspaceConfig,
   } from "../lib/types";
 
-  // Plugin imports — every persona ships Rail + StatusBar + modals.
-  import WriterRail from "../plugins/writer/Rail.svelte";
-  import WriterStatusBarWidget from "../plugins/writer/StatusBarWidget.svelte";
-  import StreakModal from "../plugins/writer/StreakModal.svelte";
-  import ResearcherRail from "../plugins/researcher/Rail.svelte";
-  import ResearcherStatusBarWidget from "../plugins/researcher/StatusBarWidget.svelte";
-  import ResearcherQuestionsModal from "../plugins/researcher/QuestionsModal.svelte";
-  import SourcesModal from "../plugins/researcher/SourcesModal.svelte";
-  import DeveloperRail from "../plugins/developer/Rail.svelte";
-  import DeveloperStatusBarWidget from "../plugins/developer/StatusBarWidget.svelte";
-  import DecisionLogModal from "../plugins/developer/DecisionLogModal.svelte";
-  import ClinicianRail from "../plugins/clinician/Rail.svelte";
-  import ClinicianStatusBarWidget from "../plugins/clinician/StatusBarWidget.svelte";
-  import SensitiveModal from "../plugins/clinician/SensitiveModal.svelte";
-  import FollowUpsModal from "../plugins/clinician/FollowUpsModal.svelte";
-  import SessionKitModal from "../plugins/clinician/SessionKitModal.svelte";
-  import CookingRail from "../plugins/cooking/Rail.svelte";
-  import CookingStatusBarWidget from "../plugins/cooking/StatusBarWidget.svelte";
-  import RecipesModal from "../plugins/cooking/RecipesModal.svelte";
+  // 3.2+ tag-driven surfaces. The right rail renders a saved-view
+  // button per pinned tag; clicking opens SavedViewModal filtered to
+  // that tag. Per-workspace tag config persists in localStorage; a
+  // silent migration (run once per workspace) seeds tags from the
+  // user's prior persona choice.
+  import { tags as tagsStore, defaultLabel, chipTone, type TagDef } from "../lib/tags.svelte";
+  import { migratePersonaToTags, backfillPackGroups } from "../lib/tagsMigration";
+  import SavedViewModal from "./SavedViewModal.svelte";
 
   // First-class Svelte components.
   import Modal from "./Modal.svelte";
   import RightRail, { type RailOverlay } from "./RightRail.svelte";
   import TabBar from "./TabBar.svelte";
-  import ModePickerOnboarding from "./ModePickerOnboarding.svelte";
   import RadialMenu from "./Editor/RadialMenu.svelte";
   import LinearContextMenu from "./Editor/LinearContextMenu.svelte";
   import {
@@ -110,6 +87,7 @@
   } from "./Editor/radialItems";
   import MainNotePrompt from "./MainNotePrompt.svelte";
   import NoteList from "./LeftSidebar/NoteList.svelte";
+  import TagList from "./LeftSidebar/TagList.svelte";
   import JournalCalendar from "./LeftSidebar/JournalCalendar.svelte";
   import Toolbar from "./Editor/Toolbar.svelte";
   import LinkedNotesList from "./RightSidebar/LinkedNotesList.svelte";
@@ -117,7 +95,6 @@
   import Outline from "./RightSidebar/Outline.svelte";
   import Transclusions from "./RightSidebar/Transclusions.svelte";
   import TimerPills from "./TimerPills.svelte";
-  import RecipeClipperModal from "./RecipeClipperModal.svelte";
   import QuotaBlockedModal from "./QuotaBlockedModal.svelte";
   import ForkMoment from "./ForkMoment.svelte";
   import GuidanceHost from "./Guidance/GuidanceHost.svelte";
@@ -166,10 +143,10 @@
 
   type SyncStatus = "synced" | "pending" | "syncing" | "error" | "no-remote";
   type SettingsTab =
-    | "mode"
     | "appearance"
     | "accessibility"
     | "writing"
+    | "tags"
     | "gestures"
     | "guidance"
     | "templates"
@@ -202,9 +179,17 @@
 
   let t = $derived(tr());
 
-  // 3.0 — active mode/persona is exposed via the singleton store.
-  let modeId = $derived(mode.id);
-  let modeConfig = $derived(mode.config);
+  /** Dispatch slash-command actions from the editor. Universal app-level
+   *  actions only — the persona-specific cases retired with 3.2. Tags
+   *  are reachable via ⌘K View commands. */
+  function handleSlashAction(actionId: string): void {
+    switch (actionId) {
+      case "palette": paletteOpen = true; return;
+      case "scratchpad": scratchpadOpen = true; return;
+      case "focus": focusMode = !focusMode; return;
+      case "history": historyOpen = true; return;
+    }
+  }
 
   // Tracks every fire-and-forget setTimeout AppShell sets so an unmount
   // (workspace switch via App.svelte's `{#key workspacePath}`) can
@@ -243,52 +228,27 @@
     invalidateAllNotes();
   });
 
-  // First-launch mode picker.
-  let modePickerOpen = $state(false);
+  // 3.2+ generic saved-view modal slot. The string holds the tag name
+  // being viewed; null = closed.
+  let savedViewTag = $state<string | null>(null);
+
+  let pinnedStatusTags = $derived<readonly TagDef[]>(tagsStore.statusBarTags);
+
+  function openSavedView(tagName: string) {
+    savedViewTag = tagName;
+  }
+
+  // Silent persona → tag-config migration. Runs once per workspace at
+  // mount; idempotent on subsequent mounts via a `yarrow.tags.migrated`
+  // marker. After migration the tag config is the source of truth for
+  // rail / status-bar / saved-view rendering.
   onMount(() => {
-    try {
-      const shown = localStorage.getItem("yarrow.mode-picker.shown");
-      const explicit = localStorage.getItem("yarrow.mode");
-      if (shown || explicit) return;
-    } catch { return; }
-    const id = window.setTimeout(() => { modePickerOpen = true; }, 600);
-    return () => window.clearTimeout(id);
+    void migratePersonaToTags()
+      .then(() => { backfillPackGroups(); })
+      .catch((e) => {
+        console.warn("persona→tag migration failed", e);
+      });
   });
-  function handleModePick(m: ModeId) {
-    mode.set(m);
-    try { localStorage.setItem("yarrow.mode-picker.shown", "true"); } catch { /* ignore */ }
-    modePickerOpen = false;
-  }
-  function handleModeSkip() {
-    try { localStorage.setItem("yarrow.mode-picker.shown", "true"); } catch { /* ignore */ }
-    modePickerOpen = false;
-  }
-
-  // 3.0 — Developer-mode first-entry defaults: dracula + JetBrains Mono.
-  $effect(() => {
-    if (modeId !== "developer") return;
-    const FLAG = `yarrow.developer.defaultsApplied:${workspacePath}`;
-    try {
-      if (localStorage.getItem(FLAG) === "true") return;
-      theme.set("dracula");
-      editorFont.set("jetbrains-mono");
-      localStorage.setItem(FLAG, "true");
-    } catch {
-      theme.set("dracula");
-      editorFont.set("jetbrains-mono");
-    }
-  });
-
-  // 3.0 plugin modal opens.
-  let streakModalOpen = $state(false);
-  let lastWordCountRef: { slug: string; path: string; words: number } | null = null;
-  let researcherQuestionsOpen = $state(false);
-  let sourcesOpen = $state(false);
-  let decisionLogOpen = $state(false);
-  let sensitiveOpen = $state(false);
-  let followUpsOpen = $state(false);
-  let sessionKitOpen = $state(false);
-  let recipesOpen = $state(false);
 
   // Editor prefs, exposed reactively for derived flags below.
   let showRawValue = $derived(showRawMarkdown.value);
@@ -301,8 +261,11 @@
   let quickHandOpen = $state(false);
   let constellationModalOpen = $state(false);
   let insertsModalOpen = $state(false);
-  let formatModalOpen = $state<{ selection: string } | null>(null);
-  let recipeClipperOpen = $state(false);
+  let formatModalOpen = $state<{
+    selection: string;
+    from?: number;
+    to?: number;
+  } | null>(null);
   let timerPickerOpen = $state(false);
 
   // Workspace + note state.
@@ -651,9 +614,8 @@
   let checkpointCount = $state<number>(0);
   let lastSavedAt = $state<number>(0);
   let editorCtxMenu = $state<
-    { text: string; x: number; y: number } | null
+    { text: string; x: number; y: number; from?: number; to?: number } | null
   >(null);
-  let cookingOn = $derived(modeConfig.persona === "cooking");
   let wikilinkPickerOpen = $state(false);
   let activityOpen = $state(false);
   let tagGraphOpen = $state(false);
@@ -1193,83 +1155,6 @@
     newNoteOpen = true;
   }
 
-  async function handleCreateSource() {
-    try {
-      const note = await api.createNote(newSourceTitle());
-      await api.saveNote(note.slug, newSourceBody());
-      await api.setTags(note.slug, ["source"]);
-      invalidateNote(note.slug);
-      notes = await api.listNotes();
-      try { graph = await fetchGraph(); } catch { /* ignore */ }
-      activeSlug = note.slug;
-    } catch (e) {
-      toast = {
-        text: t("appshell.toast.createFromKitError", { error: String(e) }),
-        tone: "soft",
-      };
-    }
-  }
-
-  async function handleCreateAdr() {
-    try {
-      const note = await api.createNote(newAdrTitle());
-      await api.saveNote(note.slug, newAdrBody());
-      await api.setTags(note.slug, ["decision"]);
-      invalidateNote(note.slug);
-      notes = await api.listNotes();
-      try { graph = await fetchGraph(); } catch { /* ignore */ }
-      activeSlug = note.slug;
-    } catch (e) {
-      toast = {
-        text: t("appshell.toast.createFromKitError", { error: String(e) }),
-        tone: "soft",
-      };
-    }
-  }
-
-  async function handlePickSessionKit(template: string, title: string) {
-    try {
-      const note = await api.createFromTemplate(template, title);
-      invalidateNote(note.slug);
-      notes = await api.listNotes();
-      try { graph = await fetchGraph(); } catch { /* ignore */ }
-      activeSlug = note.slug;
-    } catch (e) {
-      toast = {
-        text: t("appshell.toast.createFromKitError", { error: String(e) }),
-        tone: "soft",
-      };
-    }
-  }
-
-  async function handleAddToShoppingList() {
-    if (!activeSlug) return;
-    try {
-      const out = await api.addRecipeToShoppingList(activeSlug);
-      if (out.added === 0 && out.skipped_duplicates === 0) {
-        toast = { text: t("appshell.toast.shoppingListEmpty"), tone: "soft" };
-      } else {
-        const dupes =
-          out.skipped_duplicates > 0
-            ? t("appshell.toast.shoppingListDupes", {
-                skipped: String(out.skipped_duplicates),
-              })
-            : "";
-        toast = {
-          text: t("appshell.toast.shoppingListAdded", {
-            added: String(out.added),
-            source: out.source_title,
-            dupes,
-          }),
-          tone: "success",
-        };
-        try { notes = await api.listNotes(); } catch { /* ignore */ }
-      }
-    } catch (e) {
-      toast = String(e);
-    }
-  }
-
   async function handleOpenDaily(dateIso?: string) {
     const iso = dateIso ?? todayIso();
     const myEpoch = ++asyncEpoch;
@@ -1320,19 +1205,6 @@
     path?: string,
   ) {
     if (!slug) return;
-    try {
-      const cleaned = body.replace(/\[\[([^\]]+)\]\]/g, "$1");
-      const w = cleaned.trim().match(/\S+/g)?.length ?? 0;
-      const key = path ?? currentPath ?? "";
-      const ref = lastWordCountRef;
-      if (!ref || ref.slug !== slug || ref.path !== key) {
-        lastWordCountRef = { slug, path: key, words: w };
-      } else {
-        const delta = w - ref.words;
-        if (delta > 0) recordWords(delta);
-        lastWordCountRef = { slug, path: key, words: w };
-      }
-    } catch { /* ignore */ }
     const rootName = collectionsView?.root ?? "main";
     const pathIsMain = (p: string) =>
       !p || p === rootName || p === "main" || p === "master";
@@ -2097,6 +1969,29 @@
 
   let tagCounts = $derived(graph?.tags ?? []);
 
+  // Merged autocomplete source for the editor's tag chips: every tag
+  // the user has configured (Settings → Tags / starter packs) plus
+  // every tag actually in use across the workspace, deduped
+  // case-insensitively. Configured names come first so freshly-applied
+  // pack tags surface in the dropdown before any note has them.
+  let mergedTagSuggestions = $derived.by(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const def of tagsStore.config.tags) {
+      const key = def.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(def.name);
+    }
+    for (const t of tagCounts) {
+      const key = t.tag.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(t.tag);
+    }
+    return out;
+  });
+
   let privateNoteCount = $derived(
     notes.filter(
       (n) => n.private || (n.tags?.includes("clinical") ?? false),
@@ -2108,26 +2003,7 @@
   );
   let mainNoteSet = $derived(!!config?.mapping?.main_note);
   let needsMainNote = $derived(mappingEnabled && !mainNoteSet);
-  let pathChromeVisible = $derived(mappingEnabled && modeConfig.pathFeatures);
-
-  // Reconcile the workspace's mapping.mode with the active app mode so
-  // switching to a path-bearing mode/persona on a workspace that was
-  // previously flipped to "basic" actually brings the path chrome back
-  // (and vice versa). Without this, mappingEnabled stays false forever
-  // because there's no other UI that flips the workspace back to mapped.
-  let mappingSyncBusy = $state(false);
-  $effect(() => {
-    if (!config) return;
-    const desired = modeConfig.pathFeatures ? "mapped" : "basic";
-    const current = config.mapping?.mode ?? "mapped";
-    if (current === desired || mappingSyncBusy) return;
-    mappingSyncBusy = true;
-    api
-      .setWorkspaceMode(desired)
-      .then((cfg) => { config = cfg; })
-      .catch(() => { /* leave config as-is; next mode change retries */ })
-      .finally(() => { mappingSyncBusy = false; });
-  });
+  let pathChromeVisible = $derived(mappingEnabled);
 
   function tbBranchFromHere() {
     if (needsMainNote) {
@@ -2232,7 +2108,7 @@
   );
 
   let newNoteTileCount = $derived(
-    2 + (customTemplatesCount > 0 ? 1 : 0) + (cookingOn ? 1 : 0),
+    2 + (customTemplatesCount > 0 ? 1 : 0),
   );
   let newNoteGridClass = $derived(
     newNoteTileCount >= 4
@@ -2264,6 +2140,26 @@
     };
     window.addEventListener("yarrow:toast", onToast as EventListener);
     return () => window.removeEventListener("yarrow:toast", onToast as EventListener);
+  });
+
+  // 3.1 — Inline Wikilink Picker "Create new note" affordance. The
+  // editor's autocomplete dispatches this when the user picks the
+  // fallback row, after the [[Title]] is already inserted into the
+  // doc. We open the new-note dialog with the title pre-populated so
+  // the user can confirm or amend it before scaffolding.
+  $effect(() => {
+    const onCreate = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ title?: string }>).detail;
+      const title = (detail?.title ?? "").trim();
+      if (!title) return;
+      handleCreateNote(title);
+    };
+    window.addEventListener("yarrow:wikilink-create", onCreate as EventListener);
+    return () =>
+      window.removeEventListener(
+        "yarrow:wikilink-create",
+        onCreate as EventListener,
+      );
   });
 
   $effect(() => {
@@ -2571,7 +2467,13 @@
   // Editor right-click context menu.
   $effect(() => {
     const onMenu = (e: Event) => {
-      const d = (e as CustomEvent<{ text: string; x: number; y: number }>).detail;
+      const d = (e as CustomEvent<{
+        text: string;
+        x: number;
+        y: number;
+        from?: number;
+        to?: number;
+      }>).detail;
       if (d) editorCtxMenu = d;
     };
     window.addEventListener("yarrow:editor-contextmenu", onMenu as EventListener);
@@ -2893,15 +2795,6 @@
   </svg>
 {/snippet}
 
-{#snippet recipeUrlRouteGlyph()}
-  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M5 3h7L17 7v6" />
-    <path d="M12 3v4h5" />
-    <path d="M9 14a2.5 2.5 0 0 0 3.5 0l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5l-0.6 0.6" />
-    <path d="M13 17a2.5 2.5 0 0 0-3.5 0l-1.8 1.8a2.5 2.5 0 0 0 3.5 3.5l0.6-0.6" />
-  </svg>
-{/snippet}
-
 {#snippet newNoteRouteTile(active: boolean, onClick: () => void, title: string, sub: string, glyph: import("svelte").Snippet)}
   <button
     type="button"
@@ -2922,39 +2815,6 @@
       <div class="text-2xs text-t2 mt-1.5 leading-relaxed">{sub}</div>
     </div>
   </button>
-{/snippet}
-
-{#snippet personaSlot()}
-  {#if modeConfig.persona === "writer"}
-    <WriterRail onOpenStreak={() => { streakModalOpen = true; }} />
-  {:else if modeConfig.persona === "researcher"}
-    <ResearcherRail
-      {notes}
-      questionCount={questions.length}
-      onOpenQuestions={() => { researcherQuestionsOpen = true; }}
-      onOpenSources={() => { sourcesOpen = true; }}
-      onCreateSource={handleCreateSource}
-    />
-  {:else if modeConfig.persona === "developer"}
-    <DeveloperRail
-      {notes}
-      onOpenDecisions={() => { decisionLogOpen = true; }}
-      onCreateAdr={handleCreateAdr}
-    />
-  {:else if modeConfig.persona === "clinician"}
-    <ClinicianRail
-      {notes}
-      onOpenSensitive={() => { sensitiveOpen = true; }}
-      onOpenFollowUps={() => { followUpsOpen = true; }}
-      onOpenSessionKit={() => { sessionKitOpen = true; }}
-    />
-  {:else if modeConfig.persona === "cooking"}
-    <CookingRail
-      hasActiveNote={!!activeSlug}
-      onClipRecipe={() => { recipeClipperOpen = true; }}
-      onAddToShoppingList={() => { void handleAddToShoppingList(); }}
-    />
-  {/if}
 {/snippet}
 
 <!-- Root -->
@@ -2991,6 +2851,7 @@
   <div class="flex-1 min-h-0 flex overflow-hidden">
     {#if !focusMode}
       <aside
+        transition:widthSlide={{ duration: 380 }}
         class="relative shrink-0 bg-s1 border-r border-bd flex flex-col overflow-hidden yarrow-vibrancy-pane"
         style:width="{leftSidebarWidth}px"
       >
@@ -3061,32 +2922,43 @@
           </button>
         </div>
         <div class="flex-1 min-h-0 flex flex-col">
-          <NoteList
-            notes={filteredNotes}
-            {activeSlug}
-            mainNoteSlug={config?.mapping?.main_note ?? null}
-            orphans={orphanSet}
-            decayDays={config?.preferences.decay_days ?? 60}
-            onSelect={selectSlug}
-            onOpenInNewTab={openInNewTab}
-            onCreate={handleCreateNote}
-            onRename={handleRenameNote}
-            onDelete={handleDeleteNote}
-            onTogglePin={handleTogglePin}
-            onDeleteMany={handleDeleteMany}
-            {tagFilter}
-            onClearTagFilter={clearTagFilter}
-            encryptionEnabled={encryption.enabled}
-            encryptionUnlocked={encryption.unlocked}
-            onEncryptNote={handleEncryptNoteBySlug}
-            onDecryptNote={handleDecryptNoteBySlug}
-            onReveal={handleRevealNote}
-            onCopyAsMarkdown={handleCopyNoteAsMarkdown}
-            onMoveToFolder={handleMoveToFolder}
-            {workspacePath}
-            workspaceName={config?.workspace.name}
-            pathCount={stableCollections.filter((c) => c.name !== stableRootName).length}
-          />
+          <div class="flex-1 min-h-0 flex flex-col">
+            <NoteList
+              notes={filteredNotes}
+              {activeSlug}
+              mainNoteSlug={config?.mapping?.main_note ?? null}
+              orphans={orphanSet}
+              decayDays={config?.preferences.decay_days ?? 60}
+              onSelect={selectSlug}
+              onOpenInNewTab={openInNewTab}
+              onCreate={handleCreateNote}
+              onRename={handleRenameNote}
+              onDelete={handleDeleteNote}
+              onTogglePin={handleTogglePin}
+              onDeleteMany={handleDeleteMany}
+              {tagFilter}
+              onClearTagFilter={clearTagFilter}
+              encryptionEnabled={encryption.enabled}
+              encryptionUnlocked={encryption.unlocked}
+              onEncryptNote={handleEncryptNoteBySlug}
+              onDecryptNote={handleDecryptNoteBySlug}
+              onReveal={handleRevealNote}
+              onCopyAsMarkdown={handleCopyNoteAsMarkdown}
+              onMoveToFolder={handleMoveToFolder}
+              {workspacePath}
+              workspaceName={config?.workspace.name}
+              pathCount={stableCollections.filter((c) => c.name !== stableRootName).length}
+            />
+          </div>
+          {#if tagCounts.length > 0}
+            <div class="shrink-0 max-h-[40vh] overflow-y-auto border-t border-bd/60">
+              <TagList
+                tags={tagCounts}
+                activeTag={tagFilter}
+                onSelect={(tg) => { tagFilter = tg; }}
+              />
+            </div>
+          {/if}
         </div>
         <div class="shrink-0 border-t border-bd/60 px-3 py-2 flex items-center gap-1">
           {#snippet journalIcon()}<JournalIcon size={13} />{/snippet}
@@ -3311,7 +3183,7 @@
                         toast = t("appshell.toast.tagsError", { error: String(e) });
                       }
                     }}
-                    tagSuggestions={tagCounts.map((tg) => tg.tag)}
+                    tagSuggestions={mergedTagSuggestions}
                     {pathColorOverrides}
                     onAnnotationsChange={async (slug, annotations) => {
                       try {
@@ -3351,6 +3223,7 @@
                       invalidateNote(slug);
                       noteReloadNonce++;
                     }}
+                    onSlashAction={handleSlashAction}
                   />
                 {/key}
               </div>
@@ -3418,12 +3291,6 @@
         {/if}
       </div>
     </section>
-
-    <ModePickerOnboarding
-      open={modePickerOpen}
-      onPick={handleModePick}
-      onSkip={handleModeSkip}
-    />
 
     {#if spellMenu}
       <SpellMenu
@@ -3651,55 +3518,61 @@
     {/if}
 
     {#if !focusMode}
-      <RightRail
-        activeOverlay={railOverlay}
-        {scratchpadOpen}
-        {mappingEnabled}
-        mode={modeConfig}
-        {personaSlot}
-        onOpen={async (k) => {
-          if (k === "history") {
-            if (railOverlay === "history") {
-              historyOpen = false;
-              railOverlay = null;
-            } else {
-              railOverlay = "history";
-              await openHistory();
-            }
-            return;
-          }
-          if ((k === "map" || k === "paths" || k === "links") && needsMainNote) {
-            mainNotePromptOpen = true;
-            return;
-          }
-          railOverlay = railOverlay === k ? null : k;
-        }}
-        onToggleScratchpad={() => { scratchpadOpen = !scratchpadOpen; }}
-        onOpenKits={() => { kitsPickerOpen = true; }}
-        onOpenTagBrowser={() => { tagBrowserOpen = true; }}
-        onBranchHere={activeNote && !activeNote.locked
-          ? () => {
-              if (needsMainNote) {
-                mainNotePromptOpen = true;
-                return;
+      <!-- Wrapper exists only so the focus-mode width-slide transition
+           has a stable element to animate. NO `overflow-hidden` here —
+           that would clip the rail buttons' hover tooltips
+           (`.y-tip::after`) which intentionally extend leftward beyond
+           the rail's narrow column. The widthSlide transition supplies
+           its own `overflow: hidden` while the animation is running. -->
+      <div transition:widthSlide={{ duration: 380 }} class="shrink-0 flex">
+        <RightRail
+          activeOverlay={railOverlay}
+          {scratchpadOpen}
+          {mappingEnabled}
+          onOpen={async (k) => {
+            if (k === "history") {
+              if (railOverlay === "history") {
+                historyOpen = false;
+                railOverlay = null;
+              } else {
+                railOverlay = "history";
+                await openHistory();
               }
-              newPathOpen = true;
+              return;
             }
-          : undefined}
-        onOpenSettings={() => { settingsOpen = { open: true }; }}
-        onSetReadingWriting={async (writing) => {
-          if (!writing && dirty && activeSlug) {
-            try {
-              await api.saveNote(activeSlug, currentBody);
-              invalidateNote(activeSlug);
-              dirty = false;
-            } catch (e) {
-              console.error("flush before reading-mode flip failed", e);
+            if ((k === "map" || k === "paths" || k === "links") && needsMainNote) {
+              mainNotePromptOpen = true;
+              return;
             }
-          }
-          showRawMarkdown.set(writing);
-        }}
-      />
+            railOverlay = railOverlay === k ? null : k;
+          }}
+          onToggleScratchpad={() => { scratchpadOpen = !scratchpadOpen; }}
+          onOpenKits={() => { kitsPickerOpen = true; }}
+          onOpenTagBrowser={() => { tagBrowserOpen = true; }}
+          onBranchHere={activeNote && !activeNote.locked
+            ? () => {
+                if (needsMainNote) {
+                  mainNotePromptOpen = true;
+                  return;
+                }
+                newPathOpen = true;
+              }
+            : undefined}
+          onOpenSettings={() => { settingsOpen = { open: true }; }}
+          onSetReadingWriting={async (writing) => {
+            if (!writing && dirty && activeSlug) {
+              try {
+                await api.saveNote(activeSlug, currentBody);
+                invalidateNote(activeSlug);
+                dirty = false;
+              } catch (e) {
+                console.error("flush before reading-mode flip failed", e);
+              }
+            }
+            showRawMarkdown.set(writing);
+          }}
+        />
+      </div>
     {/if}
   </div>
 
@@ -3828,13 +3701,26 @@
   {#if editorCtxMenu}
     {@const close = () => { editorCtxMenu = null; }}
     {@const selectionText = editorCtxMenu.text}
+    {@const ctxFrom = editorCtxMenu.from}
+    {@const ctxTo = editorCtxMenu.to}
     {@const callbacks = {
       mappingEnabled,
       openWikilinkPicker: () => { close(); wikilinkPickerOpen = true; },
       openTableInsert: () => { close(); tableInsertOpen = true; },
       openCalloutInsert: () => { close(); calloutInsertOpen = true; },
       openInsertsModal: () => { close(); insertsModalOpen = true; },
-      openFormatModal: () => { close(); formatModalOpen = { selection: selectionText }; },
+      openFormatModal: () => {
+        // Snapshot the range alongside the text so the modal can
+        // replace EXACTLY this slice when the user picks a wrap —
+        // the editor's live selection may have collapsed by then.
+        const snap = {
+          selection: selectionText,
+          from: ctxFrom,
+          to: ctxTo,
+        };
+        close();
+        formatModalOpen = snap;
+      },
       sendSelectionToScratchpad: (text: string) => { void handleSendSelectionToScratchpad(text); close(); },
       insertRaw: (text: string, opts?: { caretOffset?: number; atLineStart?: boolean }) => {
         window.dispatchEvent(new CustomEvent("yarrow:editor-insert-raw", { detail: { text, ...opts } }));
@@ -3842,7 +3728,17 @@
       },
       wrapSelection: (opening: string, closing: string) => {
         const wrapped = opening + selectionText + closing;
-        window.dispatchEvent(new CustomEvent("yarrow:editor-insert-raw", { detail: { text: wrapped } }));
+        // Prefer the captured range over the editor's live selection —
+        // the menu chrome may have stolen focus and collapsed it. Fall
+        // back to insert-raw (existing behavior) only when we somehow
+        // don't have a range.
+        if (typeof ctxFrom === "number" && typeof ctxTo === "number") {
+          window.dispatchEvent(new CustomEvent("yarrow:editor-replace-range", {
+            detail: { from: ctxFrom, to: ctxTo, text: wrapped },
+          }));
+        } else {
+          window.dispatchEvent(new CustomEvent("yarrow:editor-insert-raw", { detail: { text: wrapped } }));
+        }
         close();
       },
       annotateSelection: (anchor: string) => {
@@ -3877,9 +3773,6 @@
         close();
       },
       openTimerPicker: () => { close(); timerPickerOpen = true; },
-      openRecipeClipper: () => { close(); recipeClipperOpen = true; },
-      addToShoppingList: () => { close(); void handleAddToShoppingList(); },
-      cookingEnabled: cookingOn,
     } satisfies RadialCallbacks}
     {@const selectionTrim = editorCtxMenu.text.trim()}
     {@const items = radialMenuOn
@@ -3901,8 +3794,6 @@
       open
       onClose={() => { insertsModalOpen = false; }}
       wikilinkDisabled={!mappingEnabled}
-      shoppingDisabled={!activeSlug}
-      cookingEnabled={cookingOn}
       onInsertWikilink={() => { wikilinkPickerOpen = true; }}
       onInsertTask={() =>
         window.dispatchEvent(
@@ -3913,8 +3804,6 @@
       onInsertTable={() => { tableInsertOpen = true; }}
       onInsertCallout={() => { calloutInsertOpen = true; }}
       onInsertTimer={() => { timerPickerOpen = true; }}
-      onClipRecipe={() => { recipeClipperOpen = true; }}
-      onAddToShoppingList={() => { void handleAddToShoppingList(); }}
     />
   {/if}
 
@@ -3938,24 +3827,26 @@
           new CustomEvent("yarrow:editor-insert-raw", { detail: { text, ...opts } }),
         )}
       wrapSelection={(opening, closing) => {
-        const wrapped = opening + formatModalOpen!.selection + closing;
-        window.dispatchEvent(
-          new CustomEvent("yarrow:editor-insert-raw", { detail: { text: wrapped } }),
-        );
+        const snap = formatModalOpen!;
+        const wrapped = opening + snap.selection + closing;
+        // Replace the exact range we captured at right-click time —
+        // the editor's live selection may have collapsed when the
+        // modal stole focus, so insert-raw would just paste at
+        // cursor without wrapping the original text.
+        if (typeof snap.from === "number" && typeof snap.to === "number") {
+          window.dispatchEvent(
+            new CustomEvent("yarrow:editor-replace-range", {
+              detail: { from: snap.from, to: snap.to, text: wrapped },
+            }),
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent("yarrow:editor-insert-raw", { detail: { text: wrapped } }),
+          );
+        }
       }}
     />
   {/if}
-
-  <RecipeClipperModal
-    open={recipeClipperOpen}
-    onClose={() => { recipeClipperOpen = false; }}
-    onClipped={async (note) => {
-      invalidateNote(note.slug);
-      try { notes = await api.listNotes(); } catch { /* ignore */ }
-      activeNote = note;
-      selectSlug(note.slug);
-    }}
-  />
 
   <WikilinkPicker
     open={wikilinkPickerOpen}
@@ -4010,6 +3901,8 @@
     />
   {/if}
 
+  <SelectionToolbar />
+
   {#if toast}
     {@const tt = typeof toast === "string" ? { text: toast } : toast}
     {@const tone = (typeof toast === "object" && toast.tone) || "info"}
@@ -4018,53 +3911,45 @@
       : tone === "soft"
         ? "background: var(--yel); box-shadow: 0 0 0 3px rgba(122,78,110,0.22)"
         : "background: #E8C97A; box-shadow: 0 0 0 3px rgba(232,201,122,0.22)"}
+    <!-- Two-layer toast: outer handles horizontal centering (incl. the
+         scratchpad offset), inner is what anime.js animates. Keeping
+         them separate lets `useToastIn` set translateY freely without
+         fighting the translateX centering. -->
     <div
-      class="fixed bottom-10 z-40 max-w-[480px] bg-char text-bg text-xs px-3.5 py-2 rounded-md shadow-lg animate-fadeIn flex items-center gap-3"
+      class="fixed bottom-10 z-40 pointer-events-none"
       style:left="50%"
       style:transform="translateX(calc(-50% - {scratchpadOpen ? scratchpadWidth / 2 : 0}px))"
     >
-      <span aria-hidden="true" class="inline-block w-2 h-2 rounded-full shrink-0" style={dotStyle}></span>
-      <span class="leading-snug">{tt.text}</span>
-      {#if "action" in tt && tt.action}
+      <div
+        use:useToastIn
+        style:opacity="0"
+        class="pointer-events-auto max-w-[480px] bg-char text-bg text-xs px-3.5 py-2 rounded-md shadow-lg flex items-center gap-3"
+      >
+        <span aria-hidden="true" class="inline-block w-2 h-2 rounded-full shrink-0" style={dotStyle}></span>
+        <span class="leading-snug">{tt.text}</span>
+        {#if "action" in tt && tt.action}
+          <button
+            onclick={() => {
+              const action = (tt as { action: { label: string; run: () => void } }).action;
+              action.run();
+              toast = null;
+            }}
+            class="px-2 py-0.5 rounded-sm border border-bg/40 hover:bg-bg/10 font-medium uppercase tracking-wider text-2xs"
+          >
+            {tt.action.label}
+          </button>
+        {/if}
         <button
-          onclick={() => {
-            const action = (tt as { action: { label: string; run: () => void } }).action;
-            action.run();
-            toast = null;
-          }}
-          class="px-2 py-0.5 rounded-sm border border-bg/40 hover:bg-bg/10 font-medium uppercase tracking-wider text-2xs"
-        >
-          {tt.action.label}
-        </button>
-      {/if}
-      <button
-        onclick={() => { toast = null; }}
-        class="opacity-70 hover:opacity-100 text-bg"
-        aria-label={t("appshell.toast.dismiss")}
-      >×</button>
+          onclick={() => { toast = null; }}
+          class="opacity-70 hover:opacity-100 text-bg"
+          aria-label={t("appshell.toast.dismiss")}
+        >×</button>
+      </div>
     </div>
   {/if}
 
   <!-- Status bar -->
   <div class="h-7 shrink-0 bg-s2 border-t border-bd flex items-center px-3 text-2xs text-t2 gap-5 font-mono">
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        onclick={() => { settingsOpen = { open: true, tab: "mode" }; }}
-        title={t("appshell.status.modePillTitle", {
-          mode: t(("settings.mode.option." + modeId + ".label") as never),
-        })}
-        aria-label={t("appshell.status.modePillTitle", {
-          mode: t(("settings.mode.option." + modeId + ".label") as never),
-        })}
-        class="inline-flex items-center gap-1.5 px-2 py-0.5 -mx-1 rounded-full border border-bd hover:bg-s1 hover:border-bd2 transition text-t1"
-      >
-        <span class="w-1.5 h-1.5 rounded-full {MODE_DOT_CLASS[modeId]}"></span>
-        <span class="font-mono text-[10px] tracking-wide">
-          {t(("settings.mode.option." + modeId + ".label") as never)}
-        </span>
-      </button>
-    </div>
     <div class="flex items-center gap-2 min-w-0">
       {@render statusGroupIcon("workspace")}
       <span>{t("appshell.status.notes", { count: String(notes.length) })}</span>
@@ -4096,41 +3981,23 @@
         {/if}
       </div>
     {/if}
-    {#if modeConfig.persona === "writer"}
-      <div class="flex items-center gap-2">
-        <WriterStatusBarWidget onOpen={() => { streakModalOpen = true; }} />
-      </div>
-    {/if}
-    {#if modeConfig.persona === "researcher" && questions.length > 0}
-      <div class="flex items-center gap-2">
-        <ResearcherStatusBarWidget
-          questionCount={questions.length}
-          onOpen={() => { researcherQuestionsOpen = true; }}
-        />
-      </div>
-    {/if}
-    {#if modeConfig.persona === "developer" && filterDecisions(notes).length > 0}
-      <div class="flex items-center gap-2">
-        <DeveloperStatusBarWidget
-          decisionCount={filterDecisions(notes).length}
-          onOpen={() => { decisionLogOpen = true; }}
-        />
-      </div>
-    {/if}
-    {#if modeConfig.persona === "clinician" && filterFollowUps(notes).length > 0}
-      <div class="flex items-center gap-2">
-        <ClinicianStatusBarWidget
-          followUpCount={filterFollowUps(notes).length}
-          onOpen={() => { followUpsOpen = true; }}
-        />
-      </div>
-    {/if}
-    {#if modeConfig.persona === "cooking" && filterRecipes(notes).length > 0}
-      <div class="flex items-center gap-2">
-        <CookingStatusBarWidget
-          recipeCount={filterRecipes(notes).length}
-          onOpen={() => { recipesOpen = true; }}
-        />
+    {#if pinnedStatusTags.length > 0}
+      <div class="flex items-center gap-1.5">
+        {#each pinnedStatusTags as tagDef (tagDef.name)}
+          {@const matchCount = notes.filter((n) => (n.tags ?? []).some((tn) => tn.toLowerCase() === tagDef.name.toLowerCase())).length}
+          {#if matchCount > 0}
+            {@const tone = chipTone(tagDef.color)}
+            <button
+              type="button"
+              onclick={() => openSavedView(tagDef.name)}
+              title={`${defaultLabel(tagDef)} · ${matchCount}`}
+              class={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition ${tone.bg} ${tone.border} ${tone.text} ${tone.hover}`}
+            >
+              <span class="font-mono tabular-nums">{matchCount}</span>
+              <span class="opacity-75">{defaultLabel(tagDef).toLowerCase()}</span>
+            </button>
+          {/if}
+        {/each}
       </div>
     {/if}
     <span class="ml-auto flex items-center gap-2 truncate">
@@ -4288,27 +4155,15 @@
         livePreview.set(!livePreview.value);
       }}
       onPrintCurrentPath={currentPath ? () => { void printActivePath(currentPath); } : undefined}
-      onClipRecipe={() => { recipeClipperOpen = true; }}
-      onAddToShoppingList={activeSlug ? handleAddToShoppingList : undefined}
       {mappingEnabled}
-      currentMode={modeId}
-      onSetMode={(id) => mode.set(id)}
-      onOpenModeSettings={() => { settingsOpen = { open: true, tab: "mode" }; }}
-      onOpenStreak={() => { streakModalOpen = true; }}
-      onOpenOpenQuestions={() => { researcherQuestionsOpen = true; }}
+      onOpenOpenQuestions={questions.length > 0
+        ? () => { railOverlay = "outline-solid"; }
+        : undefined}
       hasOpenQuestions={questions.length > 0}
-      onOpenSources={() => { sourcesOpen = true; }}
-      onCreateSource={handleCreateSource}
-      onOpenDecisionLog={() => { decisionLogOpen = true; }}
-      onCreateAdr={handleCreateAdr}
       onToggleCodeHighlight={() => extraCodeHighlight.toggle()}
       codeHighlightOn={extraCodeHighlight.value}
-      onOpenSensitive={() => { sensitiveOpen = true; }}
-      onOpenFollowUps={() => { followUpsOpen = true; }}
-      onOpenSessionKit={() => { sessionKitOpen = true; }}
-      onOpenRecipesLibrary={() => { recipesOpen = true; }}
-      onToggleCookMode={() => cookMode.set(!cookMode.value)}
-      cookModeOn={cookModeValue}
+      pinnedTags={tagsStore.config.tags}
+      onOpenSavedView={openSavedView}
     />
   {/if}
 
@@ -4640,15 +4495,6 @@
             customTemplatesRouteGlyph,
           )}
         {/if}
-        {#if cookingOn}
-          {@render newNoteRouteTile(
-            false,
-            () => { newNoteOpen = false; recipeClipperOpen = true; },
-            t("appshell.newNote.tileRecipeUrlTitle"),
-            t("appshell.newNote.tileRecipeUrlSub"),
-            recipeUrlRouteGlyph,
-          )}
-        {/if}
       </div>
 
       <div class="mt-5 pt-5 border-t border-bd">
@@ -4755,75 +4601,36 @@
     />
   {/if}
 
-  {#if streakModalOpen}
-    <StreakModal open={streakModalOpen} onClose={() => { streakModalOpen = false; }} />
-  {/if}
-
-  {#if researcherQuestionsOpen}
-    <ResearcherQuestionsModal
-      open={researcherQuestionsOpen}
-      onClose={() => { researcherQuestionsOpen = false; }}
-      noteTitle={activeNote?.frontmatter.title || activeNote?.slug || ""}
-      {questions}
-      onJump={(line) => { jumpSignal = { line, nonce: Date.now() }; }}
-    />
-  {/if}
-
-  {#if sourcesOpen}
-    <SourcesModal
-      open={sourcesOpen}
-      onClose={() => { sourcesOpen = false; }}
-      {notes}
-      onSelect={selectSlug}
-      onCreate={handleCreateSource}
-    />
-  {/if}
-
-  {#if decisionLogOpen}
-    <DecisionLogModal
-      open={decisionLogOpen}
-      onClose={() => { decisionLogOpen = false; }}
-      {notes}
-      onSelect={selectSlug}
-      onCreate={handleCreateAdr}
-    />
-  {/if}
-
-  {#if sensitiveOpen}
-    <SensitiveModal
-      open={sensitiveOpen}
-      onClose={() => { sensitiveOpen = false; }}
-      {notes}
-      onSelect={selectSlug}
-    />
-  {/if}
-
-  {#if followUpsOpen}
-    <FollowUpsModal
-      open={followUpsOpen}
-      onClose={() => { followUpsOpen = false; }}
-      {notes}
-      onSelect={selectSlug}
-    />
-  {/if}
-
-  {#if sessionKitOpen}
-    <SessionKitModal
-      open={sessionKitOpen}
-      onClose={() => { sessionKitOpen = false; }}
-      onPick={handlePickSessionKit}
-    />
-  {/if}
-
-  {#if recipesOpen}
-    <RecipesModal
-      open={recipesOpen}
-      onClose={() => { recipesOpen = false; }}
-      {notes}
-      onSelect={selectSlug}
-      onClip={() => { recipeClipperOpen = true; }}
-    />
-  {/if}
+  <!-- Generic saved-view modal (3.2+). Filtered list of notes for
+       whichever tag is currently being viewed. Replaces the per-persona
+       DecisionLog / Sources / Sensitive / FollowUps / Recipes modals. -->
+  <SavedViewModal
+    tagName={savedViewTag}
+    open={savedViewTag !== null}
+    {notes}
+    onClose={() => { savedViewTag = null; }}
+    onSelect={(slug) => { selectSlug(slug); }}
+    onCreate={async (tagName, template) => {
+      const fallbackTitle = `Untitled ${tagName}`;
+      try {
+        const note = await api.createFromTemplate(
+          template,
+          fallbackTitle,
+          [tagName],
+          undefined,
+        );
+        invalidateAllNotes();
+        notes = await api.listNotes();
+        try { graph = await fetchGraph(); } catch { /* ignore */ }
+        selectSlug(note.slug);
+      } catch (e) {
+        toast = {
+          text: t("appshell.toast.createFromKitError", { error: String(e) }),
+          tone: "soft",
+        };
+      }
+    }}
+  />
 
   {#if tagBrowserOpen}
     <TagBrowserModal

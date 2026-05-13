@@ -17,7 +17,9 @@
   import Modal from "../Modal.svelte";
   import EmptyState from "../EmptyState.svelte";
   import { listMode as listModeStore } from "../../lib/listModePrefs.svelte";
+  import { noteIsSensitive } from "../../lib/tags.svelte";
   import { tr } from "../../lib/i18n/index.svelte";
+  import { staggerFadeUp } from "../../lib/anim.svelte";
 
   interface Props {
     notes: NoteSummary[];
@@ -79,6 +81,32 @@
   let menu = $state<{ slug: string; x: number; y: number } | null>(null);
   let menuRef = $state<HTMLDivElement | null>(null);
   let menuPos = $state<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Scroll container reference — used by the filter-change effect below
+  // to re-stagger the visible note rows whenever the user picks a tag.
+  let scrollEl = $state<HTMLDivElement | null>(null);
+
+  // Re-stagger rows when the tag filter changes. We cap the effect at
+  // 30 rows so a list with hundreds of notes doesn't visibly cascade
+  // for a full second — the entrance should feel like a quick fan-out,
+  // not a runway show.
+  $effect(() => {
+    void tagFilter;
+    if (!scrollEl) return;
+    tick().then(() => {
+      const el = scrollEl;
+      if (!el) return;
+      const rows = Array.from(
+        el.querySelectorAll<HTMLElement>(".yarrow-row-island, .yarrow-card-island"),
+      );
+      if (rows.length === 0) return;
+      const visible = rows.slice(0, 30);
+      staggerFadeUp(visible, {
+        staggerMs: 32,
+        duration: 300,
+        fromY: 5,
+      });
+    });
+  });
 
   $effect(() => {
     if (!menu) return;
@@ -261,12 +289,13 @@
       const stale = mTime < decayCutoff;
       const daysOld = Math.floor((now - mTime) / (86400 * 1000));
       const isOrphan = orphans.has(n.slug);
+      const sensitive = noteIsSensitive(n.tags);
       const bucket: TimeBucket =
         mTime >= bucketBounds.startOfToday ? "today"
         : mTime >= bucketBounds.startOfYesterday ? "yesterday"
         : mTime >= bucketBounds.startOf7DaysAgo ? "week"
         : "older";
-      return { ...n, mTime, stale, daysOld, isOrphan, bucket };
+      return { ...n, mTime, stale, daysOld, isOrphan, sensitive, bucket };
     });
   });
 
@@ -459,6 +488,14 @@
   </svg>
 {/snippet}
 
+{#snippet smallSensitiveIcon()}
+  <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M2 7s2-3.5 5-3.5S12 7 12 7s-2 3.5-5 3.5S2 7 2 7z" />
+    <circle cx="7" cy="7" r="1.4" />
+    <path d="M2.5 11.5L11.5 2.5" />
+  </svg>
+{/snippet}
+
 {#snippet pinIcon()}
   <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
     <path d="M6 1.5v5.5" />
@@ -566,6 +603,9 @@
         {/if}
         {#if n.private && !n.encrypted}
           <span class="shrink-0 leading-none" style:color="#c97a3a" style:font-size="11px" title={t("sidebar.notes.privateTooltip")}>⊘</span>
+        {/if}
+        {#if n.sensitive && !n.encrypted && !n.private}
+          <span class="shrink-0 text-t3" title={t("sidebar.notes.sensitiveTooltip")}>{@render smallSensitiveIcon()}</span>
         {/if}
         <span class="truncate flex-1 {active || isMain ? 'font-medium' : ''}">
           {n.title || n.slug}
@@ -693,6 +733,9 @@
         {#if n.private && !n.encrypted}
           <span class="shrink-0 leading-none" style:color="#c97a3a" style:font-size="11px" title={t("sidebar.notes.privateTooltipShort")}>⊘</span>
         {/if}
+        {#if n.sensitive && !n.encrypted && !n.private}
+          <span class="shrink-0 text-t3" title={t("sidebar.notes.sensitiveTooltip")}>{@render smallSensitiveIcon()}</span>
+        {/if}
         {#if n.pinned}
           <span class="text-yeld shrink-0" title={t("sidebar.notes.pinned")}>{@render pinIcon()}</span>
         {/if}
@@ -719,7 +762,7 @@
 {/snippet}
 
 <div class="flex flex-col h-full min-h-0">
-  <div class="flex-1 overflow-y-auto overflow-x-hidden yarrow-paint-island yarrow-gpu-scroll">
+  <div bind:this={scrollEl} class="flex-1 overflow-y-auto overflow-x-hidden yarrow-paint-island yarrow-gpu-scroll">
     {#if listModeId === "list" && activePinned}
       {@render pinnedActiveHero(activePinned)}
     {/if}

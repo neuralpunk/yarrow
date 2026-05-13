@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Learn Yarrow — Modes, Personas, Scenarios, plainly explained</title>
-<meta name="description" content="A friendly, no-prior-knowledge teaching guide to Yarrow 3.0. Modes &amp; Personas, Scenarios (the renamed feature formerly called Paths), Wikilinks, Tags, Open questions, and History — taught from scratch with diagrams and mocks." />
+<title>Learn Yarrow — Personas, Scenarios, in-editor authoring, plainly explained</title>
+<meta name="description" content="A friendly, no-prior-knowledge teaching guide to Yarrow 3.1. The unified Personas picker, the new in-editor authoring affordances (wikilink picker, selection toolbar, slash commands), the file-backed glossary, plus Scenarios, Wikilinks, Tags, Open questions, and History — all taught from scratch with diagrams and mocks." />
 
 <meta name="theme-color" content="#EFEDE7" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#14202E" media="(prefers-color-scheme: dark)" />
@@ -1029,7 +1029,7 @@
     <a class="wordmark" href="index.html">
       <span class="mark-svg"><svg><use href="#yarrow-mark"/></svg></span>
       Yarrow
-      <span class="version">Learn · v3.0</span>
+      <span class="version">Learn · v3.1</span>
     </a>
     <span></span>
     <div class="mast-nav">
@@ -1048,7 +1048,7 @@
       </div>
       <a class="btn-mini" href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-        Download 3.0
+        Download 3.1
       </a>
     </div>
   </div>
@@ -1061,7 +1061,7 @@
   <span class="kicker">Yarrow · a gentle introduction</span>
   <h1>Welcome. Let's walk through this together.</h1>
   <p class="lede">
-    No prior knowledge needed. No tech background needed. This is a slow, friendly walk through the few ideas that make Yarrow what it is — Modes, Personas, and Scenarios — plus a handful of small things you'll be glad to know. Take your time. Skip around. There's no test at the end.
+    No prior knowledge needed. No tech background needed. This is a slow, friendly walk through the few ideas that make Yarrow what it is — <strong>Personas</strong>, <strong>Scenarios</strong>, and the small in-editor authoring touches added in 3.1 (the inline wikilink picker, the selection toolbar, the slash-command panel, and the new file-backed glossary) — plus a handful of other things you'll be glad to know. Take your time. Skip around. There's no test at the end.
   </p>
   <p class="lede" style="margin-top: 14px; font-size: 16px; color: var(--t1);">
     A note before we start: it's completely okay if some of this doesn't click on the first read. Tools are personal, and the language Yarrow uses is built around <em>your</em> messy, real, human thinking — not the tidy version. If anything feels weird, that's normal. Read it twice, try it once, and you'll have it.
@@ -1075,31 +1075,34 @@
      bottom of the page handles the show/hide. -->
 <nav class="lessons-stepper" aria-label="Lesson navigation">
   <div class="lessons-stepper-head">
-    <span class="lessons-stepper-num" data-lesson-num>01 / 21</span>
-    <span class="lessons-stepper-title" data-lesson-title>Modes — pick your shape</span>
+    <span class="lessons-stepper-num" data-lesson-num>01 / 24</span>
+    <span class="lessons-stepper-title" data-lesson-title>Personas — one tiny choice</span>
   </div>
   <ol class="lessons-chips" role="list">
-    <li><button type="button" data-lesson-step="modes"          aria-label="Lesson 1 — Modes"><span class="n">01</span><span>Modes</span></button></li>
-    <li><button type="button" data-lesson-step="personas"       aria-label="Lesson 2 — Personas"><span class="n">02</span><span>Personas</span></button></li>
-    <li><button type="button" data-lesson-step="switching"      aria-label="Lesson 3 — Switching"><span class="n">03</span><span>Switching</span></button></li>
-    <li><button type="button" data-lesson-step="scenarios-what" aria-label="Lesson 4 — What's a scenario"><span class="n">04</span><span>What's a scenario</span></button></li>
-    <li><button type="button" data-lesson-step="scenarios-why"  aria-label="Lesson 5 — Why bother"><span class="n">05</span><span>Why bother</span></button></li>
-    <li><button type="button" data-lesson-step="scenarios-see"  aria-label="Lesson 6 — Seeing them"><span class="n">06</span><span>Seeing them</span></button></li>
-    <li><button type="button" data-lesson-step="scenarios-make" aria-label="Lesson 7 — Making one"><span class="n">07</span><span>Making one</span></button></li>
-    <li><button type="button" data-lesson-step="aware"          aria-label="Lesson 8 — The aware line"><span class="n">08</span><span>Aware line</span></button></li>
-    <li><button type="button" data-lesson-step="peek"           aria-label="Lesson 9 — Peek"><span class="n">09</span><span>Peek</span></button></li>
-    <li><button type="button" data-lesson-step="borrow"         aria-label="Lesson 10 — Borrow"><span class="n">10</span><span>Borrow</span></button></li>
-    <li><button type="button" data-lesson-step="compare"        aria-label="Lesson 11 — Compare"><span class="n">11</span><span>Compare</span></button></li>
-    <li><button type="button" data-lesson-step="drafts"         aria-label="Lesson 12 — Drafts vs scenarios"><span class="n">12</span><span>Drafts</span></button></li>
-    <li><button type="button" data-lesson-step="archive"        aria-label="Lesson 13 — Set aside"><span class="n">13</span><span>Set aside</span></button></li>
-    <li><button type="button" data-lesson-step="adopt"          aria-label="Lesson 14 — Adopt"><span class="n">14</span><span>Adopt</span></button></li>
-    <li><button type="button" data-lesson-step="matrix"         aria-label="Lesson 15 — Decision matrix"><span class="n">15</span><span>Matrix</span></button></li>
-    <li><button type="button" data-lesson-step="wikilinks"      aria-label="Lesson 16 — Wikilinks"><span class="n">16</span><span>Wikilinks</span></button></li>
-    <li><button type="button" data-lesson-step="open-questions" aria-label="Lesson 17 — Open questions"><span class="n">17</span><span>Open ??</span></button></li>
-    <li><button type="button" data-lesson-step="tags"           aria-label="Lesson 18 — Tags"><span class="n">18</span><span>Tags</span></button></li>
-    <li><button type="button" data-lesson-step="history"        aria-label="Lesson 19 — History"><span class="n">19</span><span>History</span></button></li>
-    <li><button type="button" data-lesson-step="cheatsheet"     aria-label="Lesson 20 — Cheat sheet"><span class="n">20</span><span>Cheat sheet</span></button></li>
-    <li><button type="button" data-lesson-step="faq"            aria-label="Lesson 21 — FAQ"><span class="n">21</span><span>FAQ</span></button></li>
+    <li><button type="button" data-lesson-step="modes"             aria-label="Lesson 1 — Personas"><span class="n">01</span><span>Personas</span></button></li>
+    <li><button type="button" data-lesson-step="personas"          aria-label="Lesson 2 — The five tailored personas"><span class="n">02</span><span>Tailored 5</span></button></li>
+    <li><button type="button" data-lesson-step="switching"         aria-label="Lesson 3 — Switching"><span class="n">03</span><span>Switching</span></button></li>
+    <li><button type="button" data-lesson-step="scenarios-what"    aria-label="Lesson 4 — What's a scenario"><span class="n">04</span><span>What's a scenario</span></button></li>
+    <li><button type="button" data-lesson-step="scenarios-why"     aria-label="Lesson 5 — Why bother"><span class="n">05</span><span>Why bother</span></button></li>
+    <li><button type="button" data-lesson-step="scenarios-see"     aria-label="Lesson 6 — Seeing them"><span class="n">06</span><span>Seeing them</span></button></li>
+    <li><button type="button" data-lesson-step="scenarios-make"    aria-label="Lesson 7 — Making one"><span class="n">07</span><span>Making one</span></button></li>
+    <li><button type="button" data-lesson-step="aware"             aria-label="Lesson 8 — The aware line"><span class="n">08</span><span>Aware line</span></button></li>
+    <li><button type="button" data-lesson-step="peek"              aria-label="Lesson 9 — Peek"><span class="n">09</span><span>Peek</span></button></li>
+    <li><button type="button" data-lesson-step="borrow"            aria-label="Lesson 10 — Borrow"><span class="n">10</span><span>Borrow</span></button></li>
+    <li><button type="button" data-lesson-step="compare"           aria-label="Lesson 11 — Compare"><span class="n">11</span><span>Compare</span></button></li>
+    <li><button type="button" data-lesson-step="drafts"            aria-label="Lesson 12 — Drafts vs scenarios"><span class="n">12</span><span>Drafts</span></button></li>
+    <li><button type="button" data-lesson-step="archive"           aria-label="Lesson 13 — Set aside"><span class="n">13</span><span>Set aside</span></button></li>
+    <li><button type="button" data-lesson-step="adopt"             aria-label="Lesson 14 — Adopt"><span class="n">14</span><span>Adopt</span></button></li>
+    <li><button type="button" data-lesson-step="matrix"            aria-label="Lesson 15 — Decision matrix"><span class="n">15</span><span>Matrix</span></button></li>
+    <li><button type="button" data-lesson-step="wikilinks"         aria-label="Lesson 16 — Wikilinks"><span class="n">16</span><span>Wikilinks</span></button></li>
+    <li><button type="button" data-lesson-step="selection-toolbar" aria-label="Lesson 17 — Selection toolbar"><span class="n">17</span><span>Selection bar</span></button></li>
+    <li><button type="button" data-lesson-step="slash-commands"    aria-label="Lesson 18 — Slash commands"><span class="n">18</span><span>/ commands</span></button></li>
+    <li><button type="button" data-lesson-step="open-questions"    aria-label="Lesson 19 — Open questions"><span class="n">19</span><span>Open ??</span></button></li>
+    <li><button type="button" data-lesson-step="tags"              aria-label="Lesson 20 — Tags"><span class="n">20</span><span>Tags</span></button></li>
+    <li><button type="button" data-lesson-step="glossary"          aria-label="Lesson 21 — Glossary"><span class="n">21</span><span>Glossary</span></button></li>
+    <li><button type="button" data-lesson-step="history"           aria-label="Lesson 22 — History"><span class="n">22</span><span>History</span></button></li>
+    <li><button type="button" data-lesson-step="cheatsheet"        aria-label="Lesson 23 — Cheat sheet"><span class="n">23</span><span>Cheat sheet</span></button></li>
+    <li><button type="button" data-lesson-step="faq"               aria-label="Lesson 24 — FAQ"><span class="n">24</span><span>FAQ</span></button></li>
   </ol>
 </nav>
 
@@ -1109,47 +1112,79 @@
      1 — MODES
      ─────────────────────────────────────────────────────────── -->
 <section id="modes" class="lesson-card" hidden>
-<h2><span class="num">01</span>Modes — how busy do you want the app to feel?</h2>
+<h2><span class="num">01</span>Personas — one tiny choice about how the app should feel</h2>
 
-<p>When you first open Yarrow, there's one tiny choice to make, and it's truly tiny — you can change your mind any time, nothing gets deleted, and there's no wrong answer. The choice is just: <em>how much of the app do you want visible right now?</em> That's your <strong>Mode</strong>. There are two of them:</p>
+<p>When you first open Yarrow, there's one small choice to make, and it's truly small — you can change your mind any time, nothing gets deleted, and there's no wrong answer. The choice is just: <em>what kind of work are you mostly doing right now?</em> That's your <strong>Persona</strong>. There are seven of them, all in one picker.</p>
 
-<div class="diagram" aria-label="Two boxes showing the difference between Basic and Path-Based modes">
-<svg viewBox="0 0 700 230" role="img" aria-labelledby="modesTitle">
-  <title id="modesTitle">Basic mode vs Path-Based mode side by side</title>
-  <!-- Basic mode -->
-  <rect x="20" y="30" width="320" height="180" rx="10" fill="var(--s2)" stroke="var(--bd2)"/>
-  <text x="40" y="60" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--t3)" letter-spacing="1.5">BASIC</text>
-  <text x="40" y="90" font-family="Newsreader, serif" font-size="20" fill="var(--char)" font-weight="500">Just write.</text>
-  <line x1="40" y1="110" x2="320" y2="110" stroke="var(--bd2)"/>
-  <text x="40" y="135" font-family="Source Serif 4, serif" font-size="13" fill="var(--t1)">— A reading / writing toggle</text>
-  <text x="40" y="155" font-family="Source Serif 4, serif" font-size="13" fill="var(--t1)">— Outline, Tags, Scratchpad</text>
-  <text x="40" y="175" font-family="Source Serif 4, serif" font-size="13" fill="var(--t1)">— Settings</text>
-  <text x="40" y="200" font-family="Source Serif 4, serif" font-size="12" fill="var(--t3)" font-style="italic">Five buttons. That's it.</text>
+<div class="aside warm">
+<h3>New in 3.1 — one picker instead of two</h3>
+<p>In Yarrow 3.0 there were two separate choices, "Mode" and "Persona." Most people picked their Mode, then tried to remember what a Persona was, then gave up. In 3.1 we collapsed them into one. Every option below — including the minimalist <em>Basic</em> and the full-toolbox <em>Default</em> — is just called a <strong>Persona</strong> now. One picker. One choice. If you used the old wording, your existing setting still works; the labels just got friendlier.</p>
+</div>
 
-  <!-- Path-Based mode -->
-  <rect x="360" y="30" width="320" height="180" rx="10" fill="var(--yelp)" stroke="var(--yel)" stroke-width="1.5"/>
-  <text x="380" y="60" font-family="JetBrains Mono, monospace" font-size="11" fill="var(--yeld)" letter-spacing="1.5">PATH-BASED</text>
-  <text x="380" y="90" font-family="Newsreader, serif" font-size="20" fill="var(--yeld)" font-weight="500">The full workshop.</text>
-  <line x1="380" y1="110" x2="660" y2="110" stroke="var(--yel)" opacity="0.5"/>
-  <text x="380" y="135" font-family="Source Serif 4, serif" font-size="13" fill="var(--yeld)">— Everything in Basic, plus:</text>
-  <text x="380" y="155" font-family="Source Serif 4, serif" font-size="13" fill="var(--yeld)">— Connections, History, Scenarios</text>
-  <text x="380" y="175" font-family="Source Serif 4, serif" font-size="13" fill="var(--yeld)">— Kits, Plugin slots</text>
-  <text x="380" y="200" font-family="Source Serif 4, serif" font-size="12" fill="var(--yeld)" font-style="italic">The default. Pick this one.</text>
+<h3>The seven choices, at a glance</h3>
+<div class="diagram" aria-label="Seven persona tiles in a row">
+<svg viewBox="0 0 720 230" role="img" aria-labelledby="modesTitle">
+  <title id="modesTitle">The seven Personas in 3.1: Basic, Default, Writer, Researcher, Developer, Clinician, Cooking</title>
+  <!-- Tile metrics: 7 across, each 92 wide, 6 px gap, starting at x=18. -->
+  <!-- Basic -->
+  <rect x="18"  y="34" width="92" height="162" rx="10" fill="var(--s2)" stroke="var(--bd2)"/>
+  <text x="64" y="62" font-family="JetBrains Mono, monospace" font-size="9.5" fill="var(--t3)" letter-spacing="1.5" text-anchor="middle">BASIC</text>
+  <text x="64" y="98" font-family="Newsreader, serif" font-size="14" fill="var(--char)" text-anchor="middle">Just write.</text>
+  <text x="64" y="124" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">Minimal rail.</text>
+  <text x="64" y="142" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">Five buttons.</text>
+  <text x="64" y="178" font-family="Source Serif 4, serif" font-size="10" fill="var(--t3)" font-style="italic" text-anchor="middle">Quietest.</text>
+  <!-- Default -->
+  <rect x="118" y="34" width="92" height="162" rx="10" fill="var(--yelp)" stroke="var(--yel)" stroke-width="1.5"/>
+  <text x="164" y="62" font-family="JetBrains Mono, monospace" font-size="9.5" fill="var(--yeld)" letter-spacing="1.5" text-anchor="middle">DEFAULT</text>
+  <text x="164" y="98" font-family="Newsreader, serif" font-size="14" fill="var(--yeld)" text-anchor="middle">Full Yarrow.</text>
+  <text x="164" y="124" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--yeld)" text-anchor="middle">Connections,</text>
+  <text x="164" y="142" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--yeld)" text-anchor="middle">history, kits.</text>
+  <text x="164" y="178" font-family="Source Serif 4, serif" font-size="10" fill="var(--yeld)" font-style="italic" text-anchor="middle">Picked by most.</text>
+  <!-- Writer -->
+  <rect x="218" y="34" width="92" height="162" rx="10" fill="rgba(198,106,120,0.08)" stroke="#c66a78"/>
+  <text x="264" y="62" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#c66a78" letter-spacing="1.5" text-anchor="middle">WRITER</text>
+  <text x="264" y="98" font-family="Newsreader, serif" font-size="14" fill="var(--char)" text-anchor="middle">Sentences.</text>
+  <text x="264" y="124" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">Typewriter,</text>
+  <text x="264" y="142" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">streak.</text>
+  <!-- Researcher -->
+  <rect x="318" y="34" width="92" height="162" rx="10" fill="rgba(74,140,79,0.08)" stroke="#4a8c4f"/>
+  <text x="364" y="62" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#4a8c4f" letter-spacing="1.5" text-anchor="middle">RESEARCHER</text>
+  <text x="364" y="98" font-family="Newsreader, serif" font-size="14" fill="var(--char)" text-anchor="middle">Sources.</text>
+  <text x="364" y="124" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">??, sources,</text>
+  <text x="364" y="142" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">papers.</text>
+  <!-- Developer -->
+  <rect x="418" y="34" width="92" height="162" rx="10" fill="rgba(79,111,163,0.08)" stroke="#4f6fa3"/>
+  <text x="464" y="62" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#4f6fa3" letter-spacing="1.5" text-anchor="middle">DEVELOPER</text>
+  <text x="464" y="98" font-family="Newsreader, serif" font-size="14" fill="var(--char)" text-anchor="middle">Decisions.</text>
+  <text x="464" y="124" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">Decision log,</text>
+  <text x="464" y="142" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">ADRs, code.</text>
+  <!-- Clinician -->
+  <rect x="518" y="34" width="92" height="162" rx="10" fill="rgba(63,138,138,0.08)" stroke="#3f8a8a"/>
+  <text x="564" y="62" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#3f8a8a" letter-spacing="1.5" text-anchor="middle">CLINICIAN</text>
+  <text x="564" y="98" font-family="Newsreader, serif" font-size="14" fill="var(--char)" text-anchor="middle">Sessions.</text>
+  <text x="564" y="124" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">SOAP, BIRP,</text>
+  <text x="564" y="142" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">follow-ups.</text>
+  <!-- Cooking -->
+  <rect x="618" y="34" width="92" height="162" rx="10" fill="rgba(200,132,61,0.08)" stroke="#c8843d"/>
+  <text x="664" y="62" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#c8843d" letter-spacing="1.5" text-anchor="middle">COOKING</text>
+  <text x="664" y="98" font-family="Newsreader, serif" font-size="14" fill="var(--char)" text-anchor="middle">Recipes.</text>
+  <text x="664" y="124" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">Cook mode,</text>
+  <text x="664" y="142" font-family="Source Serif 4, serif" font-size="10.5" fill="var(--t2)" text-anchor="middle">shopping list.</text>
 </svg>
-<div class="cap">Two modes, one decision. Switching between them is instant and never deletes anything.</div>
+<div class="cap">Seven choices, one picker. The first two — <em>Basic</em> and <em>Default</em> — are about how much of the app is visible. The other five are tailored skins on top of Default for specific kinds of work.</div>
 </div>
 
 <h3>Basic — for when you just want to write</h3>
 <p><strong>Basic</strong> is what you'd hand to a friend who said, "I just want a quiet notebook, please." The right-hand toolbar shows only the essentials: a switch between reading and writing, an outline of the current note, your tags, a scratchpad, and settings. That's it. Every other Yarrow feature is still there — it's just not on the wall, like a tool you keep in the drawer instead of the workbench.</p>
 
-<h3>Path-Based — for when you want the whole workshop</h3>
-<p><strong>Path-Based</strong> is what most people end up using, and it's the default. You get everything Basic has, plus the connections graph, the history scrubber, Scenarios, Kits, and a small space saved for whichever <em>persona</em> you choose (we'll get to those in a second). It looks like a bit more, but you can ignore any part of it — nothing here demands your attention until you reach for it.</p>
+<h3>Default — the full Yarrow workshop</h3>
+<p><strong>Default</strong> is what most people end up using, and it's what new workspaces start at. You get everything Basic has, plus the connections graph, the history scrubber, Scenarios, and Kits. The five tailored personas in the next lesson all sit on top of Default — they don't take anything away, they add a small tinted button group on the right rail for whatever kind of work you're doing.</p>
 
-<p class="pull">Modes are gentle leanings, not locked doors. Whichever one you pick, every feature is still one quick keyboard shortcut away.</p>
+<p class="pull">A persona is a gentle leaning, not a locked door. Whichever one you pick, every feature is still one quick keyboard shortcut away.</p>
 
 <div class="aside warm">
 <h3>A small promise</h3>
-<p>Choosing a mode never takes anything away from you. If you're in Basic and you suddenly want Scenarios, just hit <kbd>⌘K</kbd> and type the word — the Scenarios pane opens like nothing's missing. The mode only decides what shows up on the rail by default. Switch modes whenever you like; your notes don't notice and never move.</p>
+<p>Choosing a persona never takes anything away from you. If you're in Basic and you suddenly want Scenarios, just hit <kbd>⌘K</kbd> and type the word — the Scenarios pane opens like nothing's missing. The persona only decides what shows up on the rail by default. Switch personas whenever you like; your notes don't notice and never move.</p>
 </div>
 </section>
 
@@ -1157,11 +1192,16 @@
      2 — PERSONAS
      ─────────────────────────────────────────────────────────── -->
 <section id="personas" class="lesson-card" hidden>
-<h2><span class="num">02</span>Personas — what kind of writing are you doing today?</h2>
+<h2><span class="num">02</span>The five tailored personas — what kind of writing are you doing today?</h2>
 
-<p>If a Mode is the shape of the app, a <strong>Persona</strong> is its mood. It's an optional little add-on that sits on top of Path-Based mode and gently nudges the toolbar toward whatever you're doing right now — drafting a chapter, working through a research paper, keeping a recipe book, talking through a tough decision. A small group of tinted buttons appears on the right rail, three or so, all picked to be useful for that kind of work.</p>
+<p>The first two personas (<em>Basic</em> and <em>Default</em>) were about how much of the app is visible. The other five are about <strong>flavour</strong>. Each one sits on top of Default and gently nudges the right rail toward a specific kind of work — drafting a chapter, working through a research paper, keeping a recipe book, talking through a tough decision. A small group of tinted buttons appears, three or so, all picked to be useful for that kind of work.</p>
 
-<p>You pick one persona at a time, and there are five (plus a "no thanks" option if none of them fit). All five share exactly the same notes, tags, scenarios, and history underneath — the persona is just the easier doorway in.</p>
+<p>You pick one tailored persona at a time, or skip them entirely by sticking with Default. All five share exactly the same notes, tags, scenarios, and history underneath — the persona is just the easier doorway in.</p>
+
+<div class="aside warm">
+<h3>The first-run wizard — "How should Yarrow feel?"</h3>
+<p>When you open a brand-new workspace in 3.1, a one-screen wizard asks just one question: <strong>Minimal</strong>, <strong>Full Yarrow</strong>, or <strong>Tailored</strong>? The first two pick a persona for you implicitly (Basic or Default). <em>Tailored</em> opens the five-persona grid below, so you can pick the flavour that fits your work today. You can change it any time afterwards from Settings → Personas — see the next lesson.</p>
+</div>
 
 <div class="persona-grid">
   <div class="persona-card" style="--persona-c: #c66a78;">
@@ -1190,9 +1230,9 @@
     <p>For the kitchen, with hands that aren't going to wipe themselves. Cook mode bumps up the text size and stops the screen from sleeping, the URL clipper turns a recipe site into a clean note, and a button moves the ingredients straight to your shopping list — because that's the bit nobody wants to do by hand.</p>
   </div>
   <div class="persona-card" style="--persona-c: #8c95a1;">
-    <h4><span class="swatch"></span>None</h4>
-    <div class="role">Path-Based without the extras</div>
-    <p>For when none of the five fit, or your work shifts too often to settle on one, or you just want the rail to be quieter. This is plain Path-Based mode — all the features, none of the persona buttons. There's nothing wrong with picking this; many people stay here forever.</p>
+    <h4><span class="swatch"></span>Default</h4>
+    <div class="role">Full Yarrow, no tinted extras</div>
+    <p>For when none of the five fit, or your work shifts too often to settle on one, or you just want the rail to be quieter. <em>Default</em> is the full Yarrow toolbox — all the features, none of the persona buttons. There's nothing wrong with picking this; many people stay here forever.</p>
   </div>
 </div>
 
@@ -1208,24 +1248,27 @@
      3 — SWITCHING
      ─────────────────────────────────────────────────────────── -->
 <section id="switching" class="lesson-card" hidden>
-<h2><span class="num">03</span>How to switch — two ways, both painless</h2>
+<h2><span class="num">03</span>How to switch — three ways, all painless</h2>
 
-<p>You have two options for switching. They both work; pick the one that feels easier in the moment.</p>
+<p>You have three options for switching personas, and they all work — pick whichever feels easier in the moment.</p>
 
-<h3>The slow-and-clear way: Settings</h3>
+<h3>1. The search-driven palette in Settings</h3>
+<p>In 3.1 the Settings → <strong>Personas</strong> pane is a search-driven palette. Open it (<kbd>⌘,</kbd> on Mac, <kbd>Ctrl ,</kbd> on Linux and Windows), and you'll see a search box, a small <em>Recently used</em> row at the top (up to four), and the seven personas underneath. Arrow keys move the cursor, <kbd>Enter</kbd> picks the one you want, <kbd>Esc</kbd> clears your search.</p>
 <ol class="steps">
-  <li>Press <kbd>⌘,</kbd> on Mac, or <kbd>Ctrl ,</kbd> on Linux and Windows. That opens Settings.</li>
-  <li>Click the <strong>Modes &amp; Personas</strong> tab near the top.</li>
-  <li>Step 1 is where you pick your mode — <em>Basic</em> or <em>Path-Based</em>.</li>
-  <li>If you went Path-Based, Step 2 lets you pick a persona, or skip it with <em>None</em>.</li>
+  <li>Press <kbd>⌘,</kbd> / <kbd>Ctrl ,</kbd> to open Settings.</li>
+  <li>Click the <strong>Personas</strong> tab.</li>
+  <li>Type the persona name (or two letters of it) and press <kbd>Enter</kbd>. Done.</li>
 </ol>
 
-<h3>The quick way: command palette</h3>
+<h3>2. The Persona Actions popover (new in 3.1)</h3>
+<p>Look at the bottom-right of the window — there's a small pill that says the current persona's name. Click it and an Obsidian-style command list pops up, filtered to whatever's useful for that persona. It has its own search box and arrow-key navigation. Two universal rows always sit at the bottom: <em>Switch persona…</em> (which jumps to the picker above) and <em>Open command palette…</em>.</p>
+
+<h3>3. The command palette</h3>
 <p>Press <kbd>⌘K</kbd>, type the persona name (just "writer" works), and press <kbd>Enter</kbd>. The rail rearranges right then. No menus, no scrolling — just a few keys and you're there.</p>
 
 <div class="aside warm">
 <h3>About switching computers</h3>
-<p>Your mode and persona choice live on this computer, not in your notes. If you set up Yarrow on a second machine, that other machine starts fresh with its own mode and persona — sort of like how each room can have its own light setting. Your notes still sync; only this little preference is local.</p>
+<p>Your persona choice lives on this computer, not in your notes. If you set up Yarrow on a second machine, that other machine starts fresh with its own persona — sort of like how each room can have its own light setting. Your notes still sync; only this little preference is local.</p>
 </div>
 </section>
 
@@ -1626,7 +1669,12 @@
 <section id="wikilinks" class="lesson-card" hidden>
 <h2><span class="num">16</span>Wikilinks &amp; backlinks — letting your notes find each other</h2>
 
-<p>The second big idea in Yarrow, after scenarios, is letting your notes <strong>link to each other by name</strong>. While you're writing, type two square brackets — <code>[[</code> — and a small picker quietly appears. Start typing the title of any note in your workspace, and when you see the one you want, press <kbd>Enter</kbd> to drop in the link. Done.</p>
+<p>The second big idea in Yarrow, after scenarios, is letting your notes <strong>link to each other by name</strong>. While you're writing, type two square brackets — <code>[[</code> — and a small picker quietly appears right next to your cursor. Start typing the title of any note in your workspace, and when you see the one you want, press <kbd>Enter</kbd> to drop in the link. Done.</p>
+
+<div class="aside warm">
+<h3>3.1 — Create the note you're typing</h3>
+<p>If nothing in the picker matches what you're typing, the bottom row shows <em>"Create <em>your-query</em>"</em>. Press <kbd>Enter</kbd> and Yarrow scaffolds a brand-new note with that title for you on the spot — the link drops in, the new note is created in the background, and your cursor stays where it was. You can come back to fill in the new note any time, or click the link to jump straight to it.</p>
+</div>
 
 <div class="mock">
   <div class="title">A weekend in Lisbon</div>
@@ -1646,10 +1694,46 @@
 </section>
 
 <!-- ───────────────────────────────────────────────────────────
-     17 — OPEN QUESTIONS
+     17 — SELECTION TOOLBAR  (3.1)
+     ─────────────────────────────────────────────────────────── -->
+<section id="selection-toolbar" class="lesson-card" hidden>
+<h2><span class="num">17</span>The selection toolbar — drag, then choose</h2>
+
+<p>New in 3.1: any time you drag to highlight some text in a note, a small floating bar appears just above the selection. Six buttons, each one short and obvious — <strong>Bold</strong>, <strong>Italic</strong>, <strong>Code</strong>, <code>[[ ]]</code>, <strong>Highlight</strong>, and <code>??</code>. Click one and the change applies to whatever you have selected. <kbd>Esc</kbd> dismisses the bar; clicking outside the selection does too.</p>
+
+<div class="mock">
+  <div class="title">A weekend in Lisbon</div>
+  <div class="body">We're flying out from <em>[[Madrid]]</em> on the high-speed train, which is going to be the <strong>fastest route</strong> by a long way.</div>
+</div>
+
+<p>This is just a faster version of moves you already had. <em>Wrap-in-brackets-to-make-a-wikilink</em> used to be right-click → Insert wikilink. <em>Add bold</em> used to be the keyboard shortcut. The toolbar puts them all together so you can keep your hand on the mouse when that feels easier.</p>
+
+<p class="pull">If you prefer keyboard shortcuts, they all still work. The toolbar is just a polite alternative — nothing replaces what was already there.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     18 — SLASH COMMANDS  (3.1)
+     ─────────────────────────────────────────────────────────── -->
+<section id="slash-commands" class="lesson-card" hidden>
+<h2><span class="num">18</span>The <kbd>/</kbd> panel — insert anything without leaving the line</h2>
+
+<p>Also new in 3.1: type a forward slash (<kbd>/</kbd>) at the start of a line, or anywhere after whitespace, and a panel opens with a tidy list of things you can insert. Heading, callout, table, math, divider — the formatting moves. <code>[[ ]]</code>, <code>![[ ]]</code> (transclude), <code>#</code> (tag), <code>??</code> — the linking moves. Open the command palette, open the scratchpad, toggle focus mode, scrub through history — the app-level moves.</p>
+
+<p>The panel is searchable. Type a couple of letters and the list filters. Arrow keys to navigate, <kbd>Enter</kbd> to pick, <kbd>Esc</kbd> to dismiss.</p>
+
+<div class="aside warm">
+<h3>Persona-aware at the top</h3>
+<p>Whatever persona you're using, its most-useful commands surface at the top of the panel. <em>Researcher</em> sees <em>open questions</em> / <em>sources</em> / <em>new source</em>. <em>Developer</em> sees <em>decisions</em> / <em>new ADR</em> / <em>toggle code highlight</em>. <em>Writer</em> sees the typewriter and the streak. The rest of the panel is the same for everyone, so a command you learned once is in the same place tomorrow.</p>
+</div>
+
+<p>If you've used Notion or Obsidian's <kbd>/</kbd> menu before, this works the same way. If you haven't, the easiest way to learn it is to type <kbd>/</kbd> in a note right now and scroll through the list — most rows are one-word names that explain themselves.</p>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     19 — OPEN QUESTIONS
      ─────────────────────────────────────────────────────────── -->
 <section id="open-questions" class="lesson-card" hidden>
-<h2><span class="num">17</span>Open questions — what to do with the things you don't know yet</h2>
+<h2><span class="num">19</span>Open questions — what to do with the things you don't know yet</h2>
 
 <p>Writing is full of moments where you hit something you don't have answers to. A fact you need to look up later. A decision you're not ready to make. A name you'll invent in a different sitting. Most tools force you to either pause and figure it out, or write a TODO and lose track of it. Yarrow has a gentler answer: just type a literal <code>??</code> next to the thought, and keep going. Yarrow notices it and gathers it up for you as an <strong>open question</strong>.</p>
 
@@ -1666,10 +1750,10 @@
 </section>
 
 <!-- ───────────────────────────────────────────────────────────
-     18 — TAGS
+     20 — TAGS
      ─────────────────────────────────────────────────────────── -->
 <section id="tags" class="lesson-card" hidden>
-<h2><span class="num">18</span>Tags — the gentlest way to organise</h2>
+<h2><span class="num">20</span>Tags — the gentlest way to organise</h2>
 
 <p>Tags are the most low-key tool Yarrow gives you. Anywhere in a note — the body, the YAML frontmatter, anywhere — type <code>#tagname</code>, and that's it. The tag is indexed. Click any tag inside the editor to filter your notes list to everything else that uses it.</p>
 
@@ -1704,10 +1788,48 @@
 </section>
 
 <!-- ───────────────────────────────────────────────────────────
-     19 — HISTORY
+     21 — INLINE GLOSSARY  (3.1)
+     ─────────────────────────────────────────────────────────── -->
+<section id="glossary" class="lesson-card" hidden>
+<h2><span class="num">21</span>The inline glossary — your own vocabulary, underlined in place</h2>
+
+<p>Most of us have a small pile of words that come up over and over in our notes — proper nouns, project codenames, terms of art, characters in a story, ingredients in a kitchen vocabulary. In 3.1 you can teach Yarrow what they mean once, and from then on every occurrence of the term gets a subtle dotted underline. Hover the underline and the definition pops up. That's the inline glossary.</p>
+
+<h3>How to add a term</h3>
+<ol class="steps">
+  <li>Open Settings (<kbd>⌘,</kbd> / <kbd>Ctrl ,</kbd>) and click the <strong>Glossary</strong> tab.</li>
+  <li>Type the term, type a definition, click <em>Add term</em>. (<kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> in the definition field works too.)</li>
+  <li>That's it. Every note open in the editor re-highlights right away.</li>
+</ol>
+
+<p>Each row in the list is editable in place — change the term, edit the definition, or click <em>Remove</em>. Edits commit when you click out of the field or press <kbd>Enter</kbd>.</p>
+
+<div class="mock">
+  <div class="title">Field notes — September</div>
+  <div class="body">The <em>shore</em> washed out three of the trail markers. We'll need to re-pin them before the next <em>tide</em> cycle.</div>
+</div>
+
+<h3>How the matching works</h3>
+<ul>
+  <li><strong>Case-insensitive.</strong> Defining <em>shore</em> matches <em>Shore</em>, <em>SHORE</em>, and so on.</li>
+  <li><strong>Word-boundary aware.</strong> Defining <em>shore</em> won't underline <em>ashore</em> or <em>shoreline</em>.</li>
+  <li><strong>Longest term wins.</strong> If you've defined both <em>data</em> and <em>data structure</em>, the longer phrase highlights as a unit.</li>
+</ul>
+
+<h3>Where the glossary lives</h3>
+<p>It's a single small file at <code>.yarrow/glossary.json</code> inside your workspace, tracked alongside your notes. That means your glossary travels with the workspace: if you sync to another machine, you'll see the same underlines and the same definitions there. There's nothing magical about the file — you can open it in any text editor if you want to bulk-edit or restore a backup; Yarrow re-reads it when you open the workspace.</p>
+
+<div class="aside warm">
+<h3>Coming from 3.0?</h3>
+<p>In 3.0 you marked individual notes as <em>glossary entries</em> via a flag in their frontmatter, and the note's title became the term. 3.1 dropped that mechanism in favour of the standalone file — it's faster to scan, easier to share, and decoupled from any particular note. Re-add the terms you care about in Settings → Glossary; the file is now the single source of truth.</p>
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────
+     22 — HISTORY
      ─────────────────────────────────────────────────────────── -->
 <section id="history" class="lesson-card" hidden>
-<h2><span class="num">19</span>History — the part that quietly remembers everything</h2>
+<h2><span class="num">22</span>History — the part that quietly remembers everything</h2>
 
 <p>Whenever you pause writing for a few seconds, Yarrow tucks away a tiny snapshot of the note. These are called <strong>checkpoints</strong>, and the lovely part is that you do absolutely nothing to make them happen. No commit messages. No "save now?" prompts. No agonising about whether this version was good enough to keep. Yarrow just remembers.</p>
 
@@ -1733,15 +1855,15 @@
      20 — CHEAT SHEET
      ─────────────────────────────────────────────────────────── -->
 <section id="cheatsheet" class="lesson-card" hidden>
-<h2><span class="num">20</span>The little cheat sheet</h2>
+<h2><span class="num">23</span>The little cheat sheet</h2>
 
 <p>If you skim everything else, this is the page to keep. The vocabulary, the buttons, the keys.</p>
 
 <div class="aside">
 <h3>Words you'll hear a lot</h3>
 <ul>
-  <li><strong>Mode</strong> — the overall shape of the app. Either <em>Basic</em> (quieter) or <em>Path-Based</em> (the full toolkit).</li>
-  <li><strong>Persona</strong> — an optional little group of buttons that nudges Path-Based mode toward a specific kind of work. <em>Writer / Researcher / Developer / Clinician / Cooking / None.</em></li>
+  <li><strong>Persona</strong> — the overall shape and mood of the app. One picker, seven choices: <em>Basic, Default, Writer, Researcher, Developer, Clinician, Cooking</em>. (3.0 split this into "Mode" and "Persona"; 3.1 unified them.)</li>
+  <li><strong>Persona Actions popover</strong> — the command list that pops up when you click the persona pill in the status bar.</li>
   <li><strong>Trunk</strong> (also called <code>main</code>) — your default version of things. Where edits go unless you've branched off.</li>
   <li><strong>Scenario</strong> — a named "what if" version of your notes. (Yarrow 2.x called this a "path".)</li>
   <li><strong>Borrow</strong> — copy one note's version from one scenario into another. The source stays untouched.</li>
@@ -1750,6 +1872,10 @@
   <li><strong>Differs</strong> — a quiet word meaning "this note's body isn't the same as the version on main."</li>
   <li><strong>Draft</strong> — a private alternative body for a single note. Lives in a small tab above the title.</li>
   <li><strong>Checkpoint</strong> — a tiny snapshot Yarrow saves automatically whenever you pause.</li>
+  <li><strong>Wikilink picker</strong> — the small list that opens when you type <code>[[</code>. Picks a note to link, or scaffolds a new one via the <em>Create</em> row.</li>
+  <li><strong>Selection toolbar</strong> — the floating bar that appears over highlighted text. Bold, italic, code, wikilink, highlight, <code>??</code>.</li>
+  <li><strong>Slash panel</strong> — the panel that opens when you type <code>/</code>. Formatting, linking, and app-level commands; persona-specific items at the top.</li>
+  <li><strong>Glossary</strong> — your workspace's term/definition list, edited in Settings → Glossary, stored at <code>.yarrow/glossary.json</code>.</li>
 </ul>
 </div>
 
@@ -1776,7 +1902,10 @@
   <li><kbd>⌘⇧B</kbd> — branch off from whatever note you're in.</li>
   <li><kbd>⌘T</kbd> — jump straight to today's journal.</li>
   <li><kbd>⌘\</kbd> — turn focus mode on or off.</li>
-  <li><kbd>⌘,</kbd> — open Settings (where Modes &amp; Personas live).</li>
+  <li><kbd>⌘,</kbd> — open Settings (where the Persona picker and the Glossary live).</li>
+  <li><kbd>[[</kbd> in the editor — open the inline wikilink picker.</li>
+  <li><kbd>/</kbd> at line start — open the slash-command panel.</li>
+  <li>drag to highlight — the selection toolbar floats above.</li>
   <li><kbd>⌘⇧S</kbd> — toggle the scratchpad.</li>
   <li><kbd>j</kbd> / <kbd>k</kbd> — scroll through changes in Compare; scrub the timeline in History.</li>
   <li><kbd>Esc</kbd> — close any modal, dismiss any popover. Always works.</li>
@@ -1788,7 +1917,7 @@
      21 — FAQ
      ─────────────────────────────────────────────────────────── -->
 <section id="faq" class="lesson-card" hidden>
-<h2><span class="num">21</span>Questions you might be sitting with</h2>
+<h2><span class="num">24</span>Questions you might be sitting with</h2>
 
 <p>If something's been quietly bugging you, this is where we try to answer it. Don't see your question here? It's a real one, and you can <a href="https://github.com/neuralpunk/yarrow/issues" rel="noopener">add it</a>; we'd genuinely like to hear it.</p>
 
@@ -1838,7 +1967,13 @@
   <details>
     <summary>I'm coming from Yarrow 2.x — what's actually different?</summary>
     <div class="ans">
-      <p>Three things, none of which break your existing notes: (1) "Paths" is now called "Scenarios" — same feature, friendlier name. (2) Modes &amp; Personas is new; you'll start in <em>Path-Based</em> mode by default, which is exactly the rail you knew, and you can opt into a Persona if you want a tinted button group on top. (3) There are now six themes, with the new <em>Vellum</em> and <em>Workshop</em> as the defaults, plus Linen, Graphite, Ashrose, and Dracula. Your notes, scenarios, history, and tags are completely untouched.</p>
+      <p>Three things, none of which break your existing notes: (1) "Paths" is now called "Scenarios" — same feature, friendlier name. (2) The Persona picker is new; you'll start in <em>Default</em>, which is exactly the rail you knew, and you can pick one of the five tailored personas if you want a tinted button group on top. (3) There are now six themes, with the new <em>Vellum</em> and <em>Workshop</em> as the defaults, plus Linen, Graphite, Ashrose, and Dracula. Your notes, scenarios, history, and tags are completely untouched.</p>
+    </div>
+  </details>
+  <details>
+    <summary>I'm coming from Yarrow 3.0 — what changed in 3.1?</summary>
+    <div class="ans">
+      <p>Five visible things: (1) "Mode" and "Persona" collapsed into a single picker — seven choices in one search palette instead of two separate ones. (2) A first-run wizard asks one friendly question on a new workspace — Minimal, Full Yarrow, or Tailored — so you don't land on a blank screen. (3) The editor gained an <strong>inline wikilink picker</strong> on <code>[[</code> (with a "Create" row), a floating <strong>selection toolbar</strong> over highlighted text, and a <strong>slash-command panel</strong> on <code>/</code>. (4) The inline <strong>Glossary</strong> moved out of frontmatter into a single file you edit from Settings → Glossary, with a live in-editor underline. (5) Every animation in the app routes through one calmer motion vocabulary. Your notes, scenarios, history, tags, and personas migrate as-is — nothing on disk has to move.</p>
     </div>
   </details>
   <details>
@@ -1862,7 +1997,7 @@
     <a href="index.html">← Back to the home page</a>
     <a href="https://github.com/neuralpunk/yarrow/releases/latest" rel="noopener">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
-      Download 3.0
+      Download 3.1
     </a>
   </div>
 </div>
@@ -1878,8 +2013,8 @@
     Previous
   </button>
   <div class="lesson-progress">
-    <span data-lesson-progress-label>Lesson 1 of 21</span>
-    <span class="lesson-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="21" aria-valuenow="1"></span>
+    <span data-lesson-progress-label>Lesson 1 of 24</span>
+    <span class="lesson-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="24" aria-valuenow="1"></span>
   </div>
   <button type="button" data-lesson-next aria-label="Next lesson">
     Next

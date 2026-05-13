@@ -1492,9 +1492,10 @@ html[data-platform="linux"] .font-serif i {
 
 /* 2.1 Paper & Warmth. `--paper-texture` holds the background-image stack
    (default is `none` → no-op), `--paper-texture-size` tiles it, and
-   `--paper-warmth-filter` applies a subtle sepia/hue-rotate on the body
-   surface only. We stay out of the editor's way: the CodeMirror wrapper
-   below resets the filter back to `none` so typographic contrast is
+   `--paper-warmth-filter` applies a subtle sepia/hue-rotate on `#root`
+   (see the `data-paper-warmth-active` rule below for why it's not on
+   `body`). We stay out of the editor's way: the CodeMirror wrapper
+   resets the filter back to `none` so typographic contrast is
    untouched. */
 body {
   background-color: var(--bg);
@@ -1523,7 +1524,16 @@ body {
    surface. This was the single largest contributor to scroll/hover
    sluggishness on Linux (webkit2gtk re-rasterised the entire body
    every paint when `filter` was set, even to `none`). */
-html[data-paper-warmth-active="true"] body {
+/* Apply the warmth tint to `#root` rather than `body`. CSS `filter`
+   promotes its host to a containing block for `position: fixed`
+   descendants, so when the rule was on `body` and `zoom` was *also*
+   on `body` (Roomy / Compact UI scale), `#root`'s `width: 100%`
+   resolved against body's counter-zoomed `90.9%` width instead of
+   the viewport — leaving a strip of blank space to the right of the
+   right-rail. Hosting the filter on `#root` itself keeps the visual
+   effect identical (everything user-visible lives inside `#root`)
+   without disturbing the zoom layout chain. */
+html[data-paper-warmth-active="true"] #root {
   filter: var(--paper-warmth-filter, none);
 }
 html[data-ui-zoom-active="true"] body {
@@ -2810,47 +2820,182 @@ g:has(> .radial-center:hover) .radial-still-ghost,
    overflow-hidden containers in AppShell can't clip it (the cause of
    the "typing / does nothing" bug on webkit2gtk / Wayland). */
 .cm-tooltip-autocomplete {
-  background: var(--bg) !important;
-  border: 1px solid var(--bd2) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2);
+  background: var(--paper, var(--bg)) !important;
+  border: 1px solid var(--bd) !important;
+  border-radius: 10px !important;
+  /* Layered shadow: a tight near-shadow for elevation off the editor
+     surface, and a wider soft drop for depth. Tuned to feel light on
+     light themes and substantial on dark themes. */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 14px 36px -12px rgba(0, 0, 0, 0.22) !important;
   font-family: var(--ui-font-family, var(--sans)) !important;
   font-size: 14px !important;
   font-weight: 450 !important;
   /* Above toolbars, modals' backdrops, etc. The tooltip is a child of
      <body>, so only its own z-index matters. */
   z-index: 100 !important;
-  min-width: 260px;
-  max-width: 420px;
+  min-width: 280px;
+  max-width: 460px;
+  padding: 4px !important;
+  overflow: hidden;
 }
 .cm-tooltip-autocomplete ul {
   max-height: 320px !important;
   font-family: inherit !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 .cm-tooltip-autocomplete ul li {
   color: var(--ch2) !important;
-  padding: 6px 10px !important;
+  padding: 7px 10px 7px 14px !important;
+  margin: 1px 0;
+  border-radius: 6px !important;
   display: flex;
   align-items: baseline;
   gap: 10px;
+  position: relative;
+  /* Smooth hover/select transitions that feel responsive but not
+     twitchy as the user arrow-keys through long lists. */
+  transition: background-color 90ms ease, color 90ms ease;
 }
 .cm-tooltip-autocomplete ul li[aria-selected] {
   background: var(--yelp) !important;
   color: var(--char) !important;
 }
+/* Active-row accent stripe — picks up the active path color when one
+   is set (e.g. on a story scenario), falls back to the workspace
+   accent. Subtle but gives the row a clear "I'm focused" cue beyond
+   just the background tint. */
+.cm-tooltip-autocomplete ul li[aria-selected]::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 99px;
+  background: var(--path-color, var(--yel));
+}
+/* The matched-substring portion of the label gets a slight emphasis
+   so users can see why a row matched their query. */
+.cm-tooltip-autocomplete .cm-completionMatchedText {
+  color: var(--yeld) !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+}
+.cm-tooltip-autocomplete ul li[aria-selected] .cm-completionMatchedText {
+  color: var(--yeld) !important;
+}
 /* Secondary text for a completion (note slug for wikilinks, snippet
-   preview for slash commands). Kept quieter than the label. */
+   preview for slash commands, shortcut hint). Kept quieter than the
+   label so the eye lands on the action first. */
 .cm-tooltip-autocomplete .cm-completionDetail {
   margin-left: auto;
   color: var(--t3) !important;
-  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace) !important;
   font-size: 11px !important;
   font-style: normal !important;
   opacity: 0.85;
+  flex-shrink: 0;
+  /* Sits inside a soft chip so shortcut hints (⌘K, ⌘⇧F) read as
+     keys rather than free text. Falls back to no chip on rows whose
+     detail is just a slug — done by leaning on the empty-string
+     selector below. */
+  background: var(--bg, transparent);
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--bd);
+}
+/* Don't render the chip on rows whose detail is empty (CodeMirror
+   leaves the element in the DOM but with no text). */
+.cm-tooltip-autocomplete .cm-completionDetail:empty {
+  display: none;
 }
 .cm-tooltip-autocomplete ul li[aria-selected] .cm-completionDetail {
   color: var(--char) !important;
   opacity: 0.7;
+  background: color-mix(in srgb, var(--yel) 18%, transparent);
+  border-color: color-mix(in srgb, var(--yeld) 40%, transparent);
+}
+/* The label part of the row, broken out from the detail by the gap. */
+.cm-tooltip-autocomplete .cm-completionLabel {
+  font-family: var(--font-serif, var(--ui-font-family, var(--sans))) !important;
+  font-size: 14px !important;
+  letter-spacing: 0.005em;
+  /* Truncate long labels gracefully; the matched-text highlight stays
+     visible even when the rest is clipped. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Soft entrance for the panel itself — picks up whenever CodeMirror
+   inserts the tooltip into the DOM. Pure CSS so it works without
+   touching the autocomplete plugin internals. */
+@keyframes yarrow-cm-tooltip-enter {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.cm-tooltip-autocomplete {
+  animation: yarrow-cm-tooltip-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top left;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-tooltip-autocomplete {
+    animation: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   3.2 — Inline Glossary
+   Terms defined in `.yarrow/glossary.json` (authored from Settings →
+   Glossary) get a subtle dotted underline wherever they appear in any
+   note. Hover surfaces a tooltip with the definition.
+   ───────────────────────────────────────────────────────────── */
+.cm-yarrow-glossary {
+  border-bottom: 1px dotted color-mix(in srgb, var(--yeld) 75%, transparent);
+  cursor: help;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+.cm-yarrow-glossary:hover {
+  background: color-mix(in srgb, var(--yel) 16%, transparent);
+  border-bottom-color: var(--yeld);
+}
+
+.cm-yarrow-glossary-tip {
+  font-family: var(--font-serif, var(--ui-font-family, var(--sans)));
+  max-width: 320px;
+  padding: 10px 12px 8px;
+  background: var(--paper, var(--bg));
+  border: 1px solid var(--bd-strong, var(--bd));
+  border-radius: 10px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 14px 32px -12px rgba(0, 0, 0, 0.22);
+  color: var(--char);
+  animation: yarrow-cm-tooltip-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.cm-yarrow-glossary-tip__term {
+  font-family: var(--font-display, var(--font-serif));
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--char);
+  margin-bottom: 4px;
+}
+.cm-yarrow-glossary-tip__def {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ch2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-yarrow-glossary-tip {
+    animation: none;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Yarrow 3.0 — a notebook for non-linear thinking</title>
+<title>Yarrow 3.1 — a notebook for non-linear thinking</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..600&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -11,8 +11,8 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="apple-touch-icon" href="app-icon-256.png" />
 <meta name="description" content="Yarrow is a local-first notebook for non-linear thinking. Plain markdown, every save a checkpoint, every direction a path you can return to. Free and open source." />
-<meta property="og:title" content="Yarrow 3.0 — Modes & Personas, a faster engine, and a design system" />
-<meta property="og:description" content="3.0 is Yarrow's biggest release: an architectural pivot to Modes & Personas, a complete React→Svelte 5 rewrite for noticeably snappier interaction, a full design-system pass with six themes (Vellum & Workshop as new defaults), and a much-expanded accessibility surface. Free and open source." />
+<meta property="og:title" content="Yarrow 3.1 — motion, in-editor authoring, and a file-backed glossary" />
+<meta property="og:description" content="3.1 layers a calm anime.js motion vocabulary across every surface, adds an inline wikilink picker, a floating selection toolbar, and a slash-command panel in the editor, replaces the frontmatter-flag glossary with a file-backed pane in Settings, and unifies Mode + Persona into a single picker. All on top of the 3.0 Svelte 5 engine. Free and open source." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://yarrow.software/" />
 <meta name="theme-color" content="#EFEDE7" media="(prefers-color-scheme: light)" />
@@ -34,9 +34,15 @@
     }
   })();
 </script>
+<!-- 3.1 — anime.js v4 motion vocabulary. Same library powering the
+     desktop app's calm motion pass. The IIFE build exposes `anime`
+     as a global; the script at the bottom of the page consumes it
+     for hero entrance, scroll-revealed section cards, and CTA
+     micro-interactions. Honours prefers-reduced-motion. -->
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.0.2/lib/anime.iife.min.js" defer></script>
 <style>
   /* ============================================================
-     Yarrow 3.0 — docs index
+     Yarrow 3.1 — docs index
      Strevora-inspired structure: full-bleed image hero, sticky
      nav with CTA, alternating section bands, rounded buttons,
      sans-serif primary type with Newsreader as editorial
@@ -608,6 +614,20 @@
     .hero-line-anchor { transition: none !important; }
   }
 
+  /* ── 3.1 anime.js reveal helpers ──────────────────────────────
+     Elements marked .yr-reveal-init are invisible until the JS at
+     the bottom of the page kicks them on with anime.js. Selectors
+     are kept terse so the script can grab them cheaply. The
+     `prefers-reduced-motion` branch and a no-JS fallback (handled
+     by removing the init class right after the script loads) keep
+     content readable in every state. */
+  .yr-reveal-init { opacity: 0; transform: translateY(14px); }
+  .yr-reveal-init.yr-reveal-shown { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .yr-reveal-init { opacity: 1 !important; transform: none !important; }
+  }
+  .btn { will-change: transform; }
+
   /* ── stats band ─────────────────────────────────────────── */
   .stats {
     background: var(--bg-alt);
@@ -760,6 +780,66 @@
     border: 1px solid var(--rule-2);
     padding: 5px 11px;
     border-radius: 999px;
+  }
+
+  /* ── "and also" grid (3.1 follow-ups) ─────────────────────────
+     Sits below the three pillars in the "what's new" section. A
+     four-column on desktop, two-column at tablet width, single
+     column on mobile. Each card is quieter than .pillar — a hint
+     of bg, a smaller serif h4, an outline pillar can already
+     handle the headline beat. */
+  .alsogrid {
+    margin-top: 24px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 1080px) { .alsogrid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 640px)  { .alsogrid { grid-template-columns: 1fr; } }
+  .also {
+    background: var(--bg-alt);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+    transition: transform 220ms var(--ease), border-color 220ms var(--ease);
+  }
+  .also:hover {
+    transform: translateY(-1px);
+    border-color: var(--rule-2);
+  }
+  .also h4 {
+    font-family: var(--serif);
+    font-size: 17px;
+    font-weight: 500;
+    letter-spacing: -0.008em;
+    line-height: 1.25;
+    color: var(--ink);
+    margin: 0 0 6px;
+    font-variation-settings: "opsz" 24;
+  }
+  .also p {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--ink-3);
+    margin: 0;
+  }
+  .also p strong { color: var(--ink-2); font-weight: 600; }
+  .also p em { color: var(--ink-2); font-style: italic; }
+  .also p code, .also p kbd {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: var(--bg-deep);
+    padding: 1px 4px;
+    border-radius: 4px;
+    color: var(--ink-2);
+  }
+  .pillar-body kbd, .hero-lede kbd {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--bg-deep);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--ink-2);
   }
 
   /* ── feature grid ───────────────────────────────────────── */
@@ -1319,17 +1399,17 @@
 <section class="hero" id="top">
   <svg class="hero-lines-svg" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true"></svg>
   <div class="hero-copy">
-    <span class="hero-eyebrow"><span class="dot"></span> Yarrow 3.0 — out now</span>
+    <span class="hero-eyebrow"><span class="dot"></span> Yarrow 3.1 — out now</span>
     <h1>Notes that <i>branch,</i> evolve, and connect.</h1>
     <p class="hero-lede">
-      A local-first notebook built around the way thinking actually works. Your notes are plain markdown. Every save is a checkpoint. Every direction you explore stays in an archive, not the trash. <strong>3.0</strong> is faster, more refined, and more accessible — with a workspace that quietly biases itself toward how <em>you</em> actually work.
+      A local-first notebook built around the way thinking actually works. Your notes are plain markdown. Every save is a checkpoint. Every direction you explore stays in an archive, not the trash. <strong>3.1</strong> brings a calmer motion pass, sharper in-editor authoring, and a file-backed glossary you edit in Settings.
     </p>
     <div class="hero-cta">
       <a href="https://github.com/neuralpunk/yarrow/releases/latest" class="btn btn-primary" rel="noopener">
-        Download 3.0
+        Download 3.1
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12l7 7 7-7"/><path d="M12 19V5"/></svg>
       </a>
-      <a href="#whats-new" class="btn btn-secondary">What's new in 3.0 →</a>
+      <a href="#whats-new" class="btn btn-secondary">What's new in 3.1 →</a>
       <a href="learn.html" class="btn btn-secondary">Learn the basics →</a>
     </div>
   </div>
@@ -1362,36 +1442,56 @@
 <section class="section" id="whats-new">
   <div class="wrap">
     <div class="section-head">
-      <span class="kicker center">Released 2026-04-28</span>
-      <h2 class="section-h">Refined, refreshed, and <i>noticeably faster</i></h2>
+      <span class="kicker center">Released 2026-05-13</span>
+      <h2 class="section-h">Calmer motion, sharper authoring, and a <i>standalone</i> glossary</h2>
       <p class="section-lede">
-        3.0 is a comprehensive rewrite from the inside out. Every existing feature still works exactly the same way — the surface and the engine underneath have both been rebuilt for speed and polish.
+        3.1 sits on the 3.0 engine and adds three things you feel the moment you open it: a unified motion vocabulary that quiets every transition, a new in-editor authoring surface for picking links, transforming selections, and inserting blocks, and a file-backed glossary you author from one place in Settings.
       </p>
     </div>
     <div class="pillars">
       <article class="pillar">
-        <span class="pillar-num">i. A workspace built around you</span>
-        <h3 class="pillar-h">A workspace that fits how you work.</h3>
+        <span class="pillar-num">i. A calm motion pass</span>
+        <h3 class="pillar-h">Animation, finally <i>spoken</i> the same way.</h3>
         <p class="pillar-body">
-          Yarrow now ships a set of curated layouts: a clean <strong>Just-Write</strong> surface, the full <strong>Path-Based</strong> rail, and tailored skins for <strong>Writers</strong>, <strong>Researchers</strong>, <strong>Developers</strong>, <strong>Clinicians</strong>, and <strong>Cooking</strong>. Switching is instant — nothing is hidden, just rearranged. Every feature is always one search away.
+          Every transition routes through a single <strong>anime.js v4</strong> motion vocabulary: modal entrances, command-palette open, toast slide-in, note-list filter cascade, fork-moment timeline, focus-mode rail collapse, theme-swap ink wash, auto-checkpoint pulse, connection-graph radial spawn. Same easing, same durations, same restraint everywhere. Honours <em>prefers-reduced-motion</em> end-to-end.
         </p>
-        <span class="pillar-tag">Five layouts · Five tailored skins</span>
+        <span class="pillar-tag">anime.js v4 · 9 motions · reduced-motion safe</span>
       </article>
       <article class="pillar">
-        <span class="pillar-num">ii. Quicker on the same machine</span>
-        <h3 class="pillar-h">Faster everywhere it matters.</h3>
+        <span class="pillar-num">ii. The editor, sharper at hand</span>
+        <h3 class="pillar-h">In-editor authoring, in one place.</h3>
         <p class="pillar-body">
-          The whole interface has been rebuilt for speed. Typing in long notes settles faster, the connections graph handles thousands of notes smoothly, and spell-check is sharper and more accurate. The app starts quickly and stays out of your way — the same hardware, but everything feels lighter.
+          Type <kbd>[[</kbd> for an <strong>inline wikilink picker</strong> with a Create-on-the-fly fallback. Drag over text and a <strong>selection toolbar</strong> appears with Bold, Italic, Code, wikilink, highlight, and the <code>??</code> marker. Hit <kbd>/</kbd> at the start of a line and a <strong>slash-command panel</strong> opens — formatting blocks, linking helpers, app-level actions, and persona-specific commands at the top.
         </p>
-        <span class="pillar-tag">Optimized · Sharper · Snappier</span>
+        <span class="pillar-tag">Picker · Toolbar · Slash panel</span>
       </article>
       <article class="pillar">
-        <span class="pillar-num">iii. A coherent visual identity</span>
-        <h3 class="pillar-h">Six themes and a unified look.</h3>
+        <span class="pillar-num">iii. Glossary, decoupled from notes</span>
+        <h3 class="pillar-h">One file, edited in Settings.</h3>
         <p class="pillar-body">
-          New default themes <strong>Vellum</strong> (cool bone &amp; slate, for daytime) and <strong>Workshop</strong> (deep ink &amp; bronze, for evening) sit alongside Linen, Graphite, Ashrose, and Dracula. A consistent icon set, hand-drawn illustrations on every kit, and a deeper accessibility surface tie the chrome together.
+          The glossary is now a standalone <code>.yarrow/glossary.json</code> file authored from a new <strong>Settings → Glossary</strong> pane. Each term + definition is underlined wherever it appears in any note, with the definition surfaced on hover. Tracked in git, so your defined vocabulary travels with the workspace. The frontmatter-flag mechanism from 3.0 is gone — one place to add, one place to edit.
         </p>
-        <span class="pillar-tag">Six themes · Unified icons</span>
+        <span class="pillar-tag">.yarrow/glossary.json · live highlighter</span>
+      </article>
+    </div>
+
+    <!-- ── Smaller "and also" grid for the rest of 3.1 ── -->
+    <div class="alsogrid">
+      <article class="also">
+        <h4>Personas v2, unified</h4>
+        <p>Mode and Persona collapse into a single picker with seven choices — <em>Basic</em>, <em>Default</em>, <em>Writer</em>, <em>Researcher</em>, <em>Developer</em>, <em>Clinician</em>, <em>Cooking</em>. Each persona is a lazy-loaded manifest under <code>src/plugins/&lt;id&gt;/</code>, so adding a new one means adding a manifest, not editing a registry.</p>
+      </article>
+      <article class="also">
+        <h4>First-run wizard</h4>
+        <p>"How do you want Yarrow to feel?" — three tiles: <em>Minimal</em>, <em>Full Yarrow</em>, <em>Tailored</em>. Tailored opens the persona grid; the other two pick implicitly. Settings → Personas matches the same search-driven palette with arrow-key navigation and a pinned <em>Recently used</em> row.</p>
+      </article>
+      <article class="also">
+        <h4>Persona Actions popover</h4>
+        <p>Click the persona pill in the status bar and an Obsidian-style command list pops up, filtered to the active persona. Search box, arrow-key navigation, Enter to pick, Esc to dismiss. Universal "Switch persona…" and "Open command palette…" rows always at the bottom.</p>
+      </article>
+      <article class="also">
+        <h4>Check for updates</h4>
+        <p>Settings → About has a manual <em>Check for updates</em> button that asks GitHub Releases for the latest tag and tells you whether you're current, with a link to the release notes when a newer version is out. No auto-check, no telemetry, no nag bar.</p>
       </article>
     </div>
   </div>
@@ -1624,10 +1724,10 @@
   <div class="wrap">
     <div class="download-card">
       <div>
-        <span class="kicker">Get Yarrow 3.0</span>
+        <span class="kicker">Get Yarrow 3.1</span>
         <h2 class="dl-h">Free to read, free to <i>fork.</i></h2>
         <p class="dl-sub">
-          Yarrow 3.0 ships as a small, native app on every platform — under 25 MB, with no extra installers or sign-up. Source code is available on GitHub under the MIT licence.
+          Yarrow 3.1 ships as a small, native app on every platform — under 25 MB, with no extra installers or sign-up. Source code is available on GitHub under the MIT licence.
         </p>
       </div>
       <div class="platforms">
@@ -1701,7 +1801,7 @@
     </div>
   </div>
   <div class="foot-bottom">
-    <span>Yarrow · Vol. 3 · № 0 · 3.0 issue</span>
+    <span>Yarrow · Vol. 3 · № 1 · 3.1 issue</span>
     <span>MIT licence · No telemetry · 2026</span>
   </div>
 </footer>
@@ -1743,8 +1843,15 @@
     var SVG_NS = 'http://www.w3.org/2000/svg';
     var reduceMq = window.matchMedia('(prefers-reduced-motion: reduce)');
     var mobileMq = window.matchMedia('(max-width: 880px)');
+    // Below this width the leftmost card column (leftPct=44 → 616 px
+    // at 1400 px = right at the copy column edge) would overlap the
+    // copy text. At these widths we drop everything except the top row
+    // (trunk + decisions-only) so only the trunk and one connecting
+    // card are visible.
+    var narrowMq = window.matchMedia('(max-width: 1400px)');
     function reduced() { return reduceMq.matches; }
     function isMobile() { return mobileMq.matches; }
+    function isNarrow() { return narrowMq.matches; }
 
     // ── Scenario data ────────────────────────────────────────────────
     // Universal note-taking themes. No domain references — the cards
@@ -1761,16 +1868,19 @@
       { title: 'shorter-version', desc: 'For when you only have five minutes…',   star: 'The headline cut',       notes: 6, age: '9 hr ago', delta: { minus: 20 }, color: 'moss'   },
       { title: 'alt-framing',     desc: 'Same arguments, told differently…',     star: 'Lead with the question', notes: 4, age: '9 hr ago', delta: { plus: 1, minus: 23 }, color: 'steel' }
     ];
-    // Asymmetric layout — title pinned top-left in CSS, cards arrayed
-    // around the right + bottom. Coordinates are percentages of the
-    // section's bounding rect; the SVG viewBox uses a 1000×700 canvas
-    // mapped non-uniformly (preserveAspectRatio="none").
+    // Layout — title pinned top-left in CSS, cards form a balanced two-
+    // column splay across the right half of the canvas. Left column at
+    // 44 % sits just past the copy edge (616 px = 44 % at 1400 px,
+    // the narrow breakpoint). Right column at 80 % keeps card right
+    // edges inside the viewport at the same threshold. At wider
+    // viewports the percentage spread scales naturally so cards fill
+    // ~50 % of the canvas without crowding the right edge.
     var LAYOUT = [
       { kind: 'trunk', leftPct: 56, topPct:  8 },
-      { kind: 'scn',   leftPct: 76, topPct: 28, dataIdx: 0 },
-      { kind: 'scn',   leftPct: 60, topPct: 56, dataIdx: 1 },
-      { kind: 'scn',   leftPct: 32, topPct: 80, dataIdx: 2 },
-      { kind: 'scn',   leftPct:  4, topPct: 80, dataIdx: 3 }
+      { kind: 'scn',   leftPct: 80, topPct: 24, dataIdx: 0 },
+      { kind: 'scn',   leftPct: 44, topPct: 50, dataIdx: 1 },
+      { kind: 'scn',   leftPct: 44, topPct: 76, dataIdx: 2 },
+      { kind: 'scn',   leftPct: 80, topPct: 80, dataIdx: 3 }
     ];
 
     // ── Card builders ────────────────────────────────────────────────
@@ -1878,10 +1988,22 @@
     function build() {
       if (built || isMobile()) return;
       built = true;
-      LAYOUT.forEach(function (spec) {
+      // At narrow desktop widths the copy column is wide enough that
+      // the left-column scenario cards (leftPct=44) would overlap it.
+      // Keep only the top-row cards (topPct < 30 → trunk +
+      // decisions-only) so what remains stays well clear of the copy.
+      var narrow = isNarrow();
+      builtNarrow = narrow;
+      var layout = narrow
+        ? LAYOUT.filter(function (l) { return l.topPct < 30; })
+        : LAYOUT;
+      layout.forEach(function (spec) {
         var wrap = document.createElement('div');
         wrap.className = 'hero-card' + (spec.kind === 'trunk' ? ' is-trunk-wrap' : '');
-        wrap.style.left = spec.leftPct + '%';
+        // Prefer the CSS calc() expression (anchors to the copy column
+        // edge regardless of viewport); fall back to the percentage form
+        // for any LAYOUT entry that still uses it.
+        wrap.style.left = spec.leftCSS || (spec.leftPct + '%');
         wrap.style.top  = spec.topPct  + '%';
         var data = (spec.kind === 'trunk') ? null : SCENARIOS[spec.dataIdx];
         var c = (spec.kind === 'trunk') ? trunkCard() : scnCard(data);
@@ -1965,11 +2087,20 @@
     }
 
     // ── Resize / breakpoint / visibility ─────────────────────────────
+    // Track the narrow breakpoint so a resize that crosses 1180 px
+    // tears down and rebuilds with the right card set (otherwise a
+    // user who resizes from 1300 px → 1000 px would keep the
+    // bottom-row cards stuck in the wrong place).
     var resizeRaf = 0;
+    var builtNarrow = false;
     function onResize() {
       if (isMobile()) {
         if (built) teardown();
         return;
+      }
+      var narrowNow = isNarrow();
+      if (built && narrowNow !== builtNarrow) {
+        teardown();
       }
       if (!built) {
         build();
@@ -2006,6 +2137,157 @@
         schedulePulse();
       }
     });
+  })();
+</script>
+
+<script>
+  // ═══════════════════════════════════════════════════════════════════
+  // 3.1 — anime.js v4 motion vocabulary
+  // ───────────────────────────────────────────────────────────────────
+  // Mirrors the desktop app's anim.svelte.ts motion vocabulary:
+  //   • Hero entrance — eyebrow → h1 → lede → CTA, staggered with a
+  //     soft fade-up.
+  //   • Scroll-revealed cards — pillars, "and also" tiles, mechanic
+  //     features, foundation cards, gallery figures, principles,
+  //     download platforms — each fade-up with a per-section stagger
+  //     once the section crosses into view.
+  //   • CTA micro-interaction — a tiny pulseRing on the primary
+  //     button when it's pressed.
+  //
+  // anime.js v4 loads as an IIFE in <head> with `defer`, so by the
+  // time DOMContentLoaded fires the global `anime` is ready.
+  // prefers-reduced-motion short-circuits the whole pass: elements
+  // initialised with .yr-reveal-init are immediately revealed via
+  // the matching CSS branch, and the JS adds nothing.
+  // ═══════════════════════════════════════════════════════════════════
+  (function () {
+    var reduceMq = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    // Selector groups that get the reveal treatment. Keep one
+    // selector per group; the script grabs the matching nodes and
+    // marks them with .yr-reveal-init before observing the section.
+    var REVEAL_GROUPS = [
+      { sel: '.stats .stat',                 stagger: 60,  delay:  0 },
+      { sel: '.pillars .pillar',             stagger: 110, delay: 80 },
+      { sel: '.alsogrid .also',              stagger: 80,  delay: 60 },
+      { sel: '.editorial-text > *',          stagger: 90,  delay:  0 },
+      { sel: '.features .feature',           stagger: 55,  delay: 40 },
+      { sel: '.foundation .found-card',      stagger: 90,  delay: 40 },
+      { sel: '.gallery .gal-fig',            stagger: 110, delay:  0 },
+      { sel: '.princ-grid .princ',           stagger: 60,  delay: 30 },
+      { sel: '.download-card > *',           stagger: 90,  delay:  0 },
+      { sel: '.platforms .plat',             stagger: 70,  delay: 60 }
+    ];
+
+    function getAnime() {
+      // v4 IIFE exposes `anime` globally. If the CDN failed (offline
+      // open), fall back to a no-op so reveal still happens via the
+      // CSS branch when we strip the init class.
+      return (window.anime && typeof window.anime.animate === 'function')
+        ? window.anime
+        : null;
+    }
+
+    function init() {
+      var anime = getAnime();
+      var reduce = reduceMq.matches;
+
+      // Pre-mark every reveal target so they start invisible BEFORE
+      // anime.js animates them in. If JS or anime.js failed, we
+      // never reach this point and the elements stay visible.
+      var groups = REVEAL_GROUPS.map(function (g) {
+        var nodes = Array.prototype.slice.call(document.querySelectorAll(g.sel));
+        nodes.forEach(function (n) { n.classList.add('yr-reveal-init'); });
+        return { spec: g, nodes: nodes };
+      });
+
+      // Hero entrance — runs on load, no IntersectionObserver needed.
+      var heroTargets = [
+        document.querySelector('.hero-eyebrow'),
+        document.querySelector('.hero h1'),
+        document.querySelector('.hero-lede'),
+        document.querySelector('.hero-cta')
+      ].filter(Boolean);
+      heroTargets.forEach(function (n) { n.classList.add('yr-reveal-init'); });
+
+      if (reduce || !anime) {
+        // No motion budget — reveal everything immediately.
+        document.querySelectorAll('.yr-reveal-init').forEach(function (n) {
+          n.classList.add('yr-reveal-shown');
+        });
+        return;
+      }
+
+      // ── Hero: staggered fade-up using anime.stagger ──────────────
+      anime.animate(heroTargets, {
+        opacity:    [0, 1],
+        translateY: [14, 0],
+        duration:   620,
+        delay:      anime.stagger(90, { start: 100 }),
+        ease:       'out(3)',
+        onBegin: function () {
+          heroTargets.forEach(function (n) { n.classList.add('yr-reveal-shown'); });
+        }
+      });
+
+      // ── Scroll-revealed sections via IntersectionObserver ────────
+      if (!('IntersectionObserver' in window)) {
+        groups.forEach(function (g) {
+          g.nodes.forEach(function (n) { n.classList.add('yr-reveal-shown'); });
+        });
+      } else {
+        groups.forEach(function (g) {
+          if (g.nodes.length === 0) return;
+          // Observe the FIRST node — once any item in the group
+          // crosses the viewport edge we run the whole group's
+          // stagger. Cheaper than per-node observers and matches
+          // the section-level "reveal as a unit" feel.
+          var fired = false;
+          var io = new IntersectionObserver(function (entries) {
+            if (fired) return;
+            for (var i = 0; i < entries.length; i++) {
+              if (entries[i].isIntersecting) {
+                fired = true;
+                anime.animate(g.nodes, {
+                  opacity:    [0, 1],
+                  translateY: [16, 0],
+                  duration:   560,
+                  delay:      anime.stagger(g.spec.stagger, { start: g.spec.delay }),
+                  ease:       'out(3)',
+                  onBegin: function () {
+                    g.nodes.forEach(function (n) { n.classList.add('yr-reveal-shown'); });
+                  }
+                });
+                io.disconnect();
+                break;
+              }
+            }
+          }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+          io.observe(g.nodes[0]);
+        });
+      }
+
+      // ── CTA micro-interaction ────────────────────────────────────
+      // A tiny scale-press on every .btn click. anime.js handles the
+      // return so the button settles back without a hand-tuned
+      // transition. Skipped under reduced-motion.
+      document.querySelectorAll('.btn, .plat').forEach(function (btn) {
+        btn.addEventListener('pointerdown', function () {
+          anime.animate(btn, {
+            scale: [
+              { to: 0.97, duration: 120, ease: 'out(2)' },
+              { to: 1,    duration: 260, ease: 'out(2)' }
+            ]
+          });
+        });
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
   })();
 </script>
 

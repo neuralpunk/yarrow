@@ -16,7 +16,6 @@
   import { railExpanded } from "../lib/uiPrefs.svelte";
   import { SK } from "../lib/platform.svelte";
   import { tr } from "../lib/i18n/index.svelte";
-  import type { ModeConfig } from "../lib/modes";
   import { shortRailLabel } from "../lib/railLabel";
 
   const RAIL_WIDTH_COLLAPSED = 56;
@@ -25,9 +24,9 @@
   interface Props {
     activeOverlay: RailOverlay | null;
     scratchpadOpen: boolean;
+    /** Workspace mapping mode. False ("basic") hides path / connection /
+     *  branch chrome; everything else stays one ⌘K away. */
     mappingEnabled?: boolean;
-    mode?: ModeConfig;
-    personaSlot?: Snippet;
     onOpen: (k: RailOverlay) => void;
     onToggleScratchpad: () => void;
     onOpenSettings: () => void;
@@ -41,8 +40,6 @@
     activeOverlay,
     scratchpadOpen,
     mappingEnabled = true,
-    mode,
-    personaSlot,
     onOpen,
     onToggleScratchpad,
     onOpenSettings,
@@ -61,8 +58,8 @@
     else showRawMarkdown.set(next);
   }
 
-  let showPathFeatures = $derived(mode ? mode.pathFeatures : true);
-  let showKits = $derived(mode ? mode.kits : true);
+  let showPathFeatures = $derived(mappingEnabled);
+  let showKits = true;
 </script>
 
 {#snippet railButton(active: boolean, onClick: () => void, label: string, body: Snippet)}
@@ -172,8 +169,6 @@
     {/snippet}
     {@render railButton(false, onBranchHere, t("sidebar.rail.branchHere", { shortcut: SK.newDirection }), branchHereIcon)}
   {/if}
-
-  {#if personaSlot}{@render personaSlot()}{/if}
 
   <div class="w-5 h-px bg-bd my-1"></div>
 

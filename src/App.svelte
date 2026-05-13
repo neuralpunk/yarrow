@@ -14,7 +14,6 @@
   import "./lib/uiPrefs.svelte";
   import "./lib/paperPrefs.svelte";
   import "./lib/language.svelte";
-  import "./lib/mode.svelte";
   import { installAccessibilityApplier } from "./lib/accessibilityPrefs.svelte";
   import { installExternalLinkInterceptor } from "./lib/openExternal";
   import { setWorkspaceScope } from "./lib/workspaceScope.svelte";

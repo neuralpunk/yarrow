@@ -29,6 +29,7 @@
     autocompletion,
     closeBrackets,
     closeBracketsKeymap,
+    completionStatus,
     type CompletionSource,
   } from "@codemirror/autocomplete";
   import { tags } from "@lezer/highlight";
@@ -339,6 +340,7 @@
   import type {
     Annotation,
     Draft,
+    GlossaryEntry,
     Note,
     NoteSummary,
     Provenance,
@@ -351,9 +353,9 @@
   import {
     extraCodeHighlight,
     extraImagePreview,
+    extraSlashCommands,
     extraSpell,
   } from "../../lib/extraPrefs.svelte";
-  import { mode } from "../../lib/mode.svelte";
   import {
     pathTintedCaret,
     typewriterMode,
@@ -361,10 +363,13 @@
   import { colorForPath } from "../../lib/pathAwareness";
   import AnnotationsGutter from "./AnnotationsGutter.svelte";
   import calloutsPlugin from "./extensions/callouts";
+  import { selectionToolbarPlugin } from "./extensions/selectionToolbar";
+  import { glossaryHighlight } from "./extensions/glossaryHighlight";
   import ForkSuggestion from "./ForkSuggestion.svelte";
   import TagChips from "./TagChips.svelte";
   import TagBouquet from "./TagBouquet.svelte";
   import { tr } from "../../lib/i18n/index.svelte";
+  import { animate, reducedMotion } from "../../lib/anim.svelte";
 
   interface Props {
     note: Note;
@@ -400,6 +405,10 @@
     divergingPaths?: string[];
     rootPathName?: string;
     onBorrowed?: (slug: string) => void;
+    /** Dispatched when the slash-command panel picks an action-flavored
+     *  command (open palette, switch persona, persona-specific modal,
+     *  etc.). The id is the command id from `slashCommands.ts`. */
+    onSlashAction?: (id: string) => void;
   }
 
   let {
@@ -430,20 +439,19 @@
     divergingPaths = [],
     rootPathName = "main",
     onBorrowed,
+    onSlashAction,
   }: Props = $props();
 
   let t = $derived(tr());
 
-  // 3.0 — code-highlight and math are persona-derived. Code uses the
-  // existing `extraCodeHighlight` toggle as a Developer-mode-only
-  // sub-switch; outside Developer mode the toggle is inert. Math is
-  // fully persona-bound — on in Researcher, off elsewhere.
-  let codeHighlightOn = $derived(
-    mode.config.persona === "developer" && extraCodeHighlight.value,
-  );
-  let mathOn = $derived(mode.config.persona === "researcher");
+  // 3.2 — code highlighting follows the user's Settings → Extras
+  // toggle. Math rendering is always on (KaTeX is a no-op when no `$$`
+  // markers are present, so the cost is paid only when used).
+  let codeHighlightOn = $derived(extraCodeHighlight.value);
+  let mathOn = $state(true);
   let spellOn = $derived(extraSpell.value);
   let imagePreviewOn = $derived(extraImagePreview.value);
+  let slashOn = $derived(extraSlashCommands.value);
   let typewriterOn = $derived(typewriterMode.value);
   let caretTintOn = $derived(pathTintedCaret.value);
 
@@ -460,6 +468,13 @@
   let notesRef: NoteSummary[] = notes;
   let spellSuggestRef: ((word: string) => string[]) | null = null;
   const hideSyntaxCompartment = new Compartment();
+  const glossaryCompartment = new Compartment();
+  // svelte-ignore non_reactive_update
+  let glossaryEntriesRef: GlossaryEntry[] = [];
+  // Listener installed inside the mount effect so Settings → Glossary
+  // saves push their refresh through `yarrow:glossary-updated` and the
+  // editor reconfigures the glossary compartment without remounting.
+  let glossaryRefreshListener: (() => void) | null = null;
   let saveTimer: number | null = null;
   let quicksaveTimer: number | null = null;
   // svelte-ignore state_referenced_locally
@@ -489,6 +504,28 @@
     x: number;
     y: number;
   } | null>(null);
+  let savedPillEl = $state<HTMLDivElement | null>(null);
+
+  // 3.1 — checkpoint pulse. When the auto-save fires (debounced at 8s
+  // by default), `justSaved` flips true for ~1.2s. We layer a soft
+  // scale tick + boxShadow ripple on top of the existing background
+  // keyframe so the indicator reads as a single breath rather than a
+  // bg flash.
+  $effect(() => {
+    if (!justSaved) return;
+    const pill = savedPillEl;
+    if (!pill || reducedMotion()) return;
+    animate(pill, {
+      scale: [
+        { to: 1.04, duration: 220, ease: "outQuad" },
+        { to: 1,    duration: 820, ease: "outElastic(1, 0.55)" },
+      ],
+      boxShadow: [
+        { to: "0 0 0 0px rgba(240, 200, 78, 0.55)", duration: 0 },
+        { to: "0 0 0 8px rgba(240, 200, 78, 0)",    duration: 1000, ease: "outQuad" },
+      ],
+    });
+  });
   let activeDraftId = $state<string | null>(null);
   // svelte-ignore state_referenced_locally
   let title = $state(note.frontmatter.title || note.slug);
@@ -562,6 +599,7 @@
     void mathOn;
     void spellOn;
     void imagePreviewOn;
+    void slashOn;
     void mappingEnabled;
     if (!hostEl) return;
 
@@ -579,6 +617,7 @@
           math: mathOn,
           spell: spellOn,
           imagePreview: imagePreviewOn,
+          slash: slashOn,
         }),
       );
       let markdownExtension: Extension;
@@ -634,6 +673,24 @@
         console.info("[yarrow] @cite autocomplete loaded");
       }
 
+      // Slash commands. Gated on the Settings → Writing extras
+      // toggle (default on). Persona is read at trigger-time so
+      if (slashOn) {
+        const slash = await import("./extensions/slashCommands");
+        if (cancelled) return;
+        completionSources.push(
+          slash.slashSource({
+            onAction: (id) => onSlashAction?.(id),
+          }),
+        );
+        // Two triggers: a ViewPlugin that watches docChanged (primary,
+        // most reliable) and an inputHandler fallback (catches IME edge
+        // cases). Same pattern as `@cite` autocomplete.
+        extraExtensions.push(slash.slashAutoTrigger);
+        extraExtensions.push(slash.slashInputHandler);
+        console.info("[yarrow] slash command panel loaded");
+      }
+
       const isPrivate =
         note.frontmatter.private === true ||
         (note.frontmatter.tags ?? []).some(
@@ -658,7 +715,56 @@
         );
       }
 
+      // 3.1 — Inline Glossary. Fetched lazily AFTER the EditorState is
+      // created, then patched in via the compartment. The earlier shape
+      // awaited the IPC inline, which meant any backend-side hiccup
+      // (missing handler in an older binary, hanging IPC, slow disk)
+      // could prevent the EditorView from ever instantiating —
+      // silently breaking wikilink autocomplete, the selection-toolbar
+      // plugin, and the right-click context menu in one stroke. The
+      // initial extension list uses an empty glossary; the fetch
+      // result gets folded in below once it lands.
+      glossaryEntriesRef = [];
       if (cancelled || !hostEl) return;
+
+      // Schedule the disk-only quicksave (~300 ms) and the
+      // git-checkpointing full save (`debounceMs`). Pulled into a closure
+      // so we can pause it while a completion panel is open and re-arm
+      // it cleanly when the panel closes — see the updateListener below.
+      const scheduleSaves = (body: string, dirty: boolean) => {
+        if (saveTimer) window.clearTimeout(saveTimer);
+        if (quicksaveTimer) window.clearTimeout(quicksaveTimer);
+        saveTimer = null;
+        quicksaveTimer = null;
+        if (!dirty) return;
+        if (!activeDraftIdRef) {
+          quicksaveTimer = window.setTimeout(() => {
+            api
+              .quicksaveNote(mountedSlug, body)
+              .catch((err) => console.error("quicksave failed", err));
+          }, 300);
+        }
+        saveTimer = window.setTimeout(() => {
+          lastSavedBody = body;
+          const draftId = activeDraftIdRef;
+          if (draftId) {
+            api
+              .draftSave(mountedSlug, draftId, body)
+              .catch((err) => console.error("draft save failed", err));
+          } else {
+            onSaveLatest(mountedSlug, body, undefined, mountedPath);
+          }
+          onDirtyChange(false);
+          justSaved = true;
+          if (justSavedTimer) window.clearTimeout(justSavedTimer);
+          justSavedTimer = window.setTimeout(() => (justSaved = false), 1200);
+        }, debounceMs);
+      };
+      // Tracks whether the previous transaction had an autocomplete
+      // panel open. We re-arm saves on the active→inactive edge so a
+      // user who pressed Escape mid-completion (no docChanged) still
+      // gets their dirty buffer saved.
+      let lastCompletionActive = false;
 
       const state = EditorState.create({
         doc: note.body,
@@ -682,11 +788,25 @@
           wikilinkPlugin(),
           questionPlugin(),
           calloutsPlugin(),
+          selectionToolbarPlugin(),
+          glossaryCompartment.of(glossaryHighlight(glossaryEntriesRef)),
           ...extraExtensions,
           hideSyntaxCompartment.of(
             showRawMarkdown ? [] : hideSyntaxPlugin(),
           ),
           EditorView.updateListener.of((update) => {
+            // While a completion panel is open (slash, wikilink, @cite),
+            // pause both the quicksave and the git-checkpoint timers.
+            // The intermediate filter text the user is typing
+            // (e.g. "/heading", "[[my-no") is meant to be replaced by
+            // the apply() callback — saving it would clutter the
+            // history slider with `/` fragments. Saves resume on the
+            // first transaction after the panel closes.
+            const completionActive =
+              completionStatus(update.state) !== null;
+            const completionJustClosed =
+              lastCompletionActive && !completionActive;
+            lastCompletionActive = completionActive;
             if (update.docChanged) {
               const body = update.state.doc.toString();
               const dirty = body !== lastSavedBody;
@@ -697,45 +817,24 @@
                 onBodyChangeLatest?.(body);
               }, 140);
               showForkSuggestion = mappingEnabled && scanDivergent(body);
-              if (saveTimer) window.clearTimeout(saveTimer);
-              if (quicksaveTimer) window.clearTimeout(quicksaveTimer);
-              if (dirty) {
-                if (!activeDraftIdRef) {
-                  quicksaveTimer = window.setTimeout(() => {
-                    api
-                      .quicksaveNote(mountedSlug, body)
-                      .catch((err) =>
-                        console.error("quicksave failed", err),
-                      );
-                  }, 300);
+              if (completionActive) {
+                if (saveTimer) {
+                  window.clearTimeout(saveTimer);
+                  saveTimer = null;
                 }
-                saveTimer = window.setTimeout(() => {
-                  lastSavedBody = body;
-                  const draftId = activeDraftIdRef;
-                  if (draftId) {
-                    api
-                      .draftSave(mountedSlug, draftId, body)
-                      .catch((err) =>
-                        console.error("draft save failed", err),
-                      );
-                  } else {
-                    onSaveLatest(
-                      mountedSlug,
-                      body,
-                      undefined,
-                      mountedPath,
-                    );
-                  }
-                  onDirtyChange(false);
-                  justSaved = true;
-                  if (justSavedTimer)
-                    window.clearTimeout(justSavedTimer);
-                  justSavedTimer = window.setTimeout(
-                    () => (justSaved = false),
-                    1200,
-                  );
-                }, debounceMs);
+                if (quicksaveTimer) {
+                  window.clearTimeout(quicksaveTimer);
+                  quicksaveTimer = null;
+                }
+              } else {
+                scheduleSaves(body, dirty);
               }
+            } else if (completionJustClosed) {
+              // Escape closes the panel without changing the doc; the
+              // buffer may still be dirty from typing earlier in the
+              // session, so re-arm the save with the current contents.
+              const body = update.state.doc.toString();
+              scheduleSaves(body, body !== lastSavedBody);
             }
             if (update.selectionSet || update.docChanged) {
               const sel = update.state.selection.main;
@@ -933,12 +1032,20 @@
               const text = v.state.sliceDoc(sel.from, sel.to);
               e.preventDefault();
               e.stopPropagation();
+              // Capture the selection range alongside the text so the
+              // Format modal (which opens off this menu) can replace
+              // the EXACT range when the user picks a wrap action. By
+              // the time the modal commits, the editor may have lost
+              // focus and the live `sel.from`/`sel.to` could have
+              // collapsed, so we need a snapshot at right-click time.
               window.dispatchEvent(
                 new CustomEvent("yarrow:editor-contextmenu", {
                   detail: {
                     text: text.trim() ? text : "",
                     x: e.clientX,
                     y: e.clientY,
+                    from: sel.from,
+                    to: sel.to,
                   },
                 }),
               );
@@ -1063,6 +1170,34 @@
 
       localView = new EditorView({ state, parent: hostEl });
       view = localView;
+
+      // Glossary fetch happens AFTER the editor is alive. Failures
+      // (missing IPC handler, slow disk, locked workspace) can no
+      // longer hold the mount hostage — they just leave the
+      // underline-on-defined-terms feature inactive for this session.
+      const refreshGlossary = () => {
+        api
+          .glossaryEntries()
+          .then((entries) => {
+            const v = localView;
+            if (cancelled || !v) return;
+            glossaryEntriesRef = entries;
+            v.dispatch({
+              effects: glossaryCompartment.reconfigure(
+                glossaryHighlight(entries),
+              ),
+            });
+          })
+          .catch((e) => {
+            console.warn("[yarrow] glossary fetch failed; carrying on", e);
+          });
+      };
+      refreshGlossary();
+      glossaryRefreshListener = refreshGlossary;
+      window.addEventListener(
+        "yarrow:glossary-updated",
+        glossaryRefreshListener,
+      );
     };
 
     mount().catch((err) => {
@@ -1071,6 +1206,13 @@
 
     return () => {
       cancelled = true;
+      if (glossaryRefreshListener) {
+        window.removeEventListener(
+          "yarrow:glossary-updated",
+          glossaryRefreshListener,
+        );
+        glossaryRefreshListener = null;
+      }
       if (saveTimer) window.clearTimeout(saveTimer);
       if (quicksaveTimer) window.clearTimeout(quicksaveTimer);
       if (blameTimer) window.clearTimeout(blameTimer);
@@ -1706,6 +1848,7 @@
 >
   <div class="w-full max-w-[680px] xl:max-w-[820px] 2xl:max-w-[960px] mx-auto">
     <div
+      bind:this={savedPillEl}
       class={`font-serif italic text-xs text-t3 mb-5 inline-block px-1 py-0.5 rounded transition-colors ${
         justSaved ? "edited-pulse" : ""
       }`}

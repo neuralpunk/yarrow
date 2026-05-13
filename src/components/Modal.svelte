@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import { tr } from "../lib/i18n/index.svelte";
+  import { animate, utils, reducedMotion } from "../lib/anim.svelte";
 
   interface Props {
     open: boolean;
@@ -29,6 +30,7 @@
   let t = $derived(tr());
 
   let dialogRef = $state<HTMLDivElement | null>(null);
+  let backdropRef = $state<HTMLDivElement | null>(null);
   let titleId = `yarrow-modal-title-${Math.random().toString(36).slice(2, 10)}`;
 
   // Escape closes; tracked separately from the focus effect because the
@@ -40,6 +42,40 @@
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // 3.1 — soft modal entrance: backdrop fades in, dialog rises with a
+  // small spring overshoot. We gate on `tick()` so the bind:this refs
+  // are guaranteed populated; otherwise the popIn can race the DOM
+  // mount and skip — leaving the dialog stuck invisible. We also set
+  // the initial state imperatively (instead of via `style:opacity="0"`)
+  // so a failed animation falls back to visible, not hidden.
+  $effect(() => {
+    if (!open) return;
+    tick().then(() => {
+      const bd = backdropRef;
+      const dlg = dialogRef;
+      if (!bd && !dlg) return;
+      if (reducedMotion()) {
+        if (bd) bd.style.opacity = "1";
+        if (dlg) dlg.style.opacity = "1";
+        return;
+      }
+      if (bd) {
+        utils.set(bd, { opacity: 0 });
+        animate(bd, { opacity: [0, 1], duration: 200, ease: "outQuad" });
+      }
+      if (dlg) {
+        utils.set(dlg, { opacity: 0, scale: 0.97, y: 10 });
+        animate(dlg, {
+          opacity: [0, 1],
+          scale: [0.97, 1],
+          y: [10, 0],
+          duration: 340,
+          ease: "outBack(1.1)",
+        });
+      }
+    });
   });
 
   // Focus management: capture the previously-focused element on open,
@@ -137,6 +173,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
+    bind:this={backdropRef}
     class="fixed inset-0 z-50 flex items-center justify-center bg-char/10"
     onmousedown={onBackdropMouseDown}
     onclick={onBackdropClick}

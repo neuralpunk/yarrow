@@ -31,9 +31,6 @@ export interface RadialCallbacks {
   selectAll: () => void;
   copySelection: (text: string) => void;
   openTimerPicker: () => void;
-  openRecipeClipper: () => void;
-  addToShoppingList: () => void;
-  cookingEnabled: boolean;
 }
 
 type Translator = (key: StringKey, vars?: Record<string, string>) => string;
@@ -141,31 +138,13 @@ function buildInsertsSubmenu(cb: RadialCallbacks, t: Translator): RadialMenuItem
       onSelect: cb.openCalloutInsert,
     },
   ];
-  if (cb.cookingEnabled) {
-    items.push(
-      {
-        id: "insert-timer",
-        label: t("editor.radial.insert.timer"),
-        sublabel: t("editor.radial.insert.timerSub"),
-        icon: "timer",
-        onSelect: cb.openTimerPicker,
-      },
-      {
-        id: "insert-clip-recipe",
-        label: t("editor.radial.insert.clipRecipe"),
-        sublabel: t("editor.radial.insert.clipRecipeSub"),
-        icon: "recipeUrl",
-        onSelect: cb.openRecipeClipper,
-      },
-      {
-        id: "insert-shopping-list",
-        label: t("editor.radial.insert.shoppingList"),
-        sublabel: t("editor.radial.insert.shoppingListSub"),
-        icon: "shopping",
-        onSelect: cb.addToShoppingList,
-      },
-    );
-  }
+  items.push({
+    id: "insert-timer",
+    label: t("editor.radial.insert.timer"),
+    sublabel: t("editor.radial.insert.timerSub"),
+    icon: "timer",
+    onSelect: cb.openTimerPicker,
+  });
   return items;
 }
 

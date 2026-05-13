@@ -76,20 +76,6 @@ export const onboardingEN = {
   "intro.continue.verb": "Continuing",
   "intro.continue.aria": "Continue with {title} in {workspace}",
 
-  // ─── First-launch mode picker ───────────────────────────────
-  "intro.modePicker.title": "How do you want to work?",
-  "intro.modePicker.subtitle":
-    "Yarrow can be a quiet place for notes, or a full toolkit with scenarios and connections. You can change this any time from the status bar.",
-  "intro.modePicker.quietTitle": "Basic",
-  "intro.modePicker.quietBody":
-    "Just notes and ideas. Scenario tools stay out of the way.",
-  "intro.modePicker.fullTitle": "Scenario-based, no persona",
-  "intro.modePicker.fullBody":
-    "The full Yarrow surface — scenarios, connections, the lot.",
-  "intro.modePicker.skip": "Decide later",
-  "intro.modePicker.changeHint":
-    "You can switch any time — the mode pill in the status bar opens this back up.",
-
   // ─── Wizard / import flow (still used by NewWorkspaceWizard) ──
 } as const;
 
@@ -155,18 +141,6 @@ export const onboardingES: Record<OnboardingKey, string> = {
   "intro.stats.wordsThisMonthPlural": "palabras este mes",
   "intro.continue.verb": "Continuando",
   "intro.continue.aria": "Continuar con {title} en {workspace}",
-  "intro.modePicker.title": "¿Cómo quieres trabajar?",
-  "intro.modePicker.subtitle":
-    "Yarrow puede ser un lugar tranquilo para notas, o un kit completo con escenarios, ramas y conexiones. Puedes cambiarlo cuando quieras desde la barra de estado.",
-  "intro.modePicker.quietTitle": "Básico",
-  "intro.modePicker.quietBody":
-    "Solo notas e ideas. Las herramientas de escenarios y ramas se mantienen fuera.",
-  "intro.modePicker.fullTitle": "Por escenarios, sin perfil",
-  "intro.modePicker.fullBody":
-    "Toda la superficie de Yarrow — escenarios, ramas, conexiones, todo.",
-  "intro.modePicker.skip": "Decidir luego",
-  "intro.modePicker.changeHint":
-    "Puedes cambiar cuando quieras — el pill de modo en la barra de estado vuelve a abrir esto.",
 };
 
 export const onboardingSV: Record<OnboardingKey, string> = {
@@ -229,16 +203,4 @@ export const onboardingSV: Record<OnboardingKey, string> = {
   "intro.stats.wordsThisMonthPlural": "ord denna månad",
   "intro.continue.verb": "Fortsätter",
   "intro.continue.aria": "Fortsätt med {title} i {workspace}",
-  "intro.modePicker.title": "Hur vill du arbeta?",
-  "intro.modePicker.subtitle":
-    "Yarrow kan vara en tyst plats för anteckningar, eller en hel verktygslåda med scenarier, grenar och kopplingar. Du kan byta när som helst från statusraden.",
-  "intro.modePicker.quietTitle": "Enkel",
-  "intro.modePicker.quietBody":
-    "Bara anteckningar och idéer. Scenarier och grenar håller sig undan.",
-  "intro.modePicker.fullTitle": "Scenariobaserad, ingen profil",
-  "intro.modePicker.fullBody":
-    "Hela Yarrow-ytan — scenarier, grenar, kopplingar, allt.",
-  "intro.modePicker.skip": "Bestäm senare",
-  "intro.modePicker.changeHint":
-    "Du kan byta när som helst — lägespillen i statusraden öppnar det här igen.",
 };
